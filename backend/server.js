@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const app = express();
 const PORT = Number(process.env.PORT || 8080);
@@ -10,10 +12,17 @@ const CINETPAY_APIKEY = process.env.CINETPAY_APIKEY;
 const CINETPAY_SITE_ID = process.env.CINETPAY_SITE_ID;
 const CINETPAY_CURRENCY = process.env.CINETPAY_CURRENCY || 'XOF';
 const PLAN_AMOUNT = 1500;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PUBLIC_DIR = path.join(__dirname, 'public');
 
 app.use(cors({ origin: APP_ORIGIN, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Si Vercel est configuré avec le dossier backend comme racine,
+// on sert aussi l'application web depuis backend/public.
+app.use(express.static(PUBLIC_DIR));
 
 // Stockage mémoire pour démarrer. En production, remplacez par Supabase/PostgreSQL.
 // Map phone -> { phone, status, expiresAt, txRef, provider, updatedAt }
@@ -169,6 +178,13 @@ app.get('/api/subscription/status', (req, res) => {
   const sub = getActiveSubscription(phone);
   if (!sub) return res.json({ active:false, status:'free' });
   res.json({ active:true, status:'premium', expiresAt:sub.expiresAt, txRef:sub.txRef, provider:sub.provider });
+});
+
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/') || req.path === '/health') return next();
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'), err => {
+    if (err) next();
+  });
 });
 
 app.use((err, _req, res, _next) => {

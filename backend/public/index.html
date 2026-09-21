@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Réussite Concours BF — Prépare tes examens et concours</title>
+<meta name="description" content="Prépare le CEP, BEPC, BAC et les concours professionnels avec plus de 5000 questions corrigées et expliquées. Spécial Burkina Faso.">
+<meta name="theme-color" content="#0e9f6e">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== topbar ===== -->
+  <header class="topbar" id="topbar">
+    <div class="brand"><img class="brand-logo-img" src="img/logo.svg" alt="Logo Réussite Concours BF"><span class="brand-title"><span>Réussite</span><em>Concours BF</em></span></div>
+    <div class="top-actions">
+      <button class="account-chip" id="accountChip" onclick="openAccountMenu()">👤 Connexion</button>
+      <div class="streak-pill">🔥 <span id="streakVal">0</span> j</div>
+    </div>
+  </header>
+
+  <!-- ================= HOME ================= -->
+  <section class="screen active" id="home">
+    <div class="hero">
+      <div class="hero-img"><img src="img/hero.jpg" alt="Étudiant qui révise"></div>
+      <h1>Ne dis pas que tu as travaillé.<br><span>Prouve-le.</span></h1>
+      <p>Ton passeport de préparation mesure ton entraînement réel, question après question.</p>
+    </div>
+
+    <div class="features">
+      <div class="feature"><div class="fi">📚</div><h3>+5000 questions</h3><p>Corrections et explications incluses.</p></div>
+      <div class="feature"><div class="fi">🌍</div><h3>Culture générale</h3><p>2020 – 2027, l'essentiel à connaître.</p></div>
+      <div class="feature"><div class="fi">🇧🇫</div><h3>Spécial Burkina</h3><p>Histoire, provinces, régions, gouvernements.</p></div>
+      <div class="feature"><div class="fi">🎓</div><h3>Ton concours</h3><p>CEP, BEPC, BAC, licence et concours pro.</p></div>
+    </div>
+
+    <div class="cta-banner">
+      <div class="tag">À faire maintenant</div>
+      <h2>Commence ta préparation</h2>
+      <p>Un premier quiz gratuit, 2 minutes, sans inscription.</p>
+      <button class="btn btn-white" onclick="startQuiz({n:10,time:120,title:'Quiz découverte',free:true})">🚀 Commencer</button>
+    </div>
+
+    <div class="premium-home" id="premiumHomeCard">
+      <div class="premium-icon">⭐</div>
+      <div class="premium-copy">
+        <div class="premium-kicker">Réussite Concours BF Premium</div>
+        <h3>Débloque tout pour 1 500 FCFA/mois</h3>
+        <p>Examens blancs, erreurs, statistiques détaillées et matières avancées.</p>
+      </div>
+      <button class="mini-btn" onclick="show('subscription')">Voir</button>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Tes outils</h2></div>
+      <div class="actions">
+        <button class="action-card" onclick="show('setup')">
+          <div class="ic ic-blue">🎯</div><h3>Je prépare un concours</h3><p>Choisis ton niveau et révise l'essentiel</p>
+        </button>
+        <button class="action-card" onclick="show('passport')">
+          <div class="ic ic-gold">🛂</div><h3>Mon passeport</h3><p>Prouve que tu as travaillé</p>
+        </button>
+        <button class="action-card premium-locked" onclick="show('errors')">
+          <span class="lock-tag">Premium</span>
+          <span class="badge-count" id="errCount" style="display:none">0</span>
+          <div class="ic ic-red">❌</div><h3>Mes erreurs</h3><p id="errSub">Aucune pour l'instant</p>
+        </button>
+        <button class="action-card premium-locked" onclick="startQuiz({n:40,time:2400,title:'Examen blanc'})">
+          <span class="lock-tag">Premium</span>
+          <div class="ic ic-purple">📝</div><h3>Examen blanc</h3><p>40 questions · 40 min</p>
+        </button>
+        <button class="action-card" id="dailyCard" onclick="startDaily()">
+          <div class="ic ic-gold">🔥</div><h3>Défi du jour</h3><p id="dailySub">15 questions · 1 fois/jour</p>
+        </button>
+        <button class="action-card" onclick="show('quickpick')">
+          <div class="ic ic-green">⚡</div><h3>Quiz rapide</h3><p>10, 20 ou 40 questions</p>
+        </button>
+        <button class="action-card premium-locked" onclick="show('stats')">
+          <span class="lock-tag">Premium</span>
+          <div class="ic ic-gray">📊</div><h3>Ma progression</h3><p>Scores et statistiques</p>
+        </button>
+        <button class="action-card" onclick="show('formations')">
+          <div class="ic ic-green">🗂️</div><h3>Formations</h3><p>Toutes les matières disponibles</p>
+        </button>
+      </div>
+    </div>
+
+    <div class="section" style="padding-bottom:0">
+      <div class="section-head"><h2>À découvrir</h2><a href="#" onclick="show('formations');return false;">Tout voir ›</a></div>
+    </div>
+    <div class="carousel">
+      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Histoire-Géographie',cat:'Histoire-Géo'})">
+        <div class="avatar" style="background:#3f83f8">HI</div><h4>Histoire-Géographie</h4><p>Matières</p>
+      </button>
+      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Culture générale',cat:'Culture générale'})">
+        <div class="avatar" style="background:#9061f9">CU</div><h4>Culture générale</h4><p>Culture & monde</p>
+      </button>
+      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Les 47 provinces',cat:'Burkina Faso'})">
+        <div class="avatar" style="background:#0e9f6e">BF</div><h4>Les 47 provinces</h4><p>Burkina Faso</p>
+      </button>
+      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Mathématiques',cat:'Mathématiques'})">
+        <div class="avatar" style="background:#e02424">MA</div><h4>Mathématiques</h4><p>Matières</p>
+      </button>
+      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Psychotechnique',cat:'Psychotechnique'})">
+        <div class="avatar" style="background:#f5a623">PS</div><h4>Psychotechnique</h4><p>Concours</p>
+      </button>
+      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'SVT',cat:'SVT'})">
+        <div class="avatar" style="background:#057a55">SV</div><h4>SVT</h4><p>Matières</p>
+      </button>
+    </div>
+
+    <div class="share-card">
+      <img src="img/success.jpg" alt="Trophée">
+      <h3>Aide un ami à réussir</h3>
+      <p>Partage Réussite Concours BF et progressez ensemble.</p>
+      <button class="btn btn-green" onclick="shareApp()">📤 Partager l'application</button>
+    </div>
+  </section>
+
+  <!-- ================= SETUP CONCOURS ================= -->
+  <section class="screen" id="setup">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">Je prépare un concours</h2>
+    </div>
+    <div class="setup">
+      <h2>Choisis ton niveau</h2>
+      <p class="sub">On adapte les questions à ton examen ou concours.</p>
+      <div class="pick-list" id="levelGrid">
+        <button class="pick-li" onclick="pickLevel(this,'CEP')"><span class="em">✏️</span> CEP — Certificat d'études primaires</button>
+        <button class="pick-li" onclick="pickLevel(this,'BEPC')"><span class="em">📖</span> BEPC — Brevet d'études</button>
+        <button class="pick-li" onclick="pickLevel(this,'BAC')"><span class="em">🎓</span> BAC — Baccalauréat</button>
+        <button class="pick-li" onclick="pickLevel(this,'Licence')"><span class="em">🏛️</span> Licence & concours directs</button>
+        <button class="pick-li" onclick="pickLevel(this,'Concours professionnels')"><span class="em">💼</span> Concours professionnels</button>
+      </div>
+      <h2 style="font-size:1.05rem">Nombre de questions</h2>
+      <div class="pick-grid" id="nGrid" style="margin-top:10px">
+        <button class="pick on" onclick="pickN(this,10)">10<small>~10 min</small></button>
+        <button class="pick" onclick="pickN(this,20)">20<small>Premium</small></button>
+        <button class="pick" onclick="pickN(this,40)">40<small>Premium</small></button>
+      </div>
+      <button class="btn btn-green btn-block" onclick="startSetupQuiz()">Commencer la révision →</button>
+    </div>
+  </section>
+
+  <!-- ================= QUICK PICK ================= -->
+  <section class="screen" id="quickpick">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">Quiz rapide</h2>
+    </div>
+    <div class="setup">
+      <h2>⚡ Combien de questions ?</h2>
+      <p class="sub">Tirage aléatoire dans toutes les matières, sans chrono.</p>
+      <div class="pick-list">
+        <button class="pick-li" onclick="startQuiz({n:10,time:0,title:'Quiz rapide'})"><span class="em">🟢</span> 10 questions — échauffement</button>
+        <button class="pick-li premium-row" onclick="startQuiz({n:20,time:0,title:'Quiz rapide'})"><span class="em">🔒</span> 20 questions — Premium</button>
+        <button class="pick-li premium-row" onclick="startQuiz({n:40,time:0,title:'Quiz rapide'})"><span class="em">🔒</span> 40 questions — Premium</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= QUIZ ================= -->
+  <section class="screen" id="quiz">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="quitQuiz()">✕</button>
+      <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="timer" id="timer">0:00</div>
+    </div>
+    <div style="padding:4px 20px 0"><span style="display:none" id="quizTitleTag"></span><span style="display:none" id="qCount"></span></div>
+    <div class="quiz-body">
+      <div class="q-card" id="qCard"></div>
+    </div>
+    <div class="quiz-next">
+      <button class="btn btn-green btn-block" id="nextBtn" style="visibility:hidden" onclick="nextQuestion()">Question suivante →</button>
+    </div>
+  </section>
+
+  <!-- ================= RESULT ================= -->
+  <section class="screen" id="result">
+    <div class="result-wrap">
+      <img id="resultImg" src="img/success.jpg" alt="Résultat">
+      <div class="score-ring">
+        <svg width="150" height="150">
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#e5e7eb" stroke-width="12"/>
+          <circle id="ringFill" cx="75" cy="75" r="62" fill="none" stroke="#0e9f6e" stroke-width="12" stroke-linecap="round"/>
+        </svg>
+        <div class="val" id="ringVal">0%</div>
+      </div>
+      <h2 id="resultTitle">Bien joué !</h2>
+      <p class="sub" id="resultSub"></p>
+      <div class="result-stats">
+        <div class="rs"><b class="ok" id="rsOk">0</b><span>Bonnes</span></div>
+        <div class="rs"><b class="ko" id="rsKo">0</b><span>Erreurs</span></div>
+        <div class="rs"><b style="color:#f5a623" id="rsXp">+0</b><span>XP gagnés</span></div>
+      </div>
+      <div class="result-actions">
+        <button class="btn btn-green btn-block" onclick="show('errors')">🔍 Revoir mes erreurs</button>
+        <button class="btn btn-ghost btn-block" onclick="show('home')">← Retour à l'accueil</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FORMATIONS ================= -->
+  <section class="screen" id="formations">
+    <div class="section" style="padding-bottom:8px">
+      <div class="section-head"><h2 style="font-size:1.3rem">🗂️ Formations disponibles</h2></div>
+    </div>
+    <div class="chip-row" id="chipRow">
+      <button class="chip on" onclick="filterForm(this,'Tout')">Tout</button>
+      <button class="chip" onclick="filterForm(this,'Matières')">Matières</button>
+      <button class="chip" onclick="filterForm(this,'Concours & examens')">Concours</button>
+      <button class="chip" onclick="filterForm(this,'Culture & monde')">Culture</button>
+      <button class="chip" onclick="filterForm(this,'Burkina Faso')">Burkina 🇧🇫</button>
+    </div>
+    <div id="formWrap"></div>
+    <div style="height:20px"></div>
+  </section>
+
+  <!-- ================= PASSPORT ================= -->
+  <section class="screen" id="passport">
+    <div class="pass-head">
+      <img src="img/passport.jpg" alt="Passeport">
+      <h2>Mon passeport de préparation</h2>
+      <p>Il mesure ton travail réel. Impossible de tricher.</p>
+    </div>
+    <div class="level-card">
+      <div class="lv">Ton niveau</div>
+      <h3 id="lvlName">Niveau 1 · Débutant</h3>
+      <div class="xp-bar"><div class="xp-fill" id="xpFill" style="width:0%"></div></div>
+      <div class="xp-txt" id="xpTxt">0 / 200 XP</div>
+    </div>
+    <div class="section" style="padding-top:4px"><div class="section-head"><h2>Mes badges</h2></div></div>
+    <div class="badges" id="badgeGrid"></div>
+    <div style="height:24px"></div>
+  </section>
+
+  <!-- ================= STATS ================= -->
+  <section class="screen" id="stats">
+    <div class="section" style="padding-bottom:12px">
+      <div class="section-head"><h2 style="font-size:1.3rem">📊 Ma progression</h2></div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card"><b id="stQuiz">0</b><span>Quiz terminés</span></div>
+      <div class="stat-card"><b id="stAns">0</b><span>Questions répondues</span></div>
+      <div class="stat-card"><b id="stRate">—</b><span>Taux de réussite</span></div>
+      <div class="stat-card"><b id="stStreak">0 j</b><span>Série en cours 🔥</span></div>
+    </div>
+    <div class="section" style="padding-bottom:0"><div class="section-head"><h2>Par matière</h2></div></div>
+    <div class="bars" id="barWrap"></div>
+  </section>
+
+  <!-- ================= ERRORS ================= -->
+  <section class="screen" id="errors">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">❌ Mes erreurs</h2>
+    </div>
+    <div class="section" style="padding-top:8px">
+      <button class="btn btn-red btn-block" id="errReviewBtn" onclick="startQuiz({n:40,time:0,title:'Révision des erreurs',errorsMode:true})" style="margin-bottom:14px">🔁 Rejouer mes erreurs</button>
+      <div id="errList"></div>
+    </div>
+    <div style="height:24px"></div>
+  </section>
+
+
+  <!-- ================= LOGIN / COMPTE ================= -->
+  <section class="screen" id="login">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">Compte candidat</h2>
+    </div>
+    <div class="auth-card">
+      <div class="auth-hero">
+        <div class="auth-emoji">👤</div>
+        <h2>Connecte ton numéro</h2>
+        <p>Ton abonnement, tes XP et ta progression seront reliés à ce compte.</p>
+      </div>
+      <label class="field-label" for="authPhone">Numéro Mobile Money</label>
+      <div class="phone-row auth-phone-row">
+        <span class="cc">🇧🇫 +226</span>
+        <input type="tel" id="authPhone" placeholder="70 00 00 00" maxlength="11" inputmode="numeric">
+      </div>
+      <label class="field-label" for="authPin">Code PIN personnel</label>
+      <input class="input" type="password" id="authPin" placeholder="4 chiffres" maxlength="6" inputmode="numeric">
+      <button class="btn btn-green btn-block" onclick="loginUser()">Continuer →</button>
+      <button class="btn btn-ghost btn-block" id="logoutBtn" onclick="logoutUser()" style="display:none;margin-top:10px">Déconnecter ce compte</button>
+      <p class="fine-print">Version prête pour intégration Supabase/Firebase. Dans l’aperçu actuel, le compte est sauvegardé localement.</p>
+    </div>
+  </section>
+
+  <!-- ================= ABONNEMENT ================= -->
+  <section class="screen" id="subscription">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">Abonnement Premium</h2>
+    </div>
+
+    <div class="plan-card">
+      <div class="plan-badge">⭐ Premium</div>
+      <h2>1 500 FCFA <span>/ mois</span></h2>
+      <p>Pour préparer sérieusement tes examens et concours, sans limite.</p>
+      <div class="sub-status" id="subStatus"></div>
+    </div>
+
+    <div class="section premium-benefits">
+      <div class="section-head"><h2>Ce que tu débloques</h2></div>
+      <div class="benefit-list">
+        <div class="benefit"><span>📝</span><b>Examens blancs</b><small>40 questions, 40 minutes, conditions réelles.</small></div>
+        <div class="benefit"><span>❌</span><b>Mes erreurs</b><small>Rejoue uniquement ce que tu as raté.</small></div>
+        <div class="benefit"><span>📊</span><b>Statistiques détaillées</b><small>Taux de réussite et progression par matière.</small></div>
+        <div class="benefit"><span>🗂️</span><b>Matières avancées</b><small>Maths, SVT, Français, Psychotechnique et contenus concours.</small></div>
+      </div>
+    </div>
+
+    <div class="pay-box">
+      <h3>Paiement Mobile Money</h3>
+      <p class="sub">Choisis ton réseau puis valide le paiement de 1 500 FCFA.</p>
+      <div class="provider-grid" id="providerGrid">
+        <button class="provider-option on" data-provider="ORANGE_MONEY" onclick="selectProvider('ORANGE_MONEY')"><span>🟠</span> Orange Money</button>
+        <button class="provider-option" data-provider="MOOV_MONEY" onclick="selectProvider('MOOV_MONEY')"><span>🔵</span> Moov Money</button>
+      </div>
+      <label class="field-label" for="subPhone">Numéro à débiter</label>
+      <div class="phone-row">
+        <span class="cc">🇧🇫 +226</span>
+        <input type="tel" id="subPhone" placeholder="70 00 00 00" maxlength="11" inputmode="numeric">
+      </div>
+      <button class="btn btn-green btn-block" id="payBtn" onclick="startSubscriptionPayment()">Payer 1 500 FCFA</button>
+      <button class="btn btn-ghost btn-block" id="checkPayBtn" onclick="checkPaymentStatus()" style="margin-top:10px">Vérifier mon paiement</button>
+      <button class="btn btn-ghost btn-block" id="demoPayBtn" onclick="simulatePaymentSuccess()" style="margin-top:10px;display:none">Activer 30 jours en mode test</button>
+      <div class="payment-result" id="paymentResult"></div>
+    </div>
+
+    <div class="integration-note">
+      <b>Branchement réel :</b> cette page appelle l’endpoint backend <code>/api/payments/cinetpay/init</code>. Il suffira de renseigner les clés CinetPay/Ligdicash et l’URL du serveur dans <code>PAYMENT_CONFIG.backendBaseUrl</code>.
+    </div>
+    <div style="height:28px"></div>
+  </section>
+
+  <!-- ===== bottom nav ===== -->
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="nav-btn on" data-target="home" onclick="show('home')"><span class="ni">🏠</span>Accueil</button>
+    <button class="nav-btn" data-target="formations" onclick="show('formations')"><span class="ni">🗂️</span>Formations</button>
+    <button class="nav-btn" data-target="passport" onclick="show('passport')"><span class="ni">🛂</span>Passeport</button>
+    <button class="nav-btn" data-target="stats" onclick="show('stats')"><span class="ni">📊</span>Progrès</button>
+    <button class="nav-btn" data-target="subscription" onclick="show('subscription')"><span class="ni">⭐</span>Premium</button>
+  </nav>
+
+  <!-- ===== modal offre ===== -->
+  <div class="modal-back" id="offerModal">
+    <div class="modal">
+      <h3>🎁 Offre spéciale !</h3>
+      <p>Entre ton numéro et bénéficie de nos offres promotionnelles en cours.</p>
+      <div class="phone-row">
+        <span class="cc">🇧🇫 +226</span>
+        <input type="tel" id="phoneInput" placeholder="70 00 00 00" maxlength="11" inputmode="numeric">
+      </div>
+      <button class="btn btn-green btn-block" onclick="submitOffer()">Recevoir mes offres</button>
+      <button class="skip" onclick="closeOffer()">Non merci, passer</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="js/questions.js"></script>
+<!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
+<!-- <script src="js/payment-config.js"></script> -->
+<script src="js/app.js"></script>
+</body>
+</html>
