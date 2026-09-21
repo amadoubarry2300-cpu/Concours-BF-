@@ -141,6 +141,41 @@
       <p>Partage Réussite Concours BF et progressez ensemble.</p>
       <button class="btn btn-green" onclick="shareApp()">📤 Partager l'application</button>
     </div>
+
+    <footer class="landing-footer">
+      <div class="footer-brand">
+        <img src="img/logo.svg" alt="Logo Réussite Concours BF">
+        <div>
+          <h3>Réussite Concours BF</h3>
+          <p>Préparation aux examens et concours — spéciale Burkina Faso.</p>
+        </div>
+      </div>
+      <div class="footer-grid">
+        <div class="footer-box">
+          <b>📍 Localisation</b>
+          <span>Ouagadougou, Burkina Faso</span>
+        </div>
+        <div class="footer-box">
+          <b>💬 Support WhatsApp</b>
+          <a href="tel:+22670000000">+226 70 00 00 00</a>
+        </div>
+        <div class="footer-box">
+          <b>✉️ Email</b>
+          <a href="mailto:contact@reussiteconcoursbf.com">contact@reussiteconcoursbf.com</a>
+        </div>
+        <div class="footer-box">
+          <b>🕘 Horaires</b>
+          <span>Lun - Sam · 08h00 - 18h00</span>
+        </div>
+      </div>
+      <div class="footer-links">
+        <button onclick="show('privacy')">Confidentialité</button>
+        <button onclick="show('terms')">Conditions d'utilisation</button>
+        <button onclick="show('legal')">Mentions légales</button>
+        <button onclick="show('contact')">Contact</button>
+      </div>
+      <p class="footer-copy">© 2026 Réussite Concours BF. Tous droits réservés.</p>
+    </footer>
   </section>
 
   <!-- ================= SETUP CONCOURS ================= -->
@@ -375,6 +410,106 @@
       <b>Branchement réel :</b> cette page appelle l’endpoint backend <code>/api/payments/cinetpay/init</code>. Il suffira de renseigner les clés CinetPay/Ligdicash et l’URL du serveur dans <code>PAYMENT_CONFIG.backendBaseUrl</code>.
     </div>
     <div style="height:28px"></div>
+  </section>
+
+  <!-- ================= CONFIDENTIALITÉ ================= -->
+  <section class="screen" id="privacy">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">Politique de confidentialité</h2>
+    </div>
+    <div class="legal-page">
+      <h1>Confidentialité</h1>
+      <p class="updated">Dernière mise à jour : 21 septembre 2026</p>
+      <div class="legal-card">
+        <h3>Données collectées</h3>
+        <p>Nous pouvons collecter le nom, le prénom, le numéro de téléphone, la progression, les résultats de quiz, les erreurs enregistrées et l'état d'abonnement.</p>
+      </div>
+      <div class="legal-card">
+        <h3>Utilisation</h3>
+        <p>Ces données servent à créer l'espace candidat, sauvegarder la progression, gérer l'abonnement Premium et améliorer les contenus de préparation.</p>
+      </div>
+      <div class="legal-card">
+        <h3>Paiements</h3>
+        <p>Les paiements Mobile Money sont traités par des prestataires autorisés. Réussite Concours BF ne stocke pas les codes secrets Orange Money ou Moov Money.</p>
+      </div>
+      <div class="legal-card">
+        <h3>Sécurité</h3>
+        <p>En production, les informations sensibles seront stockées dans une base sécurisée et les clés API resteront côté serveur.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CONDITIONS ================= -->
+  <section class="screen" id="terms">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">Conditions d'utilisation</h2>
+    </div>
+    <div class="legal-page">
+      <h1>Conditions d'utilisation</h1>
+      <p class="updated">Dernière mise à jour : 21 septembre 2026</p>
+      <div class="legal-card">
+        <h3>Objet</h3>
+        <p>Réussite Concours BF est une plateforme d'entraînement aux examens et concours. Les contenus servent à la préparation et ne garantissent pas l'admission à un concours.</p>
+      </div>
+      <div class="legal-card">
+        <h3>Compte candidat</h3>
+        <p>L'utilisateur doit fournir des informations exactes et garder son code PIN confidentiel.</p>
+      </div>
+      <div class="legal-card">
+        <h3>Abonnement Premium</h3>
+        <p>L'abonnement Premium donne accès aux fonctionnalités verrouillées pendant la période payée. Le renouvellement se fait par paiement Mobile Money.</p>
+      </div>
+      <div class="legal-card">
+        <h3>Utilisation interdite</h3>
+        <p>Il est interdit de copier, revendre ou redistribuer les questions, corrections et contenus de la plateforme sans autorisation.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MENTIONS LÉGALES ================= -->
+  <section class="screen" id="legal">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">Mentions légales</h2>
+    </div>
+    <div class="legal-page">
+      <h1>Mentions légales</h1>
+      <div class="legal-card">
+        <h3>Éditeur</h3>
+        <p>Réussite Concours BF — plateforme éducative basée au Burkina Faso.</p>
+      </div>
+      <div class="legal-card">
+        <h3>Contact</h3>
+        <p>Email : contact@reussiteconcoursbf.com<br>WhatsApp : +226 70 00 00 00<br>Adresse : Ouagadougou, Burkina Faso</p>
+      </div>
+      <div class="legal-card">
+        <h3>Hébergement</h3>
+        <p>Application hébergée sur Vercel. Code source synchronisé depuis GitHub.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CONTACT ================= -->
+  <section class="screen" id="contact">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">Contact & assistance</h2>
+    </div>
+    <div class="legal-page">
+      <h1>Besoin d'aide ?</h1>
+      <p class="updated">Notre équipe répond aux questions sur les comptes, abonnements et contenus.</p>
+      <div class="contact-actions">
+        <a class="contact-card" href="tel:+22670000000"><b>📞 Appeler</b><span>+226 70 00 00 00</span></a>
+        <a class="contact-card" href="https://wa.me/22670000000" target="_blank" rel="noopener"><b>💬 WhatsApp</b><span>Écrire au support</span></a>
+        <a class="contact-card" href="mailto:contact@reussiteconcoursbf.com"><b>✉️ Email</b><span>contact@reussiteconcoursbf.com</span></a>
+      </div>
+      <div class="legal-card">
+        <h3>Avant de nous contacter</h3>
+        <p>Précise ton numéro d'inscription, ton réseau Mobile Money utilisé et le problème rencontré pour une réponse plus rapide.</p>
+      </div>
+    </div>
   </section>
 
   <!-- ===== bottom nav ===== -->
