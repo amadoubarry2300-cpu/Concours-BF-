@@ -112,6 +112,12 @@
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Culture générale',cat:'Culture générale'})">
         <img class="disc-img" src="img/subject-culture.svg" alt="Illustration Culture générale"><h4>Culture générale</h4><p>Culture & monde</p>
       </button>
+      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'BAC',cat:'Culture générale'})">
+        <img class="disc-img" src="img/level-bac.svg" alt="Illustration BAC"><h4>BAC</h4><p>Concours & examens</p>
+      </button>
+      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'BEPC',cat:'Culture générale'})">
+        <img class="disc-img" src="img/level-bepc.svg" alt="Illustration BEPC"><h4>BEPC</h4><p>Concours & examens</p>
+      </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Les 47 provinces',cat:'Burkina Faso'})">
         <img class="disc-img" src="img/subject-burkina.svg" alt="Illustration Burkina Faso"><h4>Les 47 provinces</h4><p>Burkina Faso</p>
       </button>
@@ -144,11 +150,11 @@
       <h2>Choisis ton niveau</h2>
       <p class="sub">On adapte les questions à ton examen ou concours.</p>
       <div class="pick-list" id="levelGrid">
-        <button class="pick-li" onclick="pickLevel(this,'CEP')"><span class="em">✏️</span> CEP — Certificat d'études primaires</button>
-        <button class="pick-li" onclick="pickLevel(this,'BEPC')"><span class="em">📖</span> BEPC — Brevet d'études</button>
-        <button class="pick-li" onclick="pickLevel(this,'BAC')"><span class="em">🎓</span> BAC — Baccalauréat</button>
-        <button class="pick-li" onclick="pickLevel(this,'Licence')"><span class="em">🏛️</span> Licence & concours directs</button>
-        <button class="pick-li" onclick="pickLevel(this,'Concours professionnels')"><span class="em">💼</span> Concours professionnels</button>
+        <button class="pick-li level-li" onclick="pickLevel(this,'CEP')"><img class="level-thumb" src="img/level-cep.svg" alt="Illustration CEP"><span><b>CEP</b><small>Certificat d'études primaires</small></span></button>
+        <button class="pick-li level-li" onclick="pickLevel(this,'BEPC')"><img class="level-thumb" src="img/level-bepc.svg" alt="Illustration BEPC"><span><b>BEPC</b><small>Brevet d'études du premier cycle</small></span></button>
+        <button class="pick-li level-li" onclick="pickLevel(this,'BAC')"><img class="level-thumb" src="img/level-bac.svg" alt="Illustration BAC"><span><b>BAC</b><small>Baccalauréat</small></span></button>
+        <button class="pick-li level-li" onclick="pickLevel(this,'Licence')"><img class="level-thumb" src="img/level-licence.svg" alt="Illustration Licence"><span><b>Licence</b><small>Université & concours directs</small></span></button>
+        <button class="pick-li level-li" onclick="pickLevel(this,'Concours professionnels')"><img class="level-thumb" src="img/level-pro.svg" alt="Illustration concours professionnels"><span><b>Concours professionnels</b><small>Administration & métiers</small></span></button>
       </div>
       <h2 style="font-size:1.05rem">Nombre de questions</h2>
       <div class="pick-grid" id="nGrid" style="margin-top:10px">

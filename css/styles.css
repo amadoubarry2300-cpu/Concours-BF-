@@ -405,3 +405,12 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .name-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px}
 .name-grid .input{margin-bottom:8px}
 @media(max-width:420px){.name-grid{grid-template-columns:1fr;gap:0}}
+
+/* ---------- niveaux d'examen illustrés ---------- */
+.level-li{gap:12px;align-items:center;padding:10px 12px}
+.level-thumb{width:68px;height:52px;border-radius:14px;object-fit:cover;flex:0 0 68px;background:#f8fafc;box-shadow:0 6px 14px rgba(17,24,39,.08)}
+.level-li span:not(.em){display:flex;flex-direction:column;line-height:1.15}
+.level-li b{font-size:.94rem;font-weight:900;color:var(--ink)}
+.level-li small{font-size:.72rem;color:var(--ink-soft);font-weight:700;margin-top:3px}
+.pick-li.on .level-thumb{box-shadow:0 0 0 3px rgba(14,159,110,.20)}
+@media(max-width:420px){.level-thumb{width:60px;height:48px;flex-basis:60px}.level-li small{font-size:.68rem}}

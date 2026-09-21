@@ -758,8 +758,8 @@ function renderFormations(filter){
       ['img/subject-psychotech.svg','Psychotechnique','Psychotechnique']
     ],
     'Concours & examens':[
-      ['img/subject-exam.svg','BAC','Culture générale'],
-      ['img/subject-exam.svg','BEPC','Culture générale'],
+      ['img/level-bac.svg','BAC','Culture générale'],
+      ['img/level-bepc.svg','BEPC','Culture générale'],
       ['img/subject-law.svg','Greffier (SG & Parquet)','Culture générale'],
       ['img/subject-economy.svg','Économie & Droit','Culture générale']
     ],
