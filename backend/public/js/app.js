@@ -760,7 +760,7 @@ function renderFormations(filter){
     'Concours & examens':[
       ['img/level-bac.svg','BAC','Culture générale'],
       ['img/level-bepc.svg','BEPC','Culture générale'],
-      ['img/subject-law.svg','Greffier (SG & Parquet)','Culture générale'],
+      ['img/subject-greffier.svg','Greffier (SG & Parquet)','Culture générale'],
       ['img/subject-economy.svg','Économie & Droit','Culture générale']
     ],
     'Culture & monde':[
