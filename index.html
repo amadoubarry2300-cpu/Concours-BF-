@@ -107,22 +107,22 @@
     </div>
     <div class="carousel">
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Histoire-Géographie',cat:'Histoire-Géo'})">
-        <img class="disc-img" src="img/classroom-bf-wide.jpg" alt="Histoire-Géographie"><h4>Histoire-Géographie</h4><p>Matières</p>
+        <img class="disc-img" src="img/subject-history-geo.svg" alt="Illustration Histoire-Géographie"><h4>Histoire-Géographie</h4><p>Matières</p>
       </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Culture générale',cat:'Culture générale'})">
-        <img class="disc-img" src="img/teacher-class.jpg" alt="Culture générale"><h4>Culture générale</h4><p>Culture & monde</p>
+        <img class="disc-img" src="img/subject-culture.svg" alt="Illustration Culture générale"><h4>Culture générale</h4><p>Culture & monde</p>
       </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Les 47 provinces',cat:'Burkina Faso'})">
-        <img class="disc-img" src="img/classroom-bf.jpg" alt="Burkina Faso"><h4>Les 47 provinces</h4><p>Burkina Faso</p>
+        <img class="disc-img" src="img/subject-burkina.svg" alt="Illustration Burkina Faso"><h4>Les 47 provinces</h4><p>Burkina Faso</p>
       </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Mathématiques',cat:'Mathématiques'})">
-        <img class="disc-img" src="img/exam-student.jpg" alt="Mathématiques"><h4>Mathématiques</h4><p>Matières</p>
+        <img class="disc-img" src="img/subject-math.svg" alt="Illustration Mathématiques"><h4>Mathématiques</h4><p>Matières</p>
       </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Psychotechnique',cat:'Psychotechnique'})">
-        <img class="disc-img" src="img/student-portrait.jpg" alt="Psychotechnique"><h4>Psychotechnique</h4><p>Concours</p>
+        <img class="disc-img" src="img/subject-psychotech.svg" alt="Illustration Psychotechnique"><h4>Psychotechnique</h4><p>Concours</p>
       </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'SVT',cat:'SVT'})">
-        <img class="disc-img" src="img/students-group.jpg" alt="SVT"><h4>SVT</h4><p>Matières</p>
+        <img class="disc-img" src="img/subject-svt.svg" alt="Illustration SVT"><h4>SVT</h4><p>Matières</p>
       </button>
     </div>
 
@@ -297,7 +297,17 @@
         <button class="auth-tab on" id="registerTab" onclick="setAuthMode('register')">Inscription</button>
         <button class="auth-tab" id="loginTab" onclick="setAuthMode('login')">Connexion</button>
       </div>
-      <label class="field-label" for="authPhone">Numéro Mobile Money</label>
+      <div class="name-grid" id="nameFields">
+        <div>
+          <label class="field-label" for="firstName">Prénom</label>
+          <input class="input" type="text" id="firstName" placeholder="Ex : Amadou" autocomplete="given-name">
+        </div>
+        <div>
+          <label class="field-label" for="lastName">Nom</label>
+          <input class="input" type="text" id="lastName" placeholder="Ex : Barry" autocomplete="family-name">
+        </div>
+      </div>
+      <label class="field-label" for="authPhone">Numéro de téléphone</label>
       <div class="phone-row auth-phone-row">
         <span class="cc">🇧🇫 +226</span>
         <input type="tel" id="authPhone" placeholder="70 00 00 00" maxlength="11" inputmode="numeric">

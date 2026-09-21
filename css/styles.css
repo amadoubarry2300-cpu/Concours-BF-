@@ -398,3 +398,10 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
   .auth-home-actions .btn{width:100%}
   .provider-option img{height:42px;max-width:108px}
 }
+
+/* ---------- images contextuelles des matières + formulaire compte ---------- */
+.disc-img{background:#f8fafc;object-fit:cover}
+.form-thumb{background:#f8fafc;object-fit:cover}
+.name-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px}
+.name-grid .input{margin-bottom:8px}
+@media(max-width:420px){.name-grid{grid-template-columns:1fr;gap:0}}

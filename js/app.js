@@ -196,7 +196,7 @@ function renderAccount(){
   if (chip){
     chip.classList.toggle('premium', isPremium());
     if (isPremium()) chip.textContent = '⭐ Premium';
-    else if (state.user) chip.textContent = '👤 ' + prettyPhone(state.user.phone);
+    else if (state.user) chip.textContent = '👤 ' + (state.user.firstName || state.user.displayName || prettyPhone(state.user.phone));
     else chip.textContent = '👤 Connexion';
   }
 
@@ -426,11 +426,17 @@ function renderLogin(){
   $('#loginTab')?.classList.toggle('on', !isRegister);
   if ($('#authTitle')) $('#authTitle').textContent = isRegister ? 'Créer ton compte candidat' : 'Connexion candidat';
   if ($('#authIntro')) $('#authIntro').textContent = isRegister
-    ? 'Inscris-toi avec ton numéro pour sauvegarder ta progression, tes erreurs et ton abonnement.'
-    : 'Connecte-toi avec ton numéro et ton PIN pour retrouver ton espace candidat.';
+    ? 'Renseigne ton nom, prénom, numéro et PIN pour sauvegarder ta progression.'
+    : 'Entre ton numéro et ton code PIN pour retrouver ton espace candidat.';
   if ($('#authSubmitBtn')) $('#authSubmitBtn').textContent = isRegister ? 'Créer mon compte →' : 'Me connecter →';
+  const nameFields = $('#nameFields');
+  if (nameFields) nameFields.style.display = isRegister ? 'grid' : 'none';
+  const firstName = $('#firstName');
+  const lastName = $('#lastName');
   const phoneInput = $('#authPhone');
   const pinInput = $('#authPin');
+  if (firstName && state.user?.firstName) firstName.value = state.user.firstName;
+  if (lastName && state.user?.lastName) lastName.value = state.user.lastName;
   if (phoneInput && state.user) phoneInput.value = prettyPhone(state.user.phone);
   if (pinInput) pinInput.value = '';
   const logoutBtn = $('#logoutBtn');
@@ -438,16 +444,40 @@ function renderLogin(){
 }
 
 function loginUser(){
+  const isRegister = authMode !== 'login';
   const phone = normalizePhone($('#authPhone')?.value);
   const pin = String($('#authPin')?.value || '').replace(/\D/g, '');
+  const firstName = ($('#firstName')?.value || '').trim();
+  const lastName = ($('#lastName')?.value || '').trim();
+
+  if (isRegister){
+    if (firstName.length < 2){ toast('Entre ton prénom'); return; }
+    if (lastName.length < 2){ toast('Entre ton nom'); return; }
+  }
   if (phone.length !== 8){ toast('Numéro invalide — 8 chiffres attendus'); return; }
-  if (pin.length < 4){ toast('Choisis un PIN de 4 chiffres minimum'); return; }
-  const createdAt = state.user?.createdAt || new Date().toISOString();
-  state.user = {phone, createdAt, lastLoginAt:new Date().toISOString()};
+  if (pin.length < 4){ toast('Code PIN : 4 chiffres minimum'); return; }
+
+  if (!isRegister && state.user?.phone === phone && state.user?.pin && state.user.pin !== pin){
+    toast('Code PIN incorrect');
+    return;
+  }
+
+  const previous = (!isRegister && state.user?.phone === phone) ? state.user : {};
+  const createdAt = previous.createdAt || state.user?.createdAt || new Date().toISOString();
+  state.user = {
+    ...previous,
+    phone,
+    pin,
+    firstName: isRegister ? firstName : (previous.firstName || ''),
+    lastName: isRegister ? lastName : (previous.lastName || ''),
+    displayName: isRegister ? `${firstName} ${lastName}`.trim() : (previous.displayName || ''),
+    createdAt,
+    lastLoginAt:new Date().toISOString()
+  };
   state.phoneSaved = true;
   save();
   renderAccount();
-  toast(authMode === 'login' ? 'Connexion réussie ✅' : 'Compte créé ✅');
+  toast(isRegister ? 'Compte créé ✅' : 'Connexion réussie ✅');
   const go = nextAfterLogin || 'home';
   nextAfterLogin = 'home';
   show(go);
@@ -721,26 +751,26 @@ function renderFormations(filter){
   currentFormFilter = filter || currentFormFilter || 'Tout';
   const groups = {
     'Matières':[
-      ['img/classroom-bf-wide.jpg','Histoire-Géographie','Histoire-Géo'],
-      ['img/students-group.jpg','SVT','SVT'],
-      ['img/teacher-class.jpg','Français','Français'],
-      ['img/exam-student.jpg','Mathématiques','Mathématiques'],
-      ['img/student-portrait.jpg','Psychotechnique','Psychotechnique']
+      ['img/subject-history-geo.svg','Histoire-Géographie','Histoire-Géo'],
+      ['img/subject-svt.svg','SVT','SVT'],
+      ['img/subject-french.svg','Français','Français'],
+      ['img/subject-math.svg','Mathématiques','Mathématiques'],
+      ['img/subject-psychotech.svg','Psychotechnique','Psychotechnique']
     ],
     'Concours & examens':[
-      ['img/success.jpg','BAC','Culture générale'],
-      ['img/classroom-bf.jpg','BEPC','Culture générale'],
-      ['img/passport.jpg','Greffier (SG & Parquet)','Culture générale'],
-      ['img/teacher-class.jpg','Économie & Droit','Culture générale']
+      ['img/subject-exam.svg','BAC','Culture générale'],
+      ['img/subject-exam.svg','BEPC','Culture générale'],
+      ['img/subject-law.svg','Greffier (SG & Parquet)','Culture générale'],
+      ['img/subject-economy.svg','Économie & Droit','Culture générale']
     ],
     'Culture & monde':[
-      ['img/teacher-class.jpg','Culture générale','Culture générale'],
-      ['img/students-group.jpg','Géographie du monde','Histoire-Géo']
+      ['img/subject-culture.svg','Culture générale','Culture générale'],
+      ['img/subject-history-geo.svg','Géographie du monde','Histoire-Géo']
     ],
     'Burkina Faso':[
-      ['img/classroom-bf.jpg','Les 47 provinces','Burkina Faso'],
-      ['img/classroom-bf-wide.jpg','Histoire du Faso','Burkina Faso'],
-      ['img/students-group.jpg','Culture burkinabè','Burkina Faso']
+      ['img/subject-burkina.svg','Les 47 provinces','Burkina Faso'],
+      ['img/subject-history-geo.svg','Histoire du Faso','Burkina Faso'],
+      ['img/subject-culture.svg','Culture burkinabè','Burkina Faso']
     ]
   };
   const keys = currentFormFilter && currentFormFilter!=='Tout' ? [currentFormFilter] : Object.keys(groups);
