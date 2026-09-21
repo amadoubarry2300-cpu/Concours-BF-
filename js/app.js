@@ -14,6 +14,7 @@ const PAYMENT_CONFIG = window.REUSSITE_CONCOURS_BF_PAYMENT_CONFIG || {
 
 const FREE_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo'];
 let nextAfterLogin = 'home';
+let authMode = 'register';
 let paywallFeature = null;
 let currentFormFilter = 'Tout';
 let runtimePaymentMessage = '';
@@ -176,7 +177,18 @@ function openPremium(feature){
 
 function openAccountMenu(){
   if (state.user) show('subscription');
-  else { nextAfterLogin = 'home'; show('login'); }
+  else openAuth('login');
+}
+
+function openAuth(mode){
+  authMode = mode || 'register';
+  nextAfterLogin = 'home';
+  show('login');
+}
+
+function setAuthMode(mode){
+  authMode = mode || 'register';
+  renderLogin();
 }
 
 function renderAccount(){
@@ -200,7 +212,7 @@ function renderAccount(){
     if (isPremium()){
       premiumHome.classList.add('active-premium');
       premiumHome.innerHTML = `
-        <div class="premium-icon">✅</div>
+        <img class="premium-mini-img" src="img/success.jpg" alt="Premium actif">
         <div class="premium-copy">
           <div class="premium-kicker">Premium actif</div>
           <h3>Accès illimité encore ${premiumDaysLeft()} jour${premiumDaysLeft()>1?'s':''}</h3>
@@ -210,7 +222,7 @@ function renderAccount(){
     } else {
       premiumHome.classList.remove('active-premium');
       premiumHome.innerHTML = `
-        <div class="premium-icon">⭐</div>
+        <img class="premium-mini-img" src="img/success.jpg" alt="Premium Réussite Concours BF">
         <div class="premium-copy">
           <div class="premium-kicker">Réussite Concours BF Premium</div>
           <h3>Débloque tout pour ${money(PAYMENT_CONFIG.amount)}/mois</h3>
@@ -409,6 +421,14 @@ function startSetupQuiz(){
 
 /* ---------- compte candidat ---------- */
 function renderLogin(){
+  const isRegister = authMode !== 'login';
+  $('#registerTab')?.classList.toggle('on', isRegister);
+  $('#loginTab')?.classList.toggle('on', !isRegister);
+  if ($('#authTitle')) $('#authTitle').textContent = isRegister ? 'Créer ton compte candidat' : 'Connexion candidat';
+  if ($('#authIntro')) $('#authIntro').textContent = isRegister
+    ? 'Inscris-toi avec ton numéro pour sauvegarder ta progression, tes erreurs et ton abonnement.'
+    : 'Connecte-toi avec ton numéro et ton PIN pour retrouver ton espace candidat.';
+  if ($('#authSubmitBtn')) $('#authSubmitBtn').textContent = isRegister ? 'Créer mon compte →' : 'Me connecter →';
   const phoneInput = $('#authPhone');
   const pinInput = $('#authPin');
   if (phoneInput && state.user) phoneInput.value = prettyPhone(state.user.phone);
@@ -427,7 +447,7 @@ function loginUser(){
   state.phoneSaved = true;
   save();
   renderAccount();
-  toast('Compte connecté ✅');
+  toast(authMode === 'login' ? 'Connexion réussie ✅' : 'Compte créé ✅');
   const go = nextAfterLogin || 'home';
   nextAfterLogin = 'home';
   show(go);
@@ -497,6 +517,7 @@ async function startSubscriptionPayment(){
   if (!state.user){
     nextAfterLogin = 'subscription';
     toast('Connecte ton numéro avant de payer');
+    authMode = 'login';
     show('login');
     return;
   }
@@ -699,20 +720,38 @@ function renderFormations(filter){
   renderAccount();
   currentFormFilter = filter || currentFormFilter || 'Tout';
   const groups = {
-    'Matières':[['📚','Histoire-Géographie','Histoire-Géo'],['🧬','SVT','SVT'],['✍️','Français','Français'],['➗','Mathématiques','Mathématiques'],['🧠','Psychotechnique','Psychotechnique']],
-    'Concours & examens':[['🎓','BAC','Culture générale'],['📖','BEPC','Culture générale'],['⚖️','Greffier (SG & Parquet)','Culture générale'],['🏛️','Économie & Droit','Culture générale']],
-    'Culture & monde':[['🌍','Culture générale','Culture générale'],['🗺️','Géographie du monde','Histoire-Géo']],
-    'Burkina Faso':[['🇧🇫','Les 47 provinces','Burkina Faso'],['🏛️','Histoire du Faso','Burkina Faso'],['🎭','Culture burkinabè','Burkina Faso']]
+    'Matières':[
+      ['img/classroom-bf-wide.jpg','Histoire-Géographie','Histoire-Géo'],
+      ['img/students-group.jpg','SVT','SVT'],
+      ['img/teacher-class.jpg','Français','Français'],
+      ['img/exam-student.jpg','Mathématiques','Mathématiques'],
+      ['img/student-portrait.jpg','Psychotechnique','Psychotechnique']
+    ],
+    'Concours & examens':[
+      ['img/success.jpg','BAC','Culture générale'],
+      ['img/classroom-bf.jpg','BEPC','Culture générale'],
+      ['img/passport.jpg','Greffier (SG & Parquet)','Culture générale'],
+      ['img/teacher-class.jpg','Économie & Droit','Culture générale']
+    ],
+    'Culture & monde':[
+      ['img/teacher-class.jpg','Culture générale','Culture générale'],
+      ['img/students-group.jpg','Géographie du monde','Histoire-Géo']
+    ],
+    'Burkina Faso':[
+      ['img/classroom-bf.jpg','Les 47 provinces','Burkina Faso'],
+      ['img/classroom-bf-wide.jpg','Histoire du Faso','Burkina Faso'],
+      ['img/students-group.jpg','Culture burkinabè','Burkina Faso']
+    ]
   };
   const keys = currentFormFilter && currentFormFilter!=='Tout' ? [currentFormFilter] : Object.keys(groups);
   $('#formWrap').innerHTML = keys.map(g=>`
     <div class="section"><div class="section-head"><h2>${g}</h2></div>
     <div class="form-list">
-      ${groups[g].map(([em,name,cat])=>{
+      ${groups[g].map(([img,name,cat])=>{
         const free = FREE_CATEGORIES.includes(cat);
         const locked = !free && !isPremium();
         return `<button class="form-item ${locked?'locked':''}" onclick="startQuiz({n:10,time:0,title:'${name.replace(/'/g,"\\'")}',cat:'${cat}'})">
-          <span class="emoji">${em}</span>
+          <img class="form-thumb" src="${img}" alt="${name}">
           <span class="fi-body"><h4>${name}</h4><p>${free ? '10 questions gratuites · corrections incluses' : (isPremium() ? 'Premium ouvert · corrections incluses' : 'Premium · 1 500 FCFA/mois')}</p></span>
           <span class="${locked?'lock-dot':'chev'}">${locked?'🔒':'›'}</span>
         </button>`;

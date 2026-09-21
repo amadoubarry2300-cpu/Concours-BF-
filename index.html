@@ -32,10 +32,10 @@
     </div>
 
     <div class="features">
-      <div class="feature"><div class="fi">📚</div><h3>+5000 questions</h3><p>Corrections et explications incluses.</p></div>
-      <div class="feature"><div class="fi">🌍</div><h3>Culture générale</h3><p>2020 – 2027, l'essentiel à connaître.</p></div>
-      <div class="feature"><div class="fi">🇧🇫</div><h3>Spécial Burkina</h3><p>Histoire, provinces, régions, gouvernements.</p></div>
-      <div class="feature"><div class="fi">🎓</div><h3>Ton concours</h3><p>CEP, BEPC, BAC, licence et concours pro.</p></div>
+      <div class="feature"><img class="feature-img" src="img/students-group.jpg" alt="Étudiants en groupe"><h3>+5000 questions</h3><p>Corrections et explications incluses.</p></div>
+      <div class="feature"><img class="feature-img" src="img/teacher-class.jpg" alt="Classe avec enseignants"><h3>Culture générale</h3><p>2020 – 2027, l'essentiel à connaître.</p></div>
+      <div class="feature"><img class="feature-img" src="img/classroom-bf.jpg" alt="Classe au Burkina Faso"><h3>Spécial Burkina</h3><p>Histoire, provinces, régions, gouvernements.</p></div>
+      <div class="feature"><img class="feature-img" src="img/exam-student.jpg" alt="Candidat en examen"><h3>Ton concours</h3><p>CEP, BEPC, BAC, licence et concours pro.</p></div>
     </div>
 
     <div class="cta-banner">
@@ -55,36 +55,49 @@
       <button class="mini-btn" onclick="show('subscription')">Voir</button>
     </div>
 
+    <div class="auth-home-card">
+      <img src="img/student-portrait.jpg" alt="Espace candidat">
+      <div class="auth-home-copy">
+        <div class="premium-kicker">Espace candidat</div>
+        <h3>Inscris-toi ou connecte-toi</h3>
+        <p>Garde ta progression, ton abonnement et tes résultats même si tu changes de téléphone.</p>
+        <div class="auth-home-actions">
+          <button class="btn btn-green" onclick="openAuth('register')">Créer un compte</button>
+          <button class="btn btn-ghost" onclick="openAuth('login')">Connexion</button>
+        </div>
+      </div>
+    </div>
+
     <div class="section">
       <div class="section-head"><h2>Tes outils</h2></div>
       <div class="actions">
         <button class="action-card" onclick="show('setup')">
-          <div class="ic ic-blue">🎯</div><h3>Je prépare un concours</h3><p>Choisis ton niveau et révise l'essentiel</p>
+          <img class="action-photo" src="img/exam-student.jpg" alt="Préparation concours"><h3>Je prépare un concours</h3><p>Choisis ton niveau et révise l'essentiel</p>
         </button>
         <button class="action-card" onclick="show('passport')">
-          <div class="ic ic-gold">🛂</div><h3>Mon passeport</h3><p>Prouve que tu as travaillé</p>
+          <img class="action-photo" src="img/passport.jpg" alt="Passeport de préparation"><h3>Mon passeport</h3><p>Prouve que tu as travaillé</p>
         </button>
         <button class="action-card premium-locked" onclick="show('errors')">
           <span class="lock-tag">Premium</span>
           <span class="badge-count" id="errCount" style="display:none">0</span>
-          <div class="ic ic-red">❌</div><h3>Mes erreurs</h3><p id="errSub">Aucune pour l'instant</p>
+          <img class="action-photo" src="img/study.jpg" alt="Révision des erreurs"><h3>Mes erreurs</h3><p id="errSub">Aucune pour l'instant</p>
         </button>
         <button class="action-card premium-locked" onclick="startQuiz({n:40,time:2400,title:'Examen blanc'})">
           <span class="lock-tag">Premium</span>
-          <div class="ic ic-purple">📝</div><h3>Examen blanc</h3><p>40 questions · 40 min</p>
+          <img class="action-photo" src="img/classroom-bf-wide.jpg" alt="Examen blanc"><h3>Examen blanc</h3><p>40 questions · 40 min</p>
         </button>
         <button class="action-card" id="dailyCard" onclick="startDaily()">
-          <div class="ic ic-gold">🔥</div><h3>Défi du jour</h3><p id="dailySub">15 questions · 1 fois/jour</p>
+          <img class="action-photo" src="img/students-group.jpg" alt="Défi du jour"><h3>Défi du jour</h3><p id="dailySub">15 questions · 1 fois/jour</p>
         </button>
         <button class="action-card" onclick="show('quickpick')">
-          <div class="ic ic-green">⚡</div><h3>Quiz rapide</h3><p>10, 20 ou 40 questions</p>
+          <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20 ou 40 questions</p>
         </button>
         <button class="action-card premium-locked" onclick="show('stats')">
           <span class="lock-tag">Premium</span>
-          <div class="ic ic-gray">📊</div><h3>Ma progression</h3><p>Scores et statistiques</p>
+          <img class="action-photo" src="img/success.jpg" alt="Progression"><h3>Ma progression</h3><p>Scores et statistiques</p>
         </button>
         <button class="action-card" onclick="show('formations')">
-          <div class="ic ic-green">🗂️</div><h3>Formations</h3><p>Toutes les matières disponibles</p>
+          <img class="action-photo" src="img/teacher-class.jpg" alt="Formations"><h3>Formations</h3><p>Toutes les matières disponibles</p>
         </button>
       </div>
     </div>
@@ -94,22 +107,22 @@
     </div>
     <div class="carousel">
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Histoire-Géographie',cat:'Histoire-Géo'})">
-        <div class="avatar" style="background:#3f83f8">HI</div><h4>Histoire-Géographie</h4><p>Matières</p>
+        <img class="disc-img" src="img/classroom-bf-wide.jpg" alt="Histoire-Géographie"><h4>Histoire-Géographie</h4><p>Matières</p>
       </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Culture générale',cat:'Culture générale'})">
-        <div class="avatar" style="background:#9061f9">CU</div><h4>Culture générale</h4><p>Culture & monde</p>
+        <img class="disc-img" src="img/teacher-class.jpg" alt="Culture générale"><h4>Culture générale</h4><p>Culture & monde</p>
       </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Les 47 provinces',cat:'Burkina Faso'})">
-        <div class="avatar" style="background:#0e9f6e">BF</div><h4>Les 47 provinces</h4><p>Burkina Faso</p>
+        <img class="disc-img" src="img/classroom-bf.jpg" alt="Burkina Faso"><h4>Les 47 provinces</h4><p>Burkina Faso</p>
       </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Mathématiques',cat:'Mathématiques'})">
-        <div class="avatar" style="background:#e02424">MA</div><h4>Mathématiques</h4><p>Matières</p>
+        <img class="disc-img" src="img/exam-student.jpg" alt="Mathématiques"><h4>Mathématiques</h4><p>Matières</p>
       </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Psychotechnique',cat:'Psychotechnique'})">
-        <div class="avatar" style="background:#f5a623">PS</div><h4>Psychotechnique</h4><p>Concours</p>
+        <img class="disc-img" src="img/student-portrait.jpg" alt="Psychotechnique"><h4>Psychotechnique</h4><p>Concours</p>
       </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'SVT',cat:'SVT'})">
-        <div class="avatar" style="background:#057a55">SV</div><h4>SVT</h4><p>Matières</p>
+        <img class="disc-img" src="img/students-group.jpg" alt="SVT"><h4>SVT</h4><p>Matières</p>
       </button>
     </div>
 
@@ -276,9 +289,13 @@
     </div>
     <div class="auth-card">
       <div class="auth-hero">
-        <div class="auth-emoji">👤</div>
-        <h2>Connecte ton numéro</h2>
-        <p>Ton abonnement, tes XP et ta progression seront reliés à ce compte.</p>
+        <img class="auth-hero-img" src="img/student-portrait.jpg" alt="Compte candidat">
+        <h2 id="authTitle">Connecte ton numéro</h2>
+        <p id="authIntro">Ton abonnement, tes XP et ta progression seront reliés à ce compte.</p>
+      </div>
+      <div class="auth-tabs">
+        <button class="auth-tab on" id="registerTab" onclick="setAuthMode('register')">Inscription</button>
+        <button class="auth-tab" id="loginTab" onclick="setAuthMode('login')">Connexion</button>
       </div>
       <label class="field-label" for="authPhone">Numéro Mobile Money</label>
       <div class="phone-row auth-phone-row">
@@ -287,7 +304,7 @@
       </div>
       <label class="field-label" for="authPin">Code PIN personnel</label>
       <input class="input" type="password" id="authPin" placeholder="4 chiffres" maxlength="6" inputmode="numeric">
-      <button class="btn btn-green btn-block" onclick="loginUser()">Continuer →</button>
+      <button class="btn btn-green btn-block" id="authSubmitBtn" onclick="loginUser()">Continuer →</button>
       <button class="btn btn-ghost btn-block" id="logoutBtn" onclick="logoutUser()" style="display:none;margin-top:10px">Déconnecter ce compte</button>
       <p class="fine-print">Version prête pour intégration Supabase/Firebase. Dans l’aperçu actuel, le compte est sauvegardé localement.</p>
     </div>
@@ -321,8 +338,8 @@
       <h3>Paiement Mobile Money</h3>
       <p class="sub">Choisis ton réseau puis valide le paiement de 1 500 FCFA.</p>
       <div class="provider-grid" id="providerGrid">
-        <button class="provider-option on" data-provider="ORANGE_MONEY" onclick="selectProvider('ORANGE_MONEY')"><span>🟠</span> Orange Money</button>
-        <button class="provider-option" data-provider="MOOV_MONEY" onclick="selectProvider('MOOV_MONEY')"><span>🔵</span> Moov Money</button>
+        <button class="provider-option on" data-provider="ORANGE_MONEY" onclick="selectProvider('ORANGE_MONEY')"><img src="img/orange-money.png" alt="Orange Money Burkina Faso"><b>Orange Money</b><small>Burkina Faso</small></button>
+        <button class="provider-option" data-provider="MOOV_MONEY" onclick="selectProvider('MOOV_MONEY')"><img src="img/moov-money.png" alt="Moov Money Burkina Faso"><b>Moov Money</b><small>Burkina Faso</small></button>
       </div>
       <label class="field-label" for="subPhone">Numéro à débiter</label>
       <div class="phone-row">
