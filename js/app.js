@@ -1,11 +1,11 @@
-/* ============ Concours BF+ — logique de l'application ============ */
+/* ============ Réussite Concours BF — logique de l'application ============ */
 
 /* ---------- configuration paiement ---------- */
-const PAYMENT_CONFIG = window.CONCOURS_BF_PLUS_PAYMENT_CONFIG || window.FASOPREPA_PAYMENT_CONFIG || {
+const PAYMENT_CONFIG = window.REUSSITE_CONCOURS_BF_PAYMENT_CONFIG || {
   amount: 1500,
   currency: 'XOF',
   plan: 'premium_monthly',
-  // À renseigner quand le backend est déployé, ex: https://api.concours-bf-plus.com
+  // À renseigner quand le backend est déployé, ex: https://api.reussite-concours-bf.com
   backendBaseUrl: '',
   // Laisse true pour tester le verrouillage premium dans l'aperçu local.
   // En production, mettre false et activer le backend CinetPay/Ligdicash.
@@ -212,7 +212,7 @@ function renderAccount(){
       premiumHome.innerHTML = `
         <div class="premium-icon">⭐</div>
         <div class="premium-copy">
-          <div class="premium-kicker">Concours BF+ Premium</div>
+          <div class="premium-kicker">Réussite Concours BF Premium</div>
           <h3>Débloque tout pour ${money(PAYMENT_CONFIG.amount)}/mois</h3>
           <p>Examens blancs, erreurs, statistiques détaillées et matières avancées.</p>
         </div>
@@ -749,7 +749,7 @@ function submitOffer(){
 
 /* ---------- share ---------- */
 function shareApp(){
-  const data = {title:'Concours BF+', text:'Prépare tes examens et concours avec Concours BF+ ! +5000 questions corrigées 🇧🇫', url: location.href};
+  const data = {title:'Réussite Concours BF', text:'Prépare tes examens et concours avec Réussite Concours BF ! +5000 questions corrigées 🇧🇫', url: location.href};
   if (navigator.share) navigator.share(data).catch(()=>{});
   else { navigator.clipboard && navigator.clipboard.writeText(data.text+' '+data.url); toast('Lien copié ! 📋'); }
 }

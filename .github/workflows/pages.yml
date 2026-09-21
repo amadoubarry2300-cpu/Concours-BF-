@@ -1,4 +1,4 @@
-name: Deploy Concours BF+ to GitHub Pages
+name: Deploy Réussite Concours BF to GitHub Pages
 
 on:
   push:

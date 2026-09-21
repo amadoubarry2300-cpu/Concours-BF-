@@ -1,4 +1,4 @@
-# 🎓 Concours BF+
+# 🎓 Réussite Concours BF
 
 Application web de préparation aux examens et concours (CEP, BEPC, BAC, concours professionnels) — spéciale **Burkina Faso** 🇧🇫.
 
@@ -36,7 +36,7 @@ Inspirée du concept « prouve que tu as travaillé » : quiz corrigés, passepo
 Frontend statique, aucune dépendance :
 
 ```bash
-cd Concours-BF-
+cd Reussite-Concours-BF
 python3 -m http.server 3000 --bind 0.0.0.0
 # puis http://localhost:3000
 ```
@@ -44,7 +44,7 @@ python3 -m http.server 3000 --bind 0.0.0.0
 ## 💳 Lancer le backend paiement
 
 ```bash
-cd Concours-BF-/backend
+cd Reussite-Concours-BF/backend
 cp .env.example .env
 # Remplir CINETPAY_APIKEY, CINETPAY_SITE_ID, APP_ORIGIN, PUBLIC_BASE_URL
 npm install
@@ -71,7 +71,7 @@ GitHub Pages peut héberger le frontend, mais **ne peut pas exécuter le backend
 ## 📁 Structure
 
 ```text
-Concours-BF-/
+Reussite-Concours-BF/
 ├── index.html                    # Toutes les vues : accueil, quiz, compte, abonnement…
 ├── css/styles.css                # Design system + animations + premium
 ├── js/

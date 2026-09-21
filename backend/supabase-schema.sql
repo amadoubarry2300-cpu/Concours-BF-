@@ -1,4 +1,4 @@
--- Concours BF+ — schéma Supabase/PostgreSQL recommandé
+-- Réussite Concours BF — schéma Supabase/PostgreSQL recommandé
 -- À exécuter dans Supabase SQL Editor si vous passez en production.
 
 create extension if not exists pgcrypto;

@@ -1,4 +1,4 @@
-/* ============ Concours BF+ — styles ============ */
+/* ============ Réussite Concours BF — styles ============ */
 :root{
   --green:#0e9f6e;
   --green-dark:#057a55;
@@ -342,4 +342,16 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
   .nav-btn .ni{font-size:1.12rem}
   .benefit-list{grid-template-columns:1fr}
   .provider-grid{grid-template-columns:1fr}
+}
+
+/* ---------- logo Réussite Concours BF ---------- */
+.brand{min-width:0;align-items:center}
+.brand-logo-img{width:38px;height:38px;border-radius:13px;box-shadow:0 6px 14px rgba(14,159,110,.28);flex:0 0 38px;background:#fff}
+.brand-title{display:flex;flex-direction:column;line-height:1.02;font-weight:900;letter-spacing:-.03em;min-width:0}
+.brand-title span{font-size:.86rem;color:var(--ink)}
+.brand-title em{font-size:.98rem;color:var(--green);font-style:normal;white-space:nowrap}
+@media(max-width:420px){
+  .brand-logo-img{width:34px;height:34px;border-radius:12px;flex-basis:34px}
+  .brand-title span{font-size:.76rem}
+  .brand-title em{font-size:.86rem}
 }

@@ -1,4 +1,4 @@
-/* ============ Concours BF+ — banque de questions ============ */
+/* ============ Réussite Concours BF — banque de questions ============ */
 /* Chaque question : { c: catégorie, q: question, o: [4 options], a: index bonne réponse, e: explication } */
 const QUESTIONS = [
   // ---- Burkina Faso ----
