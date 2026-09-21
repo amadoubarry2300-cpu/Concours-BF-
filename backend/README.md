@@ -1,4 +1,4 @@
-# Backend paiements FasoPrépa
+# Backend paiements Concours BF+
 
 Ce backend sert à encaisser l'abonnement **Premium 1 500 FCFA / mois** via Mobile Money avec CinetPay.
 
@@ -23,7 +23,7 @@ Endpoints :
 Dans `js/app.js`, renseigner :
 
 ```js
-const PAYMENT_CONFIG = window.FASOPREPA_PAYMENT_CONFIG || {
+const PAYMENT_CONFIG = window.CONCOURS_BF_PLUS_PAYMENT_CONFIG || {
   amount: 1500,
   currency: 'XOF',
   plan: 'premium_monthly',

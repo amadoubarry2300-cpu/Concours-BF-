@@ -70,7 +70,7 @@ function requireCinetPayConfig(){
 }
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'FasoPrépa payments', time: new Date().toISOString() });
+  res.json({ ok: true, service: 'Concours BF+ payments', time: new Date().toISOString() });
 });
 
 app.post('/api/payments/cinetpay/init', async (req, res, next) => {
@@ -102,14 +102,14 @@ app.post('/api/payments/cinetpay/init', async (req, res, next) => {
       transaction_id: tx,
       amount: PLAN_AMOUNT,
       currency: 'XOF',
-      description: 'FasoPrépa Premium - abonnement 30 jours',
+      description: 'Concours BF+ Premium - abonnement 30 jours',
       return_url: returnUrl || `${APP_ORIGIN}/#subscription`,
       notify_url: `${PUBLIC_BASE_URL}/api/payments/cinetpay/webhook`,
       channels: 'MOBILE_MONEY',
       metadata,
       customer_name: 'Client',
-      customer_surname: 'FasoPrépa',
-      customer_email: `client-${phone.replace(/\D/g,'')}@fasoprepa.local`,
+      customer_surname: 'Concours BF+',
+      customer_email: `client-${phone.replace(/\D/g,'')}@concours-bf-plus.local`,
       customer_phone_number: phone,
       customer_address: 'Ouagadougou',
       customer_city: 'Ouagadougou',
@@ -177,5 +177,5 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`FasoPrépa payments backend listening on 0.0.0.0:${PORT}`);
+  console.log(`Concours BF+ payments backend listening on 0.0.0.0:${PORT}`);
 });

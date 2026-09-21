@@ -1,4 +1,4 @@
-name: Deploy FasoPrépa to GitHub Pages
+name: Deploy Concours BF+ to GitHub Pages
 
 on:
   push:
