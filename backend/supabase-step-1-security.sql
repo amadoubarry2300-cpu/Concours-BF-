@@ -36,7 +36,7 @@ on public.offer_leads
 for insert
 to anon, authenticated
 with check (
-  phone ~ '^\\+226[0-9]{8}$'
+  phone ~ '^[+]226[0-9]{8}$'
   and length(coalesce(source, '')) <= 80
 );
 
