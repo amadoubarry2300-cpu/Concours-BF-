@@ -87,3 +87,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Si le push direct Mobile Money renvoie une erreur 422, le backend bascule automatiquement vers le checkout hébergé SasPay pour permettre au client de finaliser le paiement.
 - Le bouton « Vérifier mon paiement » sait maintenant vérifier aussi une session checkout SasPay.
 - Nouvelle version cache : `premium-saspay-2`.
+
+## Correction redirection SasPay
+
+- Le backend accepte maintenant les réponses SasPay enveloppées dans `data`.
+- Le lien `checkout_url` est extrait même quand SasPay le retourne dans une enveloppe.
+- Si SasPay ne renvoie vraiment aucun lien de checkout, l’application affiche une erreur claire au lieu de dire de vérifier le téléphone.
+- Nouvelle version cache : `premium-saspay-3`.

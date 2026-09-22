@@ -1021,7 +1021,9 @@ async function startSubscriptionPayment(){
       location.href = data.paymentUrl;
       return;
     }
-    runtimePaymentMessage = `<div class="pay-note success">${data.message || 'Paiement lancé.'}<br>Valide sur ton téléphone puis clique sur “Vérifier mon paiement”. Réf. <b>${state.pendingPayment.ref}</b></div>`;
+    runtimePaymentMessage = data.mode === 'checkout'
+      ? `<div class="pay-note warn">La page SasPay n’a pas renvoyé de lien de redirection. Réessaie le paiement ou contacte le support SasPay. Réf. <b>${state.pendingPayment.ref}</b></div>`
+      : `<div class="pay-note success">${data.message || 'Paiement lancé.'}<br>Valide sur ton téléphone puis clique sur “Vérifier mon paiement”. Réf. <b>${state.pendingPayment.ref}</b></div>`;
     renderSubscription();
   }catch(err){
     runtimePaymentMessage = `<div class="pay-note error">${err.message || 'Erreur paiement'}</div>`;
