@@ -185,3 +185,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 
 - Ajout d'un bouton WhatsApp flottant à droite de l'application.
 - Le numéro n'est pas affiché à l'écran ; le clic ouvre directement WhatsApp pour contacter le support.
+
+## 2026-09-22 — Actualités concours et communiqués
+
+- Ajout d'une section publique **Actualités concours** pour les recrutements, communiqués, résultats, calendriers et dates limites.
+- Ajout d'un onglet admin **Actualités** pour créer, modifier, masquer/publier et supprimer les annonces.
+- Les actualités sont stockées côté serveur via Supabase Storage, comme les documents, sans exposer de clé secrète.
+- Ajout de filtres publics : Tout, Concours, Recrutement et Communiqué.

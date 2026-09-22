@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=whatsapp-float-1">
+<link rel="stylesheet" href="css/styles.css?v=news-communiques-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -101,6 +101,9 @@
         </button>
         <button class="action-card" onclick="show('resources')">
           <img class="action-photo" src="img/study.jpg" alt="Documents et fichiers"><h3>Documents & fichiers</h3><p>PDF, Word et images publiés</p>
+        </button>
+        <button class="action-card" onclick="show('news')">
+          <img class="action-photo" src="img/classroom-bf-wide.jpg" alt="Actualités concours"><h3>Actualités concours</h3><p>Recrutements, communiqués et dates utiles</p>
         </button>
       </div>
     </div>
@@ -283,6 +286,31 @@
     </div>
     <div id="formWrap"></div>
     <div style="height:20px"></div>
+  </section>
+
+  <!-- ================= ACTUALITÉS ================= -->
+  <section class="screen" id="news">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">📰 Actualités concours</h2>
+    </div>
+    <div class="section" style="padding-top:10px">
+      <div class="news-intro-card">
+        <div>
+          <span>Recrutements & communiqués</span>
+          <h2>Informations utiles aux candidats</h2>
+          <p>Retrouve les annonces publiées par l’administration : concours ouverts, communiqués, résultats et dates limites.</p>
+        </div>
+      </div>
+      <div class="chip-row news-filter-row">
+        <button class="chip on" onclick="filterNews(this,'Tout')">Tout</button>
+        <button class="chip" onclick="filterNews(this,'Concours')">Concours</button>
+        <button class="chip" onclick="filterNews(this,'Recrutement')">Recrutement</button>
+        <button class="chip" onclick="filterNews(this,'Communiqué')">Communiqué</button>
+      </div>
+      <div id="newsList" class="news-list"><div class="empty">Chargement des actualités...</div></div>
+    </div>
+    <div style="height:24px"></div>
   </section>
 
   <!-- ================= RESSOURCES ================= -->
@@ -478,6 +506,7 @@
         <button class="chip on" id="adminTabCreate" onclick="setAdminTab('create')">Créer un QCM</button>
         <button class="chip" id="adminTabList" onclick="setAdminTab('list')">Mes QCM</button>
         <button class="chip" id="adminTabResources" onclick="setAdminTab('resources')">Documents</button>
+        <button class="chip" id="adminTabNews" onclick="setAdminTab('news')">Actualités</button>
         <button class="chip" id="adminTabNotifications" onclick="setAdminTab('notifications')">Notifications</button>
       </div>
 
@@ -593,6 +622,67 @@
           <hr class="soft-separator">
           <h3>Documents publiés</h3>
           <div id="adminResourceList" class="admin-list"></div>
+        </div>
+      </div>
+
+
+      <div id="adminNewsPane" class="admin-pane" style="display:none">
+        <div class="legal-card admin-card">
+          <h3 id="adminNewsFormTitle">Nouvelle actualité</h3>
+          <p class="admin-help">Publie les recrutements, communiqués, résultats ou dates utiles. Ajoute toujours une source officielle si possible.</p>
+          <input type="hidden" id="adminNewsId">
+
+          <label class="field-label" for="adminNewsTitle">Titre</label>
+          <input class="input" id="adminNewsTitle" placeholder="Ex : Recrutement de 500 agents de santé">
+
+          <div class="admin-options-grid">
+            <div>
+              <label class="field-label" for="adminNewsType">Type</label>
+              <select class="input" id="adminNewsType">
+                <option>Concours</option>
+                <option>Recrutement</option>
+                <option>Communiqué</option>
+                <option>Résultat</option>
+                <option>Calendrier</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label" for="adminNewsStatus">Statut</label>
+              <select class="input" id="adminNewsStatus">
+                <option>Ouvert</option>
+                <option>Bientôt</option>
+                <option>Info</option>
+                <option>Clôturé</option>
+              </select>
+            </div>
+          </div>
+
+          <label class="field-label" for="adminNewsOrganization">Structure / ministère</label>
+          <input class="input" id="adminNewsOrganization" placeholder="Ex : Ministère de la Fonction publique">
+
+          <label class="field-label" for="adminNewsDeadline">Date limite ou date importante</label>
+          <input class="input" type="date" id="adminNewsDeadline">
+
+          <label class="field-label" for="adminNewsSummary">Résumé court</label>
+          <textarea class="input admin-textarea" id="adminNewsSummary" placeholder="Résumé bref affiché dans la liste"></textarea>
+
+          <label class="field-label" for="adminNewsContent">Détails du communiqué</label>
+          <textarea class="input admin-textarea admin-news-content" id="adminNewsContent" placeholder="Conditions, pièces à fournir, dates, dépôt des dossiers..."></textarea>
+
+          <label class="field-label" for="adminNewsSource">Lien source officielle</label>
+          <input class="input" type="url" id="adminNewsSource" placeholder="https://...">
+
+          <div class="admin-switch-row">
+            <label><input type="checkbox" id="adminNewsActive" checked> Publié</label>
+          </div>
+
+          <button class="btn btn-green btn-block" id="adminNewsSaveBtn" onclick="saveAdminNews()">Publier l’actualité</button>
+          <button class="btn btn-ghost btn-block" onclick="resetAdminNewsForm()" style="margin-top:10px">Vider le formulaire</button>
+          <div class="payment-result" id="adminNewsResult"></div>
+
+          <hr class="soft-separator">
+          <h3>Actualités publiées</h3>
+          <div id="adminNewsList" class="admin-list"></div>
         </div>
       </div>
 
@@ -795,9 +885,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=whatsapp-float-1"></script>
+<script src="js/questions.js?v=news-communiques-1"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=whatsapp-float-1"></script>
+<script src="js/app.js?v=news-communiques-1"></script>
 </body>
 </html>

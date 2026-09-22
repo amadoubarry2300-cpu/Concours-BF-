@@ -38,6 +38,7 @@ const LOGIN_MAX_FAILED = Number(process.env.LOGIN_MAX_FAILED || 5);
 const LOGIN_LOCK_MINUTES = Number(process.env.LOGIN_LOCK_MINUTES || 15);
 const RESOURCE_BUCKET = process.env.SUPABASE_RESOURCE_BUCKET || 'reussite-concours-resources';
 const RESOURCE_INDEX_PATH = 'resources/index.json';
+const NEWS_INDEX_PATH = 'news/index.json';
 const MAX_RESOURCE_FILE_BYTES = Number(process.env.MAX_RESOURCE_FILE_BYTES || 4 * 1024 * 1024);
 const SMTP_HOST = process.env.SMTP_HOST || '';
 const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
@@ -203,6 +204,68 @@ async function loadResourceIndex(){
 async function saveResourceIndex(resources){
   const body = Buffer.from(JSON.stringify(resources || [], null, 2), 'utf8');
   await uploadResourceObject(RESOURCE_INDEX_PATH, body, 'application/json; charset=utf-8');
+}
+
+async function loadNewsIndex(){
+  try{
+    const file = await downloadResourceObject(NEWS_INDEX_PATH);
+    const data = JSON.parse(file.buffer.toString('utf8') || '[]');
+    return Array.isArray(data) ? data : [];
+  }catch(err){
+    if (err.status === 404 || /Fichier introuvable|not found|does not exist|object.*not/i.test(String(err.message || err.details?.message || ''))) return [];
+    throw err;
+  }
+}
+
+async function saveNewsIndex(news){
+  const body = Buffer.from(JSON.stringify(news || [], null, 2), 'utf8');
+  await uploadResourceObject(NEWS_INDEX_PATH, body, 'application/json; charset=utf-8');
+}
+
+function cleanUrl(value){
+  const raw = String(value || '').trim().slice(0, 700);
+  if (!raw) return '';
+  try{
+    const url = new URL(raw);
+    if (!['http:', 'https:'].includes(url.protocol)) return '';
+    return url.toString();
+  }catch{
+    return '';
+  }
+}
+
+function publicNews(row){
+  return {
+    id: row.id,
+    title: row.title || 'Actualité concours',
+    type: row.type || 'Communiqué',
+    organization: row.organization || '',
+    deadline: row.deadline || '',
+    status: row.status || 'Info',
+    summary: row.summary || '',
+    content: row.content || '',
+    sourceUrl: row.source_url || '',
+    is_active: row.is_active !== false,
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  };
+}
+
+function adminNewsPayload(body){
+  const payload = {
+    title: cleanText(body?.title, 180),
+    type: cleanText(body?.type || 'Communiqué', 60),
+    organization: cleanText(body?.organization || '', 120),
+    deadline: cleanText(body?.deadline || '', 40),
+    status: cleanText(body?.status || 'Info', 40),
+    summary: cleanText(body?.summary || '', 500),
+    content: cleanText(body?.content || '', 6000),
+    source_url: cleanUrl(body?.sourceUrl || body?.source_url),
+    is_active: body?.is_active === undefined ? true : Boolean(body?.is_active)
+  };
+  if (payload.title.length < 4) throw Object.assign(new Error('Titre requis'), { status:400 });
+  if (payload.content.length < 10 && payload.summary.length < 10) throw Object.assign(new Error('Résumé ou contenu requis'), { status:400 });
+  return payload;
 }
 
 function headerText(req, name, max=500){
@@ -1496,6 +1559,72 @@ app.delete('/api/admin/resources/:id', requireAdmin, async (req, res, next) => {
     if (!item) return res.status(404).json({ message:'Document introuvable' });
     await saveResourceIndex(resources.filter(r => r.id !== req.params.id));
     if (item.storage_path) await deleteResourceObject(item.storage_path);
+    res.json({ ok:true });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/news', async (_req, res, next) => {
+  try{
+    const news = await loadNewsIndex().catch(err => {
+      if (err.status === 503 || /Stockage indisponible/i.test(err.message)) return [];
+      throw err;
+    });
+    const visible = news
+      .filter(item => item.is_active !== false)
+      .map(publicNews)
+      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    res.json({ ok:true, news:visible });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/admin/news', requireAdmin, async (_req, res, next) => {
+  try{
+    const news = await loadNewsIndex();
+    res.json({ ok:true, news:news.map(publicNews) });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/news', requireAdmin, async (req, res, next) => {
+  try{
+    const payload = adminNewsPayload(req.body || {});
+    const now = new Date().toISOString();
+    const item = { id:crypto.randomUUID(), ...payload, author_phone:req.phone, created_at:now, updated_at:now };
+    const news = await loadNewsIndex();
+    news.unshift(item);
+    await saveNewsIndex(news);
+    res.json({ ok:true, item:publicNews(item) });
+  }catch(err){ next(err); }
+});
+
+app.patch('/api/admin/news/:id', requireAdmin, async (req, res, next) => {
+  try{
+    const news = await loadNewsIndex();
+    const idx = news.findIndex(item => item.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ message:'Actualité introuvable' });
+    const payload = adminNewsPayload(req.body || {});
+    news[idx] = { ...news[idx], ...payload, updated_at:new Date().toISOString() };
+    await saveNewsIndex(news);
+    res.json({ ok:true, item:publicNews(news[idx]) });
+  }catch(err){ next(err); }
+});
+
+app.patch('/api/admin/news/:id/status', requireAdmin, async (req, res, next) => {
+  try{
+    const news = await loadNewsIndex();
+    const idx = news.findIndex(item => item.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ message:'Actualité introuvable' });
+    news[idx] = { ...news[idx], is_active:Boolean(req.body?.is_active), updated_at:new Date().toISOString() };
+    await saveNewsIndex(news);
+    res.json({ ok:true, item:publicNews(news[idx]) });
+  }catch(err){ next(err); }
+});
+
+app.delete('/api/admin/news/:id', requireAdmin, async (req, res, next) => {
+  try{
+    const news = await loadNewsIndex();
+    const exists = news.some(item => item.id === req.params.id);
+    if (!exists) return res.status(404).json({ message:'Actualité introuvable' });
+    await saveNewsIndex(news.filter(item => item.id !== req.params.id));
     res.json({ ok:true });
   }catch(err){ next(err); }
 });

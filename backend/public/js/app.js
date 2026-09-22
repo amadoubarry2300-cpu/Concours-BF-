@@ -422,7 +422,7 @@ function show(id){
   target.classList.add('active');
   window.scrollTo({top:0});
   $$('.nav-btn').forEach(b=>b.classList.toggle('on', b.dataset.target===id));
-  const navIds = ['home','formations','passport','stats','subscription','account'];
+  const navIds = ['home','formations','news','resources','passport','stats','subscription','account'];
   $('#bottomNav').style.display = navIds.includes(id) ? 'flex' : 'none';
 
   if (id==='stats') setTimeout(renderStats, 60);
@@ -430,6 +430,7 @@ function show(id){
   if (id==='home') renderHome();
   if (id==='errors') renderErrors();
   if (id==='formations') renderFormations(currentFormFilter);
+  if (id==='news') loadNews();
   if (id==='resources') loadResources();
   if (id==='subscription') setTimeout(renderSubscription, 20);
   if (id==='account') setTimeout(renderAccountScreen, 20);
@@ -950,7 +951,10 @@ function logoutUser(){
 /* ---------- administration ---------- */
 let adminQuestionCache = [];
 let adminResourceCache = [];
+let adminNewsCache = [];
 let resourceCache = [];
+let newsCache = [];
+let currentNewsFilter = 'Tout';
 let adminTab = 'create';
 
 async function adminFetch(path, options = {}){
@@ -968,13 +972,16 @@ function setAdminTab(tab){
   $('#adminCreatePane') && ($('#adminCreatePane').style.display = adminTab === 'create' ? 'block' : 'none');
   $('#adminListPane') && ($('#adminListPane').style.display = adminTab === 'list' ? 'block' : 'none');
   $('#adminResourcesPane') && ($('#adminResourcesPane').style.display = adminTab === 'resources' ? 'block' : 'none');
+  $('#adminNewsPane') && ($('#adminNewsPane').style.display = adminTab === 'news' ? 'block' : 'none');
   $('#adminNotificationsPane') && ($('#adminNotificationsPane').style.display = adminTab === 'notifications' ? 'block' : 'none');
   $('#adminTabCreate')?.classList.toggle('on', adminTab === 'create');
   $('#adminTabList')?.classList.toggle('on', adminTab === 'list');
   $('#adminTabResources')?.classList.toggle('on', adminTab === 'resources');
+  $('#adminTabNews')?.classList.toggle('on', adminTab === 'news');
   $('#adminTabNotifications')?.classList.toggle('on', adminTab === 'notifications');
   if (adminTab === 'list') loadAdminQuestions();
   if (adminTab === 'resources') loadAdminResources();
+  if (adminTab === 'news') loadAdminNews();
   if (adminTab === 'notifications') loadAdminNotificationStatus();
 }
 
@@ -1143,6 +1150,193 @@ async function deleteAdminQuestion(index){
   }catch(err){ toast(err.message); }
 }
 
+
+function newsTypeIcon(type){
+  const t = String(type || '').toLowerCase();
+  if (t.includes('recrut')) return '🧾';
+  if (t.includes('concours')) return '🏛️';
+  if (t.includes('résultat') || t.includes('resultat')) return '✅';
+  if (t.includes('calend')) return '📅';
+  return '📢';
+}
+
+function newsStatusClass(status){
+  const s = String(status || '').toLowerCase();
+  if (s.includes('ouvert')) return 'open';
+  if (s.includes('clôt') || s.includes('clot')) return 'closed';
+  if (s.includes('bient')) return 'soon';
+  return 'info';
+}
+
+async function loadNews(){
+  const wrap = $('#newsList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty">Chargement des actualités...</div>';
+  try{
+    const res = await fetch('/api/news', { headers:authHeaders({}) });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(data.message || 'Actualités indisponibles');
+    newsCache = data.news || [];
+    renderNewsList();
+  }catch(err){
+    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+  }
+}
+
+function filterNews(el, type){
+  currentNewsFilter = type || 'Tout';
+  $$('.news-filter-row .chip').forEach(b=>b.classList.remove('on'));
+  el && el.classList.add('on');
+  renderNewsList();
+}
+
+function renderNewsList(){
+  const wrap = $('#newsList');
+  if (!wrap) return;
+  const items = (newsCache || []).filter(n => currentNewsFilter === 'Tout' || n.type === currentNewsFilter);
+  if (!items.length){
+    wrap.innerHTML = '<div class="empty"><div class="big">📰</div>Aucune actualité publiée pour le moment.</div>';
+    return;
+  }
+  wrap.innerHTML = items.map(n => {
+    const source = n.sourceUrl ? `<a class="news-source" href="${escapeHtml(n.sourceUrl)}" target="_blank" rel="noopener">Source officielle</a>` : '';
+    const deadline = n.deadline ? `<span>📅 ${formatDate(n.deadline)}</span>` : '';
+    return `<article class="news-card">
+      <div class="news-card-top">
+        <div class="news-icon">${newsTypeIcon(n.type)}</div>
+        <div>
+          <div class="news-meta"><span>${escapeHtml(n.type || 'Communiqué')}</span><span class="${newsStatusClass(n.status)}">${escapeHtml(n.status || 'Info')}</span>${deadline}</div>
+          <h3>${escapeHtml(n.title)}</h3>
+          ${n.organization ? `<p class="news-org">${escapeHtml(n.organization)}</p>` : ''}
+        </div>
+      </div>
+      <p>${escapeHtml(n.summary || n.content || '')}</p>
+      ${n.content && n.content !== n.summary ? `<details><summary>Lire le communiqué</summary><div>${escapeHtml(n.content).replace(/\n/g,'<br>')}</div></details>` : ''}
+      ${source}
+    </article>`;
+  }).join('');
+}
+
+function adminNewsPayload(){
+  return {
+    id: $('#adminNewsId')?.value || '',
+    title: $('#adminNewsTitle')?.value || '',
+    type: $('#adminNewsType')?.value || 'Communiqué',
+    status: $('#adminNewsStatus')?.value || 'Info',
+    organization: $('#adminNewsOrganization')?.value || '',
+    deadline: $('#adminNewsDeadline')?.value || '',
+    summary: $('#adminNewsSummary')?.value || '',
+    content: $('#adminNewsContent')?.value || '',
+    sourceUrl: $('#adminNewsSource')?.value || '',
+    is_active: Boolean($('#adminNewsActive')?.checked)
+  };
+}
+
+async function saveAdminNews(){
+  const result = $('#adminNewsResult');
+  const btn = $('#adminNewsSaveBtn');
+  setButtonLoading(btn, true, 'Publication...');
+  try{
+    const payload = adminNewsPayload();
+    const id = payload.id;
+    const url = id ? '/api/admin/news/' + encodeURIComponent(id) : '/api/admin/news';
+    const method = id ? 'PATCH' : 'POST';
+    await adminFetch(url, { method, body:JSON.stringify(payload) });
+    if (result) result.innerHTML = '<div class="pay-note success">Actualité enregistrée ✅</div>';
+    resetAdminNewsForm(false);
+    await loadAdminNews();
+    await loadNews();
+    toast('Actualité publiée ✅');
+  }catch(err){
+    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+  }finally{
+    setButtonLoading(btn, false);
+  }
+}
+
+function resetAdminNewsForm(clearMessage = true){
+  ['adminNewsId','adminNewsTitle','adminNewsOrganization','adminNewsDeadline','adminNewsSummary','adminNewsContent','adminNewsSource'].forEach(id=>{ const el=$('#'+id); if (el) el.value=''; });
+  $('#adminNewsType') && ($('#adminNewsType').value='Concours');
+  $('#adminNewsStatus') && ($('#adminNewsStatus').value='Ouvert');
+  $('#adminNewsActive') && ($('#adminNewsActive').checked=true);
+  $('#adminNewsFormTitle') && ($('#adminNewsFormTitle').textContent='Nouvelle actualité');
+  const saveBtn = $('#adminNewsSaveBtn');
+  if (saveBtn){ saveBtn.textContent='Publier l’actualité'; delete saveBtn.dataset.label; }
+  if (clearMessage && $('#adminNewsResult')) $('#adminNewsResult').innerHTML='';
+}
+
+async function loadAdminNews(){
+  const wrap = $('#adminNewsList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty">Chargement des actualités...</div>';
+  try{
+    const data = await adminFetch('/api/admin/news');
+    adminNewsCache = data.news || [];
+    if (!adminNewsCache.length){
+      wrap.innerHTML = '<div class="empty">Aucune actualité publiée pour le moment.</div>';
+      return;
+    }
+    wrap.innerHTML = adminNewsCache.map((n, idx)=>`
+      <div class="admin-q-item">
+        <div class="admin-q-meta">
+          <span>${newsTypeIcon(n.type)} ${escapeHtml(n.type || 'Communiqué')}</span>
+          <span class="${n.is_active ? 'active' : ''}">${n.is_active ? 'Publié' : 'Masqué'}</span>
+          <span>${escapeHtml(n.status || 'Info')}</span>
+          ${n.deadline ? `<span>${formatDate(n.deadline)}</span>` : ''}
+        </div>
+        <h4>${escapeHtml(n.title || '')}</h4>
+        <p class="admin-help">${escapeHtml(n.summary || n.organization || '')}</p>
+        <div class="admin-q-actions">
+          <button class="edit" onclick="editAdminNews(${idx})">Modifier</button>
+          <button class="pause" onclick="toggleAdminNews(${idx})">${n.is_active ? 'Masquer' : 'Publier'}</button>
+          <button class="delete" onclick="deleteAdminNews(${idx})">Supprimer</button>
+        </div>
+      </div>`).join('');
+  }catch(err){
+    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+  }
+}
+
+function editAdminNews(index){
+  const n = adminNewsCache[index];
+  if (!n) return;
+  $('#adminNewsId') && ($('#adminNewsId').value=n.id || '');
+  $('#adminNewsTitle') && ($('#adminNewsTitle').value=n.title || '');
+  $('#adminNewsType') && ($('#adminNewsType').value=n.type || 'Communiqué');
+  $('#adminNewsStatus') && ($('#adminNewsStatus').value=n.status || 'Info');
+  $('#adminNewsOrganization') && ($('#adminNewsOrganization').value=n.organization || '');
+  $('#adminNewsDeadline') && ($('#adminNewsDeadline').value=n.deadline || '');
+  $('#adminNewsSummary') && ($('#adminNewsSummary').value=n.summary || '');
+  $('#adminNewsContent') && ($('#adminNewsContent').value=n.content || '');
+  $('#adminNewsSource') && ($('#adminNewsSource').value=n.sourceUrl || '');
+  $('#adminNewsActive') && ($('#adminNewsActive').checked=Boolean(n.is_active));
+  $('#adminNewsFormTitle') && ($('#adminNewsFormTitle').textContent='Modifier l’actualité');
+  $('#adminNewsSaveBtn') && ($('#adminNewsSaveBtn').textContent='Enregistrer les modifications');
+  setAdminTab('news');
+}
+
+async function toggleAdminNews(index){
+  const n = adminNewsCache[index];
+  if (!n) return;
+  try{
+    await adminFetch('/api/admin/news/' + encodeURIComponent(n.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:!n.is_active}) });
+    await loadAdminNews();
+    await loadNews();
+    toast(!n.is_active ? 'Actualité publiée' : 'Actualité masquée');
+  }catch(err){ toast(err.message); }
+}
+
+async function deleteAdminNews(index){
+  const n = adminNewsCache[index];
+  if (!n) return;
+  if (!confirm('Supprimer définitivement cette actualité ?')) return;
+  try{
+    await adminFetch('/api/admin/news/' + encodeURIComponent(n.id), { method:'DELETE' });
+    await loadAdminNews();
+    await loadNews();
+    toast('Actualité supprimée');
+  }catch(err){ toast(err.message); }
+}
 
 function formatBytes(bytes){
   const n = Number(bytes || 0);
