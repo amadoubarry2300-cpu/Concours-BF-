@@ -498,3 +498,19 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .brand-title em{font-size:1.08rem!important;font-weight:900;line-height:1.02;letter-spacing:-.018em;color:var(--green)}
 @media(max-width:420px){.brand-title span{font-size:1.12rem!important}.brand-title em{font-size:.96rem!important}}
 @media(max-width:360px){.brand-title span{font-size:1rem!important}.brand-title em{font-size:.88rem!important}}
+
+
+/* ---------- profil, compteur premium et bulles premium ---------- */
+.account-profile-main h2{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.08;word-break:break-word}
+.account-greeting-card{background:linear-gradient(135deg,#0f172a,#064e3b);color:#fff;border-radius:22px;padding:14px 16px;margin:12px 0;box-shadow:var(--shadow-lg);position:relative;overflow:hidden}.account-greeting-card b{display:block;font-size:.98rem;font-weight:1000;line-height:1.22}.account-greeting-card span{display:block;margin-top:4px;font-size:.76rem;line-height:1.35;color:rgba(255,255,255,.82)}
+.premium-renewal-card{background:#fff;border:1px solid rgba(14,159,110,.18);border-radius:22px;padding:14px;margin:12px 0;box-shadow:var(--shadow);display:grid!important;grid-template-columns:1fr auto;gap:10px;align-items:center;position:relative;overflow:hidden}.premium-renewal-card[style*="display: none"]{display:none!important}.premium-renewal-card span{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--green-dark);font-weight:1000}.premium-renewal-card b{display:block;font-size:1.05rem;font-weight:1000;color:var(--ink);margin-top:2px}.premium-renewal-card small{display:block;font-size:.72rem;color:var(--ink-soft);margin-top:2px}.premium-renewal-card i{grid-column:1/-1;height:8px;background:#ecfdf5;border-radius:999px;overflow:hidden}.premium-renewal-card i em{display:block;height:100%;background:linear-gradient(90deg,var(--green),#f5a623);border-radius:999px;transition:width .5s ease}
+@media(max-width:420px){.account-chip .chip-name{max-width:112px!important;overflow:hidden!important;text-overflow:ellipsis!important}.premium-renewal-card{grid-template-columns:1fr}.premium-renewal-card .mini-btn{width:100%}}
+@media(max-width:360px){.account-chip .chip-name{max-width:96px!important}}
+@media(prefers-reduced-motion:no-preference){
+  .feature,.action-card,.premium-home,.auth-home-card,.account-profile-card,.account-greeting-card,.premium-renewal-card,.account-action,.account-info-box,.resource-card{position:relative;overflow:hidden;transform:translateZ(0)}
+  .feature::before,.action-card::before,.premium-home::before,.auth-home-card::before,.account-profile-card::before,.account-greeting-card::before,.premium-renewal-card::before,.account-action::before,.account-info-box::before,.resource-card::before{content:"";position:absolute;inset:auto -22% -42% auto;width:118px;height:118px;border-radius:999px;background:radial-gradient(circle,rgba(14,159,110,.14),rgba(14,159,110,0) 68%);pointer-events:none;animation:bubbleFloat 8s ease-in-out infinite;z-index:0}
+  .account-greeting-card::before{background:radial-gradient(circle,rgba(255,255,255,.22),rgba(255,255,255,0) 68%)}
+  .feature>*,.action-card>*,.premium-home>*,.auth-home-card>*,.account-profile-card>*,.account-greeting-card>*,.premium-renewal-card>*,.account-action>*,.account-info-box>*,.resource-card>*{position:relative;z-index:1}
+  .feature:hover,.action-card:hover,.account-action:hover,.resource-card:hover{transform:translateY(-2px);transition:transform .24s ease, box-shadow .24s ease;box-shadow:0 14px 34px rgba(17,24,39,.10)}
+  @keyframes bubbleFloat{0%,100%{transform:translate3d(0,0,0) scale(.92);opacity:.55}50%{transform:translate3d(-18px,-16px,0) scale(1.12);opacity:.9}}
+}

@@ -157,3 +157,12 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 
 - Le mot **Réussite** est agrandi.
 - **Concours BF** est légèrement réduit pour donner une hiérarchie plus premium dans la barre supérieure.
+
+
+## 2026-09-22 — Profil premium et accueil personnalisé
+
+- Le nom complet du candidat est utilisé dans le profil et dans le bouton compte.
+- Message personnalisé après inscription : bienvenue au candidat avec son nom complet.
+- Message personnalisé après reconnexion : bon retour avec le nom complet.
+- Ajout d'un compteur Premium dans le compte avec jours restants et date de renouvellement.
+- Ajout de bulles animées légères sur certains blocs pour un rendu plus premium sans surcharger l'interface.

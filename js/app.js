@@ -465,11 +465,11 @@ function renderAccount(){
   if (chip){
     chip.classList.toggle('premium', isPremium());
     if (state.user){
-      const shortName = (state.user.firstName || name.split(' ')[0] || 'Profil').trim();
+      const fullName = (name || state.user.displayName || 'Profil').trim();
       const avatar = avatarDataForUser()
         ? `<span class="chip-avatar has-photo"><img src="${avatarDataForUser()}" alt="Profil"></span>`
         : `<span class="chip-avatar">${escapeHtml(userInitials())}</span>`;
-      chip.innerHTML = `${avatar}<span class="chip-name">${escapeHtml(shortName)}</span>`;
+      chip.innerHTML = `${avatar}<span class="chip-name">${escapeHtml(fullName)}</span>`;
     } else {
       chip.innerHTML = '<span class="chip-avatar">👤</span><span class="chip-name">Connexion</span>';
     }
@@ -556,6 +556,31 @@ function renderAccountScreen(){
   if (badge){
     badge.textContent = isAdmin() ? 'Admin' : (ACCESS_OPEN_UNTIL_PAYMENT ? 'Accès ouvert' : (isPremium() ? 'Premium' : 'Gratuit'));
     badge.classList.toggle('premium', hasOpenAccess() || isAdmin());
+  }
+  const greetingCard = $('#accountGreetingCard');
+  if (greetingCard){
+    if (state.sessionGreeting?.text){
+      greetingCard.style.display = 'block';
+      greetingCard.innerHTML = `<b>${escapeHtml(state.sessionGreeting.text)}</b><span>${state.sessionGreeting.sub || 'Continue ta préparation avec sérieux et régularité.'}</span>`;
+    } else {
+      greetingCard.style.display = 'none';
+      greetingCard.innerHTML = '';
+    }
+  }
+  const renewalCard = $('#premiumRenewalCard');
+  if (renewalCard){
+    if (isPremium()){
+      const days = premiumDaysLeft();
+      const pct = Math.max(4, Math.min(100, Math.round(days / 30 * 100)));
+      renewalCard.style.display = 'block';
+      renewalCard.innerHTML = `
+        <div><span>Premium actif</span><b>${days} jour${days>1?'s':''} restant${days>1?'s':''}</b><small>Renouvellement à prévoir le ${formatDate(state.subscription.expiresAt)}</small></div>
+        <button class="mini-btn" onclick="show('subscription')">Renouveler</button>
+        <i><em style="width:${pct}%"></em></i>`;
+    } else {
+      renewalCard.style.display = 'none';
+      renewalCard.innerHTML = '';
+    }
   }
   $('#accountXp') && ($('#accountXp').textContent = state.xp);
   $('#accountQuiz') && ($('#accountQuiz').textContent = state.quizDone);
@@ -842,10 +867,15 @@ async function loginUser(){
     const data = await apiPost(endpoint, { phone: fullPhone(phone), pin, firstName, lastName, email, avatarData });
     applyRemoteSession(data, phone);
     if (avatarData && state.user) saveAvatarForPhone(state.user.phone, avatarData);
+    const greetingText = isRegister ? `Bienvenue cher candidat ${displayUserName()}` : `Bon retour ${displayUserName()}`;
+    state.sessionGreeting = {
+      text:greetingText,
+      sub:isRegister ? 'Ton espace personnel est prêt. Bonne préparation !' : 'Heureux de te revoir. Reprends ta préparation là où tu t’es arrêté.'
+    };
     pendingAvatarData = '';
     renderAccount();
     loadSupabaseQuestions().then(()=>renderFormations(currentFormFilter));
-    toast(isRegister ? 'Compte créé et sauvegardé ✅' : 'Connexion réussie ✅');
+    toast(greetingText + ' ✅');
     setButtonLoading(btn, false);
     const go = (nextAfterLogin && nextAfterLogin !== 'home') ? nextAfterLogin : 'account';
     nextAfterLogin = 'home';
@@ -881,11 +911,16 @@ async function loginUser(){
   };
   state.phoneSaved = true;
   if (state.user.avatarData) saveAvatarForPhone(phone, state.user.avatarData);
+  const greetingText = isRegister ? `Bienvenue cher candidat ${displayUserName()}` : `Bon retour ${displayUserName()}`;
+  state.sessionGreeting = {
+    text:greetingText,
+    sub:isRegister ? 'Ton espace personnel est prêt. Bonne préparation !' : 'Heureux de te revoir. Reprends ta préparation là où tu t’es arrêté.'
+  };
   save();
   pendingAvatarData = '';
   renderAccount();
   loadSupabaseQuestions().then(()=>renderFormations(currentFormFilter));
-  toast((isRegister ? 'Compte créé' : 'Connexion réussie') + ' en mode local ✅');
+  toast(greetingText + ' ✅');
   setButtonLoading(btn, false);
   const go = (nextAfterLogin && nextAfterLogin !== 'home') ? nextAfterLogin : 'account';
   nextAfterLogin = 'home';
@@ -1477,6 +1512,7 @@ async function checkPaymentStatus(){
       state.subscription = {status:'premium', expiresAt:data.expiresAt, txRef:data.txRef, provider:data.provider || state.selectedProvider};
       state.pendingPayment = null;
       save();
+      state.sessionGreeting = { text:`Premium activé pour ${displayUserName()}`, sub:`Renouvellement à prévoir le ${formatDate(state.subscription.expiresAt)}.` };
       runtimePaymentMessage = '<div class="pay-note success">Paiement confirmé ✅ Premium activé.</div>';
       renderAccount();
       await loadSupabaseQuestions();
