@@ -145,3 +145,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 
 - Correction du premier chargement des documents lorsque le bucket Supabase vient d'être créé et que le fichier d'index n'existe pas encore.
 - `/api/resources` renvoie maintenant une liste vide au lieu d'une erreur tant qu'aucun document n'est publié.
+
+
+## 2026-09-22 — Nouveau logo
+
+- Remplacement du logo principal et du favicon par le nouveau logo fourni par le propriétaire.
+- Le logo est synchronisé dans l'application frontend et dans le dossier public du backend.
