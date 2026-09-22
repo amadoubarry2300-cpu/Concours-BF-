@@ -18,6 +18,8 @@ const PLAN_AMOUNT = 1500;
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://scnhrcjhxqzetkrhhong.supabase.co';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || '';
+const SESSION_SECRET = process.env.SESSION_SECRET || SUPABASE_SERVICE_ROLE_KEY || 'dev-session-secret-change-me';
+const SESSION_DAYS = Number(process.env.SESSION_DAYS || 30);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -190,6 +192,74 @@ async function getActiveSubscription(phone){
   return sub;
 }
 
+function hashSessionToken(token){
+  return crypto.createHmac('sha256', SESSION_SECRET).update(String(token)).digest('hex');
+}
+
+function bearerToken(req){
+  const header = String(req.headers.authorization || '');
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : '';
+}
+
+function isMissingSessionsTableError(err){
+  const msg = String(err?.message || err?.details?.message || err?.details?.hint || '');
+  return /sessions|schema cache|relation|does not exist/i.test(msg);
+}
+
+async function createSession(profile, req){
+  if (!profile || !supabaseReady()) return null;
+  const token = crypto.randomBytes(32).toString('base64url');
+  const expiresAt = addDays(new Date(), SESSION_DAYS).toISOString();
+  const payload = {
+    profile_id: profile.id,
+    phone: profile.phone,
+    token_hash: hashSessionToken(token),
+    user_agent: String(req.headers['user-agent'] || '').slice(0, 250),
+    expires_at: expiresAt
+  };
+  try{
+    await supabaseRequest('sessions', { method:'POST', prefer:'return=minimal', body:[payload] });
+    return { token, expiresAt };
+  }catch(err){
+    if (isMissingSessionsTableError(err)) return null;
+    throw err;
+  }
+}
+
+async function getSessionFromRequest(req){
+  const token = bearerToken(req);
+  if (!token || !supabaseReady()) return null;
+  const tokenHash = hashSessionToken(token);
+  try{
+    const rows = await supabaseRequest(`sessions?token_hash=eq.${encodeURIComponent(tokenHash)}&revoked_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=*&limit=1`);
+    const session = Array.isArray(rows) ? rows[0] || null : null;
+    if (!session) return null;
+    const profile = await getProfile(session.phone);
+    if (!profile) return null;
+    await supabaseRequest(`sessions?id=eq.${encodeURIComponent(session.id)}`, {
+      method:'PATCH',
+      prefer:'return=minimal',
+      body:{ last_seen_at:new Date().toISOString() }
+    }).catch(()=>{});
+    return { session, profile };
+  }catch(err){
+    if (isMissingSessionsTableError(err)) return null;
+    throw err;
+  }
+}
+
+async function requireSession(req, res, next){
+  try{
+    const sessionData = await getSessionFromRequest(req);
+    if (!sessionData) return res.status(401).json({ message:'Session expirée. Reconnecte-toi.' });
+    req.sessionData = sessionData.session;
+    req.profile = sessionData.profile;
+    req.phone = sessionData.profile.phone;
+    next();
+  }catch(err){ next(err); }
+}
+
 function requireCinetPayConfig(){
   if (!CINETPAY_APIKEY || !CINETPAY_SITE_ID){
     const err = new Error('CinetPay non configuré: ajoutez CINETPAY_APIKEY et CINETPAY_SITE_ID dans Vercel');
@@ -281,7 +351,8 @@ app.post('/api/auth/register', async (req, res, next) => {
     }
     const progress = await ensureProgress(profile);
     const subscription = await getActiveSubscription(phone);
-    res.json({ user:safeProfile(profile), progress, subscription });
+    const session = await createSession(profile, req);
+    res.json({ user:safeProfile(profile), progress, subscription, session });
   }catch(err){ next(err); }
 });
 
@@ -302,20 +373,40 @@ app.post('/api/auth/login', async (req, res, next) => {
       prefer:'return=minimal',
       body:{ last_login_at:new Date().toISOString() }
     });
+    const freshProfile = { ...profile, last_login_at:new Date().toISOString() };
     const progressRows = await supabaseRequest(`progress?phone=eq.${encodeURIComponent(phone)}&select=*`);
     const progress = Array.isArray(progressRows) ? progressRows[0] || await ensureProgress(profile) : null;
     const subscription = await getActiveSubscription(phone);
-    res.json({ user:safeProfile(profile), progress, subscription });
+    const session = await createSession(profile, req);
+    res.json({ user:safeProfile(freshProfile), progress, subscription, session });
   }catch(err){ next(err); }
 });
 
-app.post('/api/progress/save', async (req, res, next) => {
+app.post('/api/progress/save', requireSession, async (req, res, next) => {
   try{
     if (!supabaseReady()) return res.status(503).json({ message:'Supabase service_role non configuré dans Vercel' });
-    const phone = normalizePhone(req.body?.phone);
-    if (!phone) return res.status(400).json({ message:'Numéro invalide' });
-    const progress = await saveProgress(phone, req.body?.progress || {});
+    const progress = await saveProgress(req.phone, req.body?.progress || {});
     res.json({ ok:true, progress });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/profile/avatar', requireSession, async (req, res, next) => {
+  try{
+    const avatarData = cleanAvatarData(req.body?.avatarData);
+    if (!avatarData) return res.status(400).json({ message:'Photo invalide' });
+    const profile = await saveProfileAvatar(req.phone, avatarData);
+    res.json({ ok:true, user:safeProfile(profile || { ...req.profile, avatar_data:avatarData }) });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/auth/logout', requireSession, async (req, res, next) => {
+  try{
+    await supabaseRequest(`sessions?id=eq.${encodeURIComponent(req.sessionData.id)}`, {
+      method:'PATCH',
+      prefer:'return=minimal',
+      body:{ revoked_at:new Date().toISOString() }
+    }).catch(()=>{});
+    res.json({ ok:true });
   }catch(err){ next(err); }
 });
 

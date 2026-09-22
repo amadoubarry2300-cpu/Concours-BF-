@@ -48,11 +48,13 @@ let state = {
   subscription: store.get('subscription', {status:'free', expiresAt:null}),
   pendingPayment: store.get('pendingPayment', null),
   selectedProvider: store.get('selectedProvider', 'ORANGE_MONEY'),
-  profileAvatars: store.get('profileAvatars', {})
+  profileAvatars: store.get('profileAvatars', {}),
+  authToken: store.get('authToken', null),
+  authExpiresAt: store.get('authExpiresAt', null)
 };
 
 function save(){
-  for (const k of ['xp','quizDone','correct','answered','errors','catStats','streak','lastDay','dailyDone','bestScore','phoneSaved','user','subscription','pendingPayment','selectedProvider','profileAvatars'])
+  for (const k of ['xp','quizDone','correct','answered','errors','catStats','streak','lastDay','dailyDone','bestScore','phoneSaved','user','subscription','pendingPayment','selectedProvider','profileAvatars','authToken','authExpiresAt'])
     store.set(k, state[k]);
 }
 
@@ -190,6 +192,9 @@ async function handleAvatarPick(input, saveCurrent = false){
       saveAvatarForPhone(state.user.phone, data);
       renderAccount();
       renderAccountScreen();
+      apiPost('/api/profile/avatar', { avatarData:data })
+        .then(res=>{ if (res?.user) applyRemoteSession({user:res.user}, state.user.phone); })
+        .catch(()=>{});
       toast('Photo de profil mise à jour ✅');
     } else {
       toast('Photo ajoutée ✅');
@@ -248,10 +253,16 @@ function setButtonLoading(btn, loading, label){
   }
 }
 
+function authHeaders(extra = {}){
+  const headers = {...extra};
+  if (state.authToken) headers.Authorization = 'Bearer ' + state.authToken;
+  return headers;
+}
+
 async function apiPost(path, body){
   const res = await fetch(path, {
     method:'POST',
-    headers:{'Content-Type':'application/json'},
+    headers: authHeaders({'Content-Type':'application/json'}),
     body: JSON.stringify(body || {})
   });
   const data = await res.json().catch(()=>({}));
@@ -301,6 +312,10 @@ function applyRemoteSession(data, fallbackPhone){
       txRef:data.subscription.txRef,
       provider:data.subscription.provider
     };
+  }
+  if (data?.session?.token){
+    state.authToken = data.session.token;
+    state.authExpiresAt = data.session.expiresAt || null;
   }
   save();
 }
@@ -778,9 +793,12 @@ async function loginUser(){
 }
 
 function logoutUser(){
+  if (state.authToken) apiPost('/api/auth/logout', {}).catch(()=>{});
   state.user = null;
   state.subscription = {status:'free', expiresAt:null};
   state.pendingPayment = null;
+  state.authToken = null;
+  state.authExpiresAt = null;
   save();
   renderAccount();
   toast('Compte déconnecté');
@@ -887,7 +905,7 @@ async function startSubscriptionPayment(){
   try{
     const res = await fetch(PAYMENT_CONFIG.backendBaseUrl.replace(/\/$/, '') + '/api/payments/cinetpay/init', {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers: authHeaders({'Content-Type':'application/json'}),
       body: JSON.stringify(payload)
     });
     const data = await res.json().catch(()=>({}));

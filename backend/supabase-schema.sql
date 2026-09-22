@@ -100,7 +100,27 @@ before update on public.progress
 for each row execute function public.set_updated_at();
 
 -- =========================
--- 4) Abonnements Premium
+-- 4) Sessions sécurisées
+-- =========================
+create table if not exists public.sessions (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid references public.profiles(id) on delete cascade,
+  phone text not null,
+  token_hash text unique not null,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz,
+  expires_at timestamptz not null,
+  revoked_at timestamptz
+);
+
+create index if not exists sessions_token_hash_idx on public.sessions(token_hash);
+create index if not exists sessions_phone_idx on public.sessions(phone);
+create index if not exists sessions_profile_idx on public.sessions(profile_id);
+create index if not exists sessions_expires_idx on public.sessions(expires_at);
+
+-- =========================
+-- 5) Abonnements Premium
 -- =========================
 create table if not exists public.subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -184,27 +204,33 @@ create index if not exists offer_leads_phone_idx on public.offer_leads(phone);
 alter table public.profiles enable row level security;
 alter table public.questions enable row level security;
 alter table public.progress enable row level security;
+alter table public.sessions enable row level security;
 alter table public.subscriptions enable row level security;
 alter table public.payments enable row level security;
 alter table public.quiz_attempts enable row level security;
 alter table public.offer_leads enable row level security;
 
--- Questions actives lisibles publiquement.
--- Les questions Premium restent marquées comme premium ; l'application/back-end filtrera l'accès.
+-- Questions gratuites actives lisibles publiquement.
+-- Les questions Premium doivent passer par le backend après vérification de l'abonnement.
 drop policy if exists "Public can read active questions" on public.questions;
-create policy "Public can read active questions"
+drop policy if exists "Public can read free active questions" on public.questions;
+create policy "Public can read free active questions"
 on public.questions
 for select
 to anon, authenticated
-using (is_active = true);
+using (is_active = true and is_premium = false);
 
--- Les visiteurs peuvent laisser leur numéro pour les offres.
+-- Les visiteurs peuvent laisser leur numéro pour les offres au format Burkina Faso.
 drop policy if exists "Public can insert offer leads" on public.offer_leads;
-create policy "Public can insert offer leads"
+drop policy if exists "Public can insert valid offer leads" on public.offer_leads;
+create policy "Public can insert valid offer leads"
 on public.offer_leads
 for insert
 to anon, authenticated
-with check (true);
+with check (
+  phone ~ '^[+]226[0-9]{8}$'
+  and length(coalesce(source, '')) <= 80
+);
 
 -- Les autres tables sensibles seront manipulées par le backend avec SUPABASE_SERVICE_ROLE_KEY.
 -- Ne jamais mettre SUPABASE_SERVICE_ROLE_KEY dans le frontend ou dans GitHub.
