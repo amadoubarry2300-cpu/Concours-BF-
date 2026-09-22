@@ -134,3 +134,8 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout d'un onglet admin **Notifications**.
 - Ajout d'un statut e-mail/SMS sans révéler les secrets.
 - Ajout d'un envoi de test e-mail/SMS réservé à l'administrateur.
+
+
+## 2026-09-22 — Libellé e-mail simplifié
+
+- Le champ d'inscription affiche maintenant **Adresse e-mail** pour accepter Gmail, Yahoo ou toute autre adresse valide.
