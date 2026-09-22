@@ -20,6 +20,8 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || '';
 const SESSION_SECRET = process.env.SESSION_SECRET || SUPABASE_SERVICE_ROLE_KEY || 'dev-session-secret-change-me';
 const SESSION_DAYS = Number(process.env.SESSION_DAYS || 30);
+const LOGIN_MAX_FAILED = Number(process.env.LOGIN_MAX_FAILED || 5);
+const LOGIN_LOCK_MINUTES = Number(process.env.LOGIN_LOCK_MINUTES || 15);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -190,6 +192,64 @@ async function getActiveSubscription(phone){
   if (!sub) return null;
   if (new Date(sub.expiresAt).getTime() <= Date.now()) return null;
   return sub;
+}
+
+function clientIp(req){
+  const xf = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return (xf || req.socket?.remoteAddress || '').slice(0, 80);
+}
+
+function isMissingAuthAttemptsTableError(err){
+  const msg = String(err?.message || err?.details?.message || err?.details?.hint || '');
+  return /auth_attempts|schema cache|relation|does not exist/i.test(msg);
+}
+
+async function recordAuthAttempt(phone, success, reason, req){
+  if (!supabaseReady()) return;
+  try{
+    await supabaseRequest('auth_attempts', {
+      method:'POST',
+      prefer:'return=minimal',
+      body:[{
+        phone,
+        success:Boolean(success),
+        reason:String(reason || '').slice(0, 80),
+        ip:clientIp(req),
+        user_agent:String(req.headers['user-agent'] || '').slice(0, 250)
+      }]
+    });
+  }catch(err){
+    if (isMissingAuthAttemptsTableError(err)) return;
+    throw err;
+  }
+}
+
+async function getPinLockInfo(phone){
+  const fallback = { locked:false, attempts:0, remaining:LOGIN_MAX_FAILED, lockedUntil:null };
+  if (!supabaseReady()) return fallback;
+  const windowStart = new Date(Date.now() - LOGIN_LOCK_MINUTES * 60 * 1000).toISOString();
+  try{
+    const successRows = await supabaseRequest(`auth_attempts?phone=eq.${encodeURIComponent(phone)}&success=eq.true&created_at=gte.${encodeURIComponent(windowStart)}&select=created_at&order=created_at.desc&limit=1`);
+    const lastSuccessAt = Array.isArray(successRows) && successRows[0]?.created_at ? successRows[0].created_at : null;
+    const since = lastSuccessAt || windowStart;
+    const failRows = await supabaseRequest(`auth_attempts?phone=eq.${encodeURIComponent(phone)}&success=eq.false&created_at=gte.${encodeURIComponent(since)}&select=created_at&order=created_at.asc&limit=${LOGIN_MAX_FAILED}`);
+    const attempts = Array.isArray(failRows) ? failRows.length : 0;
+    const remaining = Math.max(0, LOGIN_MAX_FAILED - attempts);
+    let lockedUntil = null;
+    if (attempts >= LOGIN_MAX_FAILED && failRows[0]?.created_at){
+      lockedUntil = new Date(new Date(failRows[0].created_at).getTime() + LOGIN_LOCK_MINUTES * 60 * 1000).toISOString();
+    }
+    return { locked:Boolean(lockedUntil && new Date(lockedUntil).getTime() > Date.now()), attempts, remaining, lockedUntil };
+  }catch(err){
+    if (isMissingAuthAttemptsTableError(err)) return fallback;
+    throw err;
+  }
+}
+
+function lockMessage(info){
+  if (!info?.lockedUntil) return `Trop de tentatives. Réessaie dans ${LOGIN_LOCK_MINUTES} minutes.`;
+  const minutes = Math.max(1, Math.ceil((new Date(info.lockedUntil).getTime() - Date.now()) / 60000));
+  return `Trop de tentatives de PIN. Réessaie dans ${minutes} minute${minutes>1?'s':''}.`;
 }
 
 function hashSessionToken(token){
@@ -364,9 +424,22 @@ app.post('/api/auth/login', async (req, res, next) => {
     if (!phone) return res.status(400).json({ message:'Numéro invalide' });
     if (pin.length < 4) return res.status(400).json({ message:'PIN invalide' });
 
+    const lockBefore = await getPinLockInfo(phone);
+    if (lockBefore.locked) return res.status(429).json({ message:lockMessage(lockBefore), lockedUntil:lockBefore.lockedUntil });
+
     const profile = await getProfile(phone);
-    if (!profile) return res.status(404).json({ message:'Compte introuvable. Crée d’abord un compte.' });
-    if (!verifyPin(pin, profile.pin_hash)) return res.status(401).json({ message:'Code PIN incorrect' });
+    if (!profile){
+      await recordAuthAttempt(phone, false, 'not_found', req);
+      return res.status(404).json({ message:'Compte introuvable. Crée d’abord un compte.' });
+    }
+    if (!verifyPin(pin, profile.pin_hash)){
+      await recordAuthAttempt(phone, false, 'bad_pin', req);
+      const lockAfter = await getPinLockInfo(phone);
+      if (lockAfter.locked) return res.status(429).json({ message:lockMessage(lockAfter), lockedUntil:lockAfter.lockedUntil });
+      return res.status(401).json({ message:`Code PIN incorrect. ${lockAfter.remaining} essai${lockAfter.remaining>1?'s':''} restant${lockAfter.remaining>1?'s':''}.` });
+    }
+
+    await recordAuthAttempt(phone, true, 'login_success', req);
 
     await supabaseRequest(`profiles?phone=eq.${encodeURIComponent(phone)}`, {
       method:'PATCH',

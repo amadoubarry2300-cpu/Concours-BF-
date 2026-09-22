@@ -100,7 +100,23 @@ before update on public.progress
 for each row execute function public.set_updated_at();
 
 -- =========================
--- 4) Sessions sécurisées
+-- 4) Tentatives de connexion PIN
+-- =========================
+create table if not exists public.auth_attempts (
+  id uuid primary key default gen_random_uuid(),
+  phone text not null,
+  success boolean not null default false,
+  reason text,
+  ip text,
+  user_agent text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists auth_attempts_phone_created_idx on public.auth_attempts(phone, created_at desc);
+create index if not exists auth_attempts_success_idx on public.auth_attempts(success);
+
+-- =========================
+-- 5) Sessions sécurisées
 -- =========================
 create table if not exists public.sessions (
   id uuid primary key default gen_random_uuid(),
@@ -120,7 +136,7 @@ create index if not exists sessions_profile_idx on public.sessions(profile_id);
 create index if not exists sessions_expires_idx on public.sessions(expires_at);
 
 -- =========================
--- 5) Abonnements Premium
+-- 6) Abonnements Premium
 -- =========================
 create table if not exists public.subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -204,6 +220,7 @@ create index if not exists offer_leads_phone_idx on public.offer_leads(phone);
 alter table public.profiles enable row level security;
 alter table public.questions enable row level security;
 alter table public.progress enable row level security;
+alter table public.auth_attempts enable row level security;
 alter table public.sessions enable row level security;
 alter table public.subscriptions enable row level security;
 alter table public.payments enable row level security;
