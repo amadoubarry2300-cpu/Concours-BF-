@@ -24,6 +24,7 @@ let authMode = 'register';
 let paywallFeature = null;
 let currentFormFilter = 'Tout';
 let runtimePaymentMessage = '';
+let pendingAvatarData = '';
 
 /* ---------- état persistant ---------- */
 const store = {
@@ -46,11 +47,12 @@ let state = {
   user: store.get('user', null),            // {phone, createdAt, lastLoginAt}
   subscription: store.get('subscription', {status:'free', expiresAt:null}),
   pendingPayment: store.get('pendingPayment', null),
-  selectedProvider: store.get('selectedProvider', 'ORANGE_MONEY')
+  selectedProvider: store.get('selectedProvider', 'ORANGE_MONEY'),
+  profileAvatars: store.get('profileAvatars', {})
 };
 
 function save(){
-  for (const k of ['xp','quizDone','correct','answered','errors','catStats','streak','lastDay','dailyDone','bestScore','phoneSaved','user','subscription','pendingPayment','selectedProvider'])
+  for (const k of ['xp','quizDone','correct','answered','errors','catStats','streak','lastDay','dailyDone','bestScore','phoneSaved','user','subscription','pendingPayment','selectedProvider','profileAvatars'])
     store.set(k, state[k]);
 }
 
@@ -115,6 +117,88 @@ function userInitials(user = state.user){
   if (!parts.length) return '👤';
   if (parts.length === 1) return parts[0].slice(0,2).toUpperCase();
   return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+}
+
+function escapeHtml(value){
+  return String(value || '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+}
+
+function avatarDataForUser(user = state.user){
+  const phone = normalizePhone(user?.phone);
+  return user?.avatarData || (phone && state.profileAvatars?.[phone]) || '';
+}
+
+function saveAvatarForPhone(phone, data){
+  const normalized = normalizePhone(phone);
+  if (!normalized || !data) return;
+  state.profileAvatars = state.profileAvatars || {};
+  state.profileAvatars[normalized] = data;
+  if (state.user && normalizePhone(state.user.phone) === normalized) state.user.avatarData = data;
+  save();
+}
+
+function setAvatarElement(el, user = state.user){
+  if (!el) return;
+  const data = avatarDataForUser(user);
+  el.classList.toggle('has-photo', Boolean(data));
+  if (data) el.innerHTML = `<img src="${data}" alt="Photo de profil">`;
+  else el.textContent = userInitials(user);
+}
+
+function updateAvatarPreview(){
+  const preview = $('#avatarPreview');
+  if (!preview) return;
+  const data = pendingAvatarData || avatarDataForUser();
+  preview.classList.toggle('has-photo', Boolean(data));
+  if (data) preview.innerHTML = `<img src="${data}" alt="Photo de profil">`;
+  else preview.textContent = state.user ? userInitials() : '👤';
+}
+
+function fileToAvatarData(file){
+  return new Promise((resolve, reject)=>{
+    if (!file || !/^image\//.test(file.type || '')) return reject(new Error('Choisis une image'));
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Photo illisible'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Format image non supporté'));
+      img.onload = () => {
+        const size = 320;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2;
+        const sy = (img.height - side) / 2;
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleAvatarPick(input, saveCurrent = false){
+  const file = input?.files?.[0];
+  if (!file) return;
+  try{
+    const data = await fileToAvatarData(file);
+    pendingAvatarData = data;
+    updateAvatarPreview();
+    if (saveCurrent && state.user){
+      saveAvatarForPhone(state.user.phone, data);
+      renderAccount();
+      renderAccountScreen();
+      toast('Photo de profil mise à jour ✅');
+    } else {
+      toast('Photo ajoutée ✅');
+    }
+  }catch(err){
+    toast(err.message || 'Photo impossible à utiliser');
+  }finally{
+    if (input) input.value = '';
+  }
 }
 
 function money(v){ return new Intl.NumberFormat('fr-FR').format(v) + ' FCFA'; }
@@ -185,15 +269,19 @@ function shouldUseLocalFallback(err){
 
 function applyRemoteSession(data, fallbackPhone){
   if (data?.user){
+    const phone = normalizePhone(data.user.phone || fallbackPhone);
+    const avatarData = data.user.avatarData || state.user?.avatarData || (phone && state.profileAvatars?.[phone]) || '';
     state.user = {
       ...state.user,
-      phone: normalizePhone(data.user.phone || fallbackPhone),
+      phone,
       firstName: data.user.firstName || '',
       lastName: data.user.lastName || '',
       displayName: data.user.displayName || '',
+      avatarData,
       createdAt: data.user.createdAt || new Date().toISOString(),
       lastLoginAt: data.user.lastLoginAt || new Date().toISOString()
     };
+    if (avatarData) saveAvatarForPhone(phone, avatarData);
     state.phoneSaved = true;
   }
   if (data?.progress){
@@ -317,8 +405,15 @@ function renderAccount(){
   const name = displayUserName();
   if (chip){
     chip.classList.toggle('premium', isPremium());
-    if (state.user) chip.textContent = '👤 ' + name.split(' ')[0];
-    else chip.textContent = '👤 Connexion';
+    if (state.user){
+      const shortName = (state.user.firstName || name.split(' ')[0] || 'Profil').trim();
+      const avatar = avatarDataForUser()
+        ? `<span class="chip-avatar has-photo"><img src="${avatarDataForUser()}" alt="Profil"></span>`
+        : `<span class="chip-avatar">${escapeHtml(userInitials())}</span>`;
+      chip.innerHTML = `${avatar}<span class="chip-name">${escapeHtml(shortName)}</span>`;
+    } else {
+      chip.innerHTML = '<span class="chip-avatar">👤</span><span class="chip-name">Connexion</span>';
+    }
     chip.title = state.user ? name + ' — Mon compte' : 'Connexion';
   }
 
@@ -332,22 +427,10 @@ function renderAccount(){
   const accountHome = $('#accountHomeCard');
   if (accountHome){
     if (state.user){
-      accountHome.innerHTML = `
-        <div class="auth-home-copy" style="grid-column:1/-1">
-          <div class="account-home-mini">
-            <div class="account-home-avatar">${userInitials()}</div>
-            <div>
-              <div class="premium-kicker">Connecté</div>
-              <h3>Bienvenue, ${name}</h3>
-              <p>${prettyPhone(state.user.phone)} · ${isPremium() ? 'Premium actif' : 'Formule gratuite'}</p>
-            </div>
-          </div>
-          <div class="auth-home-actions" style="margin-top:12px">
-            <button class="btn btn-green" onclick="show('account')">Mon compte</button>
-            <button class="btn btn-ghost" onclick="logoutUser()">Se déconnecter</button>
-          </div>
-        </div>`;
+      accountHome.style.display = 'none';
+      accountHome.innerHTML = '';
     } else {
+      accountHome.style.display = 'grid';
       accountHome.innerHTML = `
         <img src="img/student-portrait.jpg" alt="Espace candidat">
         <div class="auth-home-copy">
@@ -393,7 +476,7 @@ function renderAccountScreen(){
   const name = displayUserName();
   const phone = prettyPhone(state.user.phone);
   const rate = state.answered ? Math.round(state.correct/state.answered*100)+'%' : '—';
-  $('#accountAvatar') && ($('#accountAvatar').textContent = userInitials());
+  setAvatarElement($('#accountAvatar'));
   $('#accountFullName') && ($('#accountFullName').textContent = name);
   $('#accountPhone') && ($('#accountPhone').textContent = '+226 ' + phone);
   const badge = $('#accountPlanBadge');
@@ -609,6 +692,10 @@ function renderLogin(){
   if ($('#authSubmitBtn')) $('#authSubmitBtn').textContent = isRegister ? 'Créer mon compte →' : 'Me connecter →';
   const nameFields = $('#nameFields');
   if (nameFields) nameFields.style.display = isRegister ? 'grid' : 'none';
+  const avatarField = $('#avatarUploadField');
+  if (avatarField) avatarField.style.display = isRegister ? 'block' : 'none';
+  if (!isRegister) pendingAvatarData = '';
+  updateAvatarPreview();
   const firstName = $('#firstName');
   const lastName = $('#lastName');
   const phoneInput = $('#authPhone');
@@ -627,6 +714,7 @@ async function loginUser(){
   const pin = String($('#authPin')?.value || '').replace(/\D/g, '');
   const firstName = ($('#firstName')?.value || '').trim();
   const lastName = ($('#lastName')?.value || '').trim();
+  const avatarData = isRegister ? (pendingAvatarData || '') : '';
 
   if (isRegister){
     if (firstName.length < 2){ toast('Entre ton prénom'); return; }
@@ -639,8 +727,10 @@ async function loginUser(){
   setButtonLoading(btn, true, isRegister ? 'Création...' : 'Connexion...');
   try{
     const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-    const data = await apiPost(endpoint, { phone: fullPhone(phone), pin, firstName, lastName });
+    const data = await apiPost(endpoint, { phone: fullPhone(phone), pin, firstName, lastName, avatarData });
     applyRemoteSession(data, phone);
+    if (avatarData && state.user) saveAvatarForPhone(state.user.phone, avatarData);
+    pendingAvatarData = '';
     renderAccount();
     toast(isRegister ? 'Compte créé et sauvegardé ✅' : 'Connexion réussie ✅');
     setButtonLoading(btn, false);
@@ -671,11 +761,14 @@ async function loginUser(){
     firstName: isRegister ? firstName : (previous.firstName || ''),
     lastName: isRegister ? lastName : (previous.lastName || ''),
     displayName: isRegister ? `${firstName} ${lastName}`.trim() : (previous.displayName || ''),
+    avatarData: avatarData || previous.avatarData || (phone && state.profileAvatars?.[phone]) || '',
     createdAt,
     lastLoginAt:new Date().toISOString()
   };
   state.phoneSaved = true;
+  if (state.user.avatarData) saveAvatarForPhone(phone, state.user.avatarData);
   save();
+  pendingAvatarData = '';
   renderAccount();
   toast((isRegister ? 'Compte créé' : 'Connexion réussie') + ' en mode local ✅');
   setButtonLoading(btn, false);

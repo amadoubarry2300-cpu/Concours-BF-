@@ -341,6 +341,17 @@
         <button class="auth-tab on" id="registerTab" onclick="setAuthMode('register')">Inscription</button>
         <button class="auth-tab" id="loginTab" onclick="setAuthMode('login')">Connexion</button>
       </div>
+      <div class="avatar-upload" id="avatarUploadField">
+        <label class="field-label">Photo de profil <span>(facultatif)</span></label>
+        <div class="avatar-upload-row">
+          <label class="avatar-preview" id="avatarPreview" for="avatarInput">👤</label>
+          <div class="avatar-upload-copy">
+            <button type="button" class="btn btn-ghost" onclick="document.getElementById('avatarInput').click()">Ajouter une photo</button>
+            <small>Elle s’affichera en haut, sur ton profil candidat.</small>
+          </div>
+          <input type="file" id="avatarInput" accept="image/*" onchange="handleAvatarPick(this)" hidden>
+        </div>
+      </div>
       <div class="name-grid" id="nameFields">
         <div>
           <label class="field-label" for="firstName">Prénom</label>
@@ -380,6 +391,10 @@
         </div>
         <span class="account-plan" id="accountPlanBadge">Gratuit</span>
       </div>
+      <label class="btn btn-ghost btn-block profile-photo-change">
+        📷 Changer ma photo
+        <input type="file" accept="image/*" onchange="handleAvatarPick(this, true)" hidden>
+      </label>
 
       <div class="account-stats-grid">
         <div class="account-stat"><b id="accountXp">0</b><span>XP</span></div>

@@ -22,12 +22,16 @@ create table if not exists public.profiles (
   first_name text,
   last_name text,
   display_name text,
+  avatar_data text,
   pin_hash text,
   role text not null default 'student' check (role in ('student','admin')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   last_login_at timestamptz
 );
+
+-- Migration douce si la table profiles existait déjà avant l'ajout de la photo de profil.
+alter table public.profiles add column if not exists avatar_data text;
 
 create index if not exists profiles_phone_idx on public.profiles(phone);
 

@@ -198,6 +198,34 @@ function requireCinetPayConfig(){
   }
 }
 
+function isMissingAvatarColumnError(err){
+  const msg = String(err?.message || err?.details?.message || err?.details?.hint || '');
+  return /avatar_data|schema cache|column/i.test(msg);
+}
+
+function cleanAvatarData(value){
+  const v = String(value || '');
+  if (!v) return '';
+  if (!/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/i.test(v)) return '';
+  return v.length <= 600000 ? v : '';
+}
+
+async function saveProfileAvatar(phone, avatarData){
+  const clean = cleanAvatarData(avatarData);
+  if (!clean || !supabaseReady()) return null;
+  try{
+    const rows = await supabaseRequest(`profiles?phone=eq.${encodeURIComponent(phone)}&select=*`, {
+      method:'PATCH',
+      prefer:'return=representation',
+      body:{ avatar_data: clean }
+    });
+    return Array.isArray(rows) ? rows[0] || null : null;
+  }catch(err){
+    if (isMissingAvatarColumnError(err)) return null;
+    throw err;
+  }
+}
+
 function safeProfile(row){
   if (!row) return null;
   return {
@@ -206,6 +234,7 @@ function safeProfile(row){
     firstName: row.first_name || '',
     lastName: row.last_name || '',
     displayName: row.display_name || '',
+    avatarData: row.avatar_data || '',
     createdAt: row.created_at,
     lastLoginAt: row.last_login_at
   };
@@ -226,6 +255,7 @@ app.post('/api/auth/register', async (req, res, next) => {
     const firstName = String(req.body?.firstName || '').trim();
     const lastName = String(req.body?.lastName || '').trim();
     const pin = String(req.body?.pin || '').replace(/\D/g, '');
+    const avatarData = cleanAvatarData(req.body?.avatarData);
     if (!phone) return res.status(400).json({ message:'Numéro invalide' });
     if (firstName.length < 2 || lastName.length < 2) return res.status(400).json({ message:'Nom et prénom requis' });
     if (pin.length < 4) return res.status(400).json({ message:'PIN invalide' });
@@ -243,7 +273,12 @@ app.post('/api/auth/register', async (req, res, next) => {
         last_login_at:new Date().toISOString()
       }]
     });
-    const profile = Array.isArray(rows) ? rows[0] : null;
+    let profile = Array.isArray(rows) ? rows[0] : null;
+    if (avatarData){
+      const updated = await saveProfileAvatar(phone, avatarData);
+      if (updated) profile = updated;
+      else if (profile) profile.avatar_data = avatarData; // visible immédiatement même si la migration n'a pas encore été relancée
+    }
     const progress = await ensureProgress(profile);
     const subscription = await getActiveSubscription(phone);
     res.json({ user:safeProfile(profile), progress, subscription });
