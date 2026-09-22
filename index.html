@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=qcm5000-2">
+<link rel="stylesheet" href="css/styles.css?v=qcm5000-3">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
@@ -90,7 +90,7 @@
           <img class="action-photo" src="img/students-group.jpg" alt="Défi du jour"><h3>Défi du jour</h3><p id="dailySub">15 questions · 1 fois/jour</p>
         </button>
         <button class="action-card" onclick="show('quickpick')">
-          <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20, 40, 100 ou toutes les questions</p>
+          <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20, 40, 100 ou 5000 questions</p>
         </button>
         <button class="action-card premium-locked" onclick="show('stats')">
           <span class="lock-tag">Ouvert</span>
@@ -220,7 +220,7 @@
         <button class="pick-li premium-row" onclick="startQuiz({n:20,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 20 questions — ouvert</button>
         <button class="pick-li premium-row" onclick="startQuiz({n:40,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 40 questions — ouvert</button>
         <button class="pick-li premium-row" onclick="startQuiz({n:100,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 100 questions — entraînement</button>
-        <button class="pick-li premium-row" onclick="startQuiz({n:'all',time:0,title:'Banque complète 5000 QCM'})"><span class="em">📚</span> Toutes les questions disponibles</button>
+        <button class="pick-li premium-row" onclick="startQuiz({n:'all',time:0,title:'Banque complète 5000 QCM'})"><span class="em">📚</span> Toutes les 5000 questions disponibles</button>
       </div>
     </div>
   </section>
@@ -597,9 +597,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=qcm5000-2"></script>
+<script src="js/questions.js?v=qcm5000-3"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=qcm5000-2"></script>
+<script src="js/app.js?v=qcm5000-3"></script>
 </body>
 </html>

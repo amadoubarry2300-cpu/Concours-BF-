@@ -362,6 +362,9 @@ function mergeQuestionRows(rows){
 
 async function loadSupabaseQuestions(){
   if (typeof QUESTIONS === 'undefined') return;
+  // Mode actuel : les 5000 QCM validés sont déjà intégrés directement dans l'application.
+  // On ne fusionne pas les anciennes lignes Supabase pour éviter des totaux incohérents.
+  if (ACCESS_OPEN_UNTIL_PAYMENT) return;
 
   // Priorité au backend : il peut servir les questions Premium uniquement aux comptes Premium connectés.
   try{
@@ -1186,14 +1189,13 @@ function renderFormations(filter){
     <div class="form-list">
       ${groups[g].map(([img,name,cat])=>{
         const total = qcmCount(cat);
-        const sessionN = sessionSizeFor(total);
         const free = ACCESS_OPEN_UNTIL_PAYMENT || FREE_CATEGORIES.includes(cat);
         const locked = !free && !hasOpenAccess();
         const safeTitle = name.replace(/'/g,"\'");
         const safeCat = cat.replace(/'/g,"\'");
-        return `<button class="form-item ${locked?'locked':''}" onclick="startQuiz({n:${sessionN},time:0,title:'${safeTitle}',cat:'${safeCat}'})">
+        return `<button class="form-item ${locked?'locked':''}" onclick="startQuiz({n:'all',time:0,title:'${safeTitle}',cat:'${safeCat}'})">
           <img class="form-thumb" src="${img}" alt="${name}">
-          <span class="fi-body"><h4>${name}</h4><p>${formatQcmCount(total)} disponibles · session ${sessionN} QCM · corrections incluses</p></span>
+          <span class="fi-body"><h4>${name}</h4><p>${formatQcmCount(total)} corrigés disponibles · ouvrir toute la banque</p></span>
           <span class="${locked?'lock-dot':'chev'}">${locked?'🔒':'›'}</span>
         </button>`;
       }).join('')}

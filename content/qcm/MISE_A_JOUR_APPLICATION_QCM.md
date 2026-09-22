@@ -54,3 +54,13 @@ L’interface a été ajustée pour ne plus donner l’impression que l’applic
 - Le quiz rapide propose désormais 10, 20, 40, 100 ou toutes les questions disponibles.
 - Le choix de révision propose aussi 100 QCM et « Tous ».
 - Les fichiers JavaScript sont chargés avec une nouvelle version `qcm5000-2` pour éviter que le navigateur garde l’ancien cache.
+
+## Correction définitive affichage « session 40 »
+
+Après retour utilisateur, l’interface a été corrigée à nouveau :
+
+- Les cartes Formation n’affichent plus « session 40 QCM ».
+- Chaque carte affiche maintenant le total réel et le libellé « ouvrir toute la banque ».
+- Un clic sur une formation ouvre toutes les questions de la catégorie, par exemple 1200 en Mathématiques ou 1000 en Psychotechnique.
+- La fusion avec d’anciennes questions Supabase est désactivée pendant le mode accès ouvert pour éviter les totaux incohérents comme 501 au lieu de 500.
+- Nouvelle version de cache : `qcm5000-3`.
