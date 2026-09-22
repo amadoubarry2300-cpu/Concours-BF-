@@ -103,6 +103,20 @@ function fullPhone(phone){
   return p.length === 8 ? '+226'+p : p;
 }
 
+function displayUserName(user = state.user){
+  if (!user) return 'Candidat';
+  const full = (user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim()).trim();
+  return full || prettyPhone(user.phone) || 'Candidat';
+}
+
+function userInitials(user = state.user){
+  const name = displayUserName(user);
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (!parts.length) return '👤';
+  if (parts.length === 1) return parts[0].slice(0,2).toUpperCase();
+  return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+}
+
 function money(v){ return new Intl.NumberFormat('fr-FR').format(v) + ' FCFA'; }
 
 function formatDate(iso){
@@ -251,6 +265,7 @@ async function loadSupabaseQuestions(){
 
 /* ---------- navigation ---------- */
 function show(id){
+  if (id === 'account' && !state.user){ openAuth('login'); return; }
   if ((id === 'stats' || id === 'errors') && !isPremium()){
     openPremium(id === 'stats' ? 'Ma progression détaillée' : 'Mes erreurs');
     return;
@@ -262,7 +277,7 @@ function show(id){
   target.classList.add('active');
   window.scrollTo({top:0});
   $$('.nav-btn').forEach(b=>b.classList.toggle('on', b.dataset.target===id));
-  const navIds = ['home','formations','passport','stats','subscription'];
+  const navIds = ['home','formations','passport','stats','subscription','account'];
   $('#bottomNav').style.display = navIds.includes(id) ? 'flex' : 'none';
 
   if (id==='stats') setTimeout(renderStats, 60);
@@ -271,6 +286,7 @@ function show(id){
   if (id==='errors') renderErrors();
   if (id==='formations') renderFormations(currentFormFilter);
   if (id==='subscription') setTimeout(renderSubscription, 20);
+  if (id==='account') setTimeout(renderAccountScreen, 20);
   if (id==='login') setTimeout(renderLogin, 20);
 }
 
@@ -281,7 +297,7 @@ function openPremium(feature){
 }
 
 function openAccountMenu(){
-  if (state.user) show('subscription');
+  if (state.user) show('account');
   else openAuth('login');
 }
 
@@ -298,11 +314,12 @@ function setAuthMode(mode){
 
 function renderAccount(){
   const chip = $('#accountChip');
+  const name = displayUserName();
   if (chip){
     chip.classList.toggle('premium', isPremium());
-    if (isPremium()) chip.textContent = '⭐ Premium';
-    else if (state.user) chip.textContent = '👤 ' + (state.user.firstName || state.user.displayName || prettyPhone(state.user.phone));
+    if (state.user) chip.textContent = '👤 ' + name.split(' ')[0];
     else chip.textContent = '👤 Connexion';
+    chip.title = state.user ? name + ' — Mon compte' : 'Connexion';
   }
 
   $$('.premium-locked').forEach(card=>{
@@ -311,6 +328,39 @@ function renderAccount(){
   $$('.lock-tag').forEach(tag=>{
     tag.textContent = isPremium() ? 'Ouvert' : 'Premium';
   });
+
+  const accountHome = $('#accountHomeCard');
+  if (accountHome){
+    if (state.user){
+      accountHome.innerHTML = `
+        <div class="auth-home-copy" style="grid-column:1/-1">
+          <div class="account-home-mini">
+            <div class="account-home-avatar">${userInitials()}</div>
+            <div>
+              <div class="premium-kicker">Connecté</div>
+              <h3>Bienvenue, ${name}</h3>
+              <p>${prettyPhone(state.user.phone)} · ${isPremium() ? 'Premium actif' : 'Formule gratuite'}</p>
+            </div>
+          </div>
+          <div class="auth-home-actions" style="margin-top:12px">
+            <button class="btn btn-green" onclick="show('account')">Mon compte</button>
+            <button class="btn btn-ghost" onclick="logoutUser()">Se déconnecter</button>
+          </div>
+        </div>`;
+    } else {
+      accountHome.innerHTML = `
+        <img src="img/student-portrait.jpg" alt="Espace candidat">
+        <div class="auth-home-copy">
+          <div class="premium-kicker">Espace candidat</div>
+          <h3>Inscris-toi ou connecte-toi</h3>
+          <p>Garde ta progression, ton abonnement et tes résultats même si tu changes de téléphone.</p>
+          <div class="auth-home-actions">
+            <button class="btn btn-green" onclick="openAuth('register')">Créer un compte</button>
+            <button class="btn btn-ghost" onclick="openAuth('login')">Connexion</button>
+          </div>
+        </div>`;
+    }
+  }
 
   const premiumHome = $('#premiumHomeCard');
   if (premiumHome){
@@ -337,6 +387,28 @@ function renderAccount(){
     }
   }
 }
+
+function renderAccountScreen(){
+  if (!state.user) return;
+  const name = displayUserName();
+  const phone = prettyPhone(state.user.phone);
+  const rate = state.answered ? Math.round(state.correct/state.answered*100)+'%' : '—';
+  $('#accountAvatar') && ($('#accountAvatar').textContent = userInitials());
+  $('#accountFullName') && ($('#accountFullName').textContent = name);
+  $('#accountPhone') && ($('#accountPhone').textContent = '+226 ' + phone);
+  const badge = $('#accountPlanBadge');
+  if (badge){
+    badge.textContent = isPremium() ? 'Premium' : 'Gratuit';
+    badge.classList.toggle('premium', isPremium());
+  }
+  $('#accountXp') && ($('#accountXp').textContent = state.xp);
+  $('#accountQuiz') && ($('#accountQuiz').textContent = state.quizDone);
+  $('#accountRate') && ($('#accountRate').textContent = rate);
+  $('#accountInfoName') && ($('#accountInfoName').textContent = name);
+  $('#accountInfoPhone') && ($('#accountInfoPhone').textContent = '+226 ' + phone);
+  $('#accountLastLogin') && ($('#accountLastLogin').textContent = state.user.lastLoginAt ? formatDate(state.user.lastLoginAt) : 'Aujourd’hui');
+}
+
 
 /* ---------- streak ---------- */
 (function initStreak(){
@@ -571,7 +643,8 @@ async function loginUser(){
     applyRemoteSession(data, phone);
     renderAccount();
     toast(isRegister ? 'Compte créé et sauvegardé ✅' : 'Connexion réussie ✅');
-    const go = nextAfterLogin || 'home';
+    setButtonLoading(btn, false);
+    const go = (nextAfterLogin && nextAfterLogin !== 'home') ? nextAfterLogin : 'account';
     nextAfterLogin = 'home';
     show(go);
     return;
@@ -606,13 +679,15 @@ async function loginUser(){
   renderAccount();
   toast((isRegister ? 'Compte créé' : 'Connexion réussie') + ' en mode local ✅');
   setButtonLoading(btn, false);
-  const go = nextAfterLogin || 'home';
+  const go = (nextAfterLogin && nextAfterLogin !== 'home') ? nextAfterLogin : 'account';
   nextAfterLogin = 'home';
   show(go);
 }
 
 function logoutUser(){
   state.user = null;
+  state.subscription = {status:'free', expiresAt:null};
+  state.pendingPayment = null;
   save();
   renderAccount();
   toast('Compte déconnecté');

@@ -55,7 +55,7 @@
       <button class="mini-btn" onclick="show('subscription')">Voir</button>
     </div>
 
-    <div class="auth-home-card">
+    <div class="auth-home-card" id="accountHomeCard">
       <img src="img/student-portrait.jpg" alt="Espace candidat">
       <div class="auth-home-copy">
         <div class="premium-kicker">Espace candidat</div>
@@ -361,6 +361,46 @@
       <button class="btn btn-green btn-block" id="authSubmitBtn" onclick="loginUser()">Continuer →</button>
       <button class="btn btn-ghost btn-block" id="logoutBtn" onclick="logoutUser()" style="display:none;margin-top:10px">Déconnecter ce compte</button>
       <p class="fine-print">Version prête pour intégration Supabase/Firebase. Dans l’aperçu actuel, le compte est sauvegardé localement.</p>
+    </div>
+  </section>
+
+  <!-- ================= MON COMPTE ================= -->
+  <section class="screen" id="account">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">Mon compte</h2>
+    </div>
+    <div class="account-page">
+      <div class="account-profile-card">
+        <div class="account-avatar" id="accountAvatar">👤</div>
+        <div class="account-profile-main">
+          <div class="account-kicker">Espace candidat</div>
+          <h2 id="accountFullName">Candidat</h2>
+          <p id="accountPhone">+226 —</p>
+        </div>
+        <span class="account-plan" id="accountPlanBadge">Gratuit</span>
+      </div>
+
+      <div class="account-stats-grid">
+        <div class="account-stat"><b id="accountXp">0</b><span>XP</span></div>
+        <div class="account-stat"><b id="accountQuiz">0</b><span>Quiz</span></div>
+        <div class="account-stat"><b id="accountRate">—</b><span>Réussite</span></div>
+      </div>
+
+      <div class="account-actions-panel">
+        <button class="account-action" onclick="show('subscription')"><span>⭐</span><div><b>Gérer mon abonnement</b><small>Premium, paiement et renouvellement</small></div><em>›</em></button>
+        <button class="account-action" onclick="show('passport')"><span>🛂</span><div><b>Mon passeport</b><small>Niveaux, badges et progression</small></div><em>›</em></button>
+        <button class="account-action" onclick="show('stats')"><span>📊</span><div><b>Mes statistiques</b><small>Scores et progression par matière</small></div><em>›</em></button>
+      </div>
+
+      <div class="account-info-box">
+        <h3>Informations du compte</h3>
+        <div><span>Nom complet</span><b id="accountInfoName">—</b></div>
+        <div><span>Téléphone</span><b id="accountInfoPhone">—</b></div>
+        <div><span>Dernière connexion</span><b id="accountLastLogin">—</b></div>
+      </div>
+
+      <button class="btn btn-red btn-block" onclick="logoutUser()">Se déconnecter</button>
     </div>
   </section>
 
