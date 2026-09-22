@@ -1609,8 +1609,12 @@ app.get('/api/questions', async (req, res, next) => {
     let premiumAllowed = false;
     const sessionData = await getSessionFromRequest(req).catch(() => null);
     if (sessionData?.profile?.phone){
-      const sub = await getActiveSubscription(sessionData.profile.phone);
-      premiumAllowed = Boolean(sub);
+      if (isAdminProfile(sessionData.profile)){
+        premiumAllowed = true;
+      } else {
+        const sub = await getActiveSubscription(sessionData.profile.phone);
+        premiumAllowed = Boolean(sub);
+      }
     }
 
     const localBank = loadLocalQcmBank();

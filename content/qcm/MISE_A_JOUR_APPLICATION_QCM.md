@@ -173,3 +173,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Le compte administrateur est affiché comme **Compte Pro administrateur** avec badge **Pro**.
 - Le compte administrateur bénéficie de l'accès complet sans devoir souscrire à Premium.
 - Le menu du bas remplace **Accès** par **🔓 Accès complet** avec une taille adaptée pour rester lisible.
+
+
+## 2026-09-22 — Accès complet QCM pour admin
+
+- Correction de `/api/questions` : le compte administrateur/pro reçoit maintenant toute la banque 5000 QCM, comme un accès complet.
+- Les matières Premium affichées dans Formations ouvrent bien leurs QCM pour l'administrateur.
