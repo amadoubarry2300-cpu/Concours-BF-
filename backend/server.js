@@ -92,6 +92,11 @@ function publicPhone(phone){
   return String(phone || '').replace(/^\+226/, '');
 }
 
+function customerEmailForPhone(phone){
+  const digits = String(phone || '').replace(/\D/g, '').slice(-8) || '00000000';
+  return `client-${digits}@concoursbf.app`;
+}
+
 function addDays(date, days){
   const d = new Date(date);
   d.setDate(d.getDate() + days);
@@ -367,7 +372,8 @@ async function saspayRequest(pathname, { method='GET', body, idempotencyKey } = 
   let data = null;
   try{ data = text ? JSON.parse(text) : null; }catch{ data = text; }
   if (!res.ok){
-    const err = new Error(data?.message || `Erreur SasPay ${res.status}`);
+    const detail = data?.message || data?.detail || data?.error || data?.code || (data && typeof data === 'object' ? JSON.stringify(data).slice(0, 240) : '');
+    const err = new Error(detail ? `SasPay: ${detail}` : `Erreur SasPay ${res.status}`);
     err.status = res.status;
     err.details = data;
     throw err;
@@ -455,18 +461,25 @@ async function getPaymentRecord(tx){
 
 async function findPaymentBySasPayId(paymentId){
   for (const item of payments.values()){
-    if (item?.raw?.saspay_id === paymentId || item?.raw?.saspay?.id === paymentId) return item;
+    if (item?.raw?.saspay_id === paymentId || item?.raw?.saspay?.id === paymentId || item?.raw?.saspay_session?.transaction?.id === paymentId) return item;
   }
   if (!supabaseReady()) return null;
   const rows = await supabaseRequest('payments?provider=eq.SASPAY&select=*&order=created_at.desc&limit=200');
-  return Array.isArray(rows) ? rows.find(r => r?.raw?.saspay_id === paymentId || r?.raw?.saspay?.id === paymentId) || null : null;
+  return Array.isArray(rows) ? rows.find(r => r?.raw?.saspay_id === paymentId || r?.raw?.saspay?.id === paymentId || r?.raw?.saspay_session?.transaction?.id === paymentId) || null : null;
 }
 
 function paymentIsSuccessful(data){
   const status = String(data?.status || '').toUpperCase();
   const amount = Number(data?.requested_amount || data?.amount || data?.net_amount || 0);
   const currency = String(data?.currency || '').toUpperCase();
-  return status === 'SUCCESS' && amount === PLAN_AMOUNT && currency === 'XOF';
+  return ['SUCCESS', 'PAID'].includes(status) && amount === PLAN_AMOUNT && currency === 'XOF';
+}
+
+function checkoutSessionPaid(session){
+  const status = String(session?.status || '').toUpperCase();
+  const amount = Number(session?.amount || 0);
+  const currency = String(session?.currency || '').toUpperCase();
+  return (status === 'PAID' || Boolean(session?.paid_at)) && amount === PLAN_AMOUNT && currency === 'XOF';
 }
 
 function isMissingAvatarColumnError(err){
@@ -687,7 +700,7 @@ app.post('/api/payments/cinetpay/init', async (req, res, next) => {
       metadata,
       customer_name: 'Client',
       customer_surname: 'Réussite Concours BF',
-      customer_email: `client-${phone.replace(/\D/g,'')}@reussite-concours-bf.local`,
+      customer_email: customerEmailForPhone(phone),
       customer_phone_number: phone,
       customer_address: 'Ouagadougou',
       customer_city: 'Ouagadougou',
@@ -754,34 +767,71 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
 
     const firstName = profile?.first_name || profile?.display_name?.split(' ')?.[0] || 'Client';
     const lastName = profile?.last_name || 'Réussite Concours BF';
+    const customerEmail = customerEmailForPhone(phone);
+    const returnTo = returnUrl || `${APP_ORIGIN}/#subscription`;
     const payload = {
       amount: `${PLAN_AMOUNT}.00`,
       currency: 'XOF',
       country: SASPAY_COUNTRY,
       description: 'Réussite Concours BF Premium - abonnement 30 jours',
       customer: {
-        email: `client-${phone.replace(/\D/g,'')}@reussite-concours-bf.local`,
+        email: customerEmail,
         first_name: firstName,
         last_name: lastName,
-        phone
+        phone: publicPhone(phone)
       },
       network,
-      return_url: returnUrl || `${APP_ORIGIN}/#subscription`,
       metadata: { tx_ref: tx, phone, plan: 'premium_monthly', provider: selectedProvider }
     };
 
-    const data = await saspayRequest('/payments/softpay/', { method:'POST', body:payload, idempotencyKey:tx });
-    const raw = paymentRawWithSasPay({ local_tx_ref:tx, selected_provider:selectedProvider, network }, data);
-    await updatePaymentRecord(tx, { status:data?.status || 'PENDING', raw });
-
-    res.json({
-      ok:true,
-      transactionId: tx,
-      paymentId: data?.id || null,
-      status: data?.status || 'PENDING',
-      paymentUrl: data?.checkout_url || '',
-      message: data?.checkout_url ? 'Redirection paiement SasPay requise' : 'Demande Mobile Money envoyée. Valide sur ton téléphone.'
-    });
+    try{
+      const data = await saspayRequest('/payments/softpay/', { method:'POST', body:payload, idempotencyKey:tx });
+      const raw = paymentRawWithSasPay({ local_tx_ref:tx, selected_provider:selectedProvider, network }, data);
+      await updatePaymentRecord(tx, { status:data?.status || 'PENDING', raw });
+      return res.json({
+        ok:true,
+        mode:'softpay',
+        transactionId: tx,
+        paymentId: data?.id || null,
+        status: data?.status || 'PENDING',
+        paymentUrl: data?.checkout_url || '',
+        message: data?.checkout_url ? 'Redirection paiement SasPay requise' : 'Demande Mobile Money envoyée. Valide sur ton téléphone.'
+      });
+    }catch(err){
+      // Si le push direct échoue côté opérateur ou format, on bascule sur le checkout hébergé SasPay.
+      // Le client choisit alors lui-même son réseau et saisit son numéro sur une page SasPay.
+      if (err.status !== 422) throw err;
+      const sessionPayload = {
+        amount: `${PLAN_AMOUNT}.00`,
+        currency: 'XOF',
+        description: 'Réussite Concours BF Premium - abonnement 30 jours',
+        country: SASPAY_COUNTRY,
+        customer_email: customerEmail,
+        customer_name: `${firstName} ${lastName}`.trim(),
+        customer_phone: publicPhone(phone),
+        return_url: returnTo,
+        metadata: { tx_ref: tx, phone, plan: 'premium_monthly', provider: selectedProvider, softpay_error: err.message }
+      };
+      const session = await saspayRequest('/checkout-sessions/', { method:'POST', body:sessionPayload });
+      const raw = {
+        local_tx_ref:tx,
+        selected_provider:selectedProvider,
+        network,
+        saspay_session_id:session?.id,
+        saspay_session:session,
+        softpay_error:err.message
+      };
+      await updatePaymentRecord(tx, { status:session?.status || 'PENDING', raw });
+      return res.json({
+        ok:true,
+        mode:'checkout',
+        transactionId: tx,
+        sessionId: session?.id || null,
+        status: session?.status || 'PENDING',
+        paymentUrl: session?.checkout_url || '',
+        message: 'Redirection vers la page SasPay pour finaliser le paiement.'
+      });
+    }
   }catch(err){ next(err); }
 });
 
@@ -792,18 +842,35 @@ app.get('/api/payments/saspay/status', requireSession, async (req, res, next) =>
     if (!tx) return res.status(400).json({ message:'Référence paiement manquante' });
     const record = await getPaymentRecord(tx);
     if (!record || normalizePhone(record.phone) !== req.phone) return res.status(404).json({ message:'Paiement introuvable' });
-    const paymentId = String(req.query.paymentId || record?.raw?.saspay_id || record?.raw?.saspay?.id || '').trim();
-    if (!paymentId) return res.status(400).json({ message:'Identifiant SasPay manquant' });
+    const paymentId = String(req.query.paymentId || record?.raw?.saspay_id || record?.raw?.saspay?.id || record?.raw?.saspay_session?.transaction?.id || '').trim();
+    const sessionId = String(req.query.sessionId || record?.raw?.saspay_session_id || record?.raw?.saspay_session?.id || '').trim();
 
-    const verified = await saspayRequest(`/payments/${encodeURIComponent(paymentId)}/verify/`);
-    const raw = paymentRawWithSasPay(record.raw, verified);
-    if (paymentIsSuccessful(verified)){
-      await updatePaymentRecord(tx, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
-      const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY' });
-      return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY' });
+    if (paymentId){
+      const verified = await saspayRequest(`/payments/${encodeURIComponent(paymentId)}/verify/`);
+      const raw = paymentRawWithSasPay(record.raw, verified);
+      if (paymentIsSuccessful(verified)){
+        await updatePaymentRecord(tx, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
+        const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY' });
+        return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY' });
+      }
+      await updatePaymentRecord(tx, { status:verified?.status || 'PENDING', raw, verified_at:new Date().toISOString() });
+      return res.json({ ok:true, active:false, paymentStatus:verified?.status || 'PENDING', message:'Paiement non confirmé pour le moment.' });
     }
-    await updatePaymentRecord(tx, { status:verified?.status || 'PENDING', raw, verified_at:new Date().toISOString() });
-    res.json({ ok:true, active:false, paymentStatus:verified?.status || 'PENDING', message:'Paiement non confirmé pour le moment.' });
+
+    if (sessionId){
+      const session = await saspayRequest(`/checkout-sessions/${encodeURIComponent(sessionId)}/`);
+      const raw = { ...(record.raw || {}), saspay_session_id:sessionId, saspay_session:session };
+      const transaction = session?.transaction;
+      if (checkoutSessionPaid(session) || paymentIsSuccessful(transaction)){
+        await updatePaymentRecord(tx, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
+        const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY' });
+        return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY' });
+      }
+      await updatePaymentRecord(tx, { status:session?.status || 'PENDING', raw, verified_at:new Date().toISOString() });
+      return res.json({ ok:true, active:false, paymentStatus:session?.status || 'PENDING', message:'Paiement non confirmé pour le moment.' });
+    }
+
+    return res.status(400).json({ message:'Identifiant SasPay manquant' });
   }catch(err){ next(err); }
 });
 

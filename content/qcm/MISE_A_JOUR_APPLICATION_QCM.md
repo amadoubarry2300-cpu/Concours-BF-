@@ -77,3 +77,13 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Montant Premium : 1500 FCFA pour 30 jours.
 - La clé API SasPay doit être stockée dans Vercel comme variable `SASPAY_API_KEY`, jamais dans GitHub.
 - Webhook recommandé : `https://concoursbf-fawn.vercel.app/api/payments/saspay/webhook` avec event `transaction.success` et secret `SASPAY_WEBHOOK_SECRET`.
+
+
+## Correction SasPay 422
+
+- L’email technique envoyé à SasPay utilise maintenant un domaine valide `concoursbf.app` au lieu d’un domaine local.
+- Le bouton test est désactivé en production.
+- Le message d’intégration affiche maintenant SasPay au lieu de l’ancien texte CinetPay.
+- Si le push direct Mobile Money renvoie une erreur 422, le backend bascule automatiquement vers le checkout hébergé SasPay pour permettre au client de finaliser le paiement.
+- Le bouton « Vérifier mon paiement » sait maintenant vérifier aussi une session checkout SasPay.
+- Nouvelle version cache : `premium-saspay-2`.

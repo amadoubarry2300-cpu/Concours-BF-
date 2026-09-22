@@ -9,7 +9,7 @@ const PAYMENT_CONFIG = window.REUSSITE_CONCOURS_BF_PAYMENT_CONFIG || {
   backendBaseUrl: '',
   // Laisse true pour tester le verrouillage premium dans l'aperçu local.
   // En production, mettre false et activer le backend CinetPay/Ligdicash.
-  demoMode: true
+  demoMode: false
 };
 
 const SUPABASE_CONFIG = window.REUSSITE_CONCOURS_BF_SUPABASE_CONFIG || {
@@ -1007,6 +1007,7 @@ async function startSubscriptionPayment(){
     state.pendingPayment = {
       ref: data.transactionId || txRef,
       paymentId: data.paymentId || null,
+      sessionId: data.sessionId || null,
       amount: PAYMENT_CONFIG.amount,
       currency: PAYMENT_CONFIG.currency,
       provider: state.selectedProvider,
@@ -1039,6 +1040,7 @@ async function checkPaymentStatus(){
     const params = new URLSearchParams({ phone: fullPhone(state.user.phone) });
     if (pending.ref) params.set('transactionId', pending.ref);
     if (pending.paymentId) params.set('paymentId', pending.paymentId);
+    if (pending.sessionId) params.set('sessionId', pending.sessionId);
     const url = pending.ref
       ? paymentApiBase() + '/api/payments/saspay/status?' + params.toString()
       : paymentApiBase() + '/api/subscription/status?phone=' + encodeURIComponent(fullPhone(state.user.phone));

@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=premium-saspay-1">
+<link rel="stylesheet" href="css/styles.css?v=premium-saspay-2">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
@@ -466,7 +466,7 @@
     </div>
 
     <div class="integration-note">
-      <b>Branchement réel :</b> cette page appelle l’endpoint backend <code>/api/payments/cinetpay/init</code>. Il suffira de renseigner les clés CinetPay/Ligdicash et l’URL du serveur dans <code>PAYMENT_CONFIG.backendBaseUrl</code>.
+      <b>SasPay actif :</b> cette page appelle l’endpoint backend <code>/api/payments/saspay/init</code>. Après validation Mobile Money, clique sur <b>Vérifier mon paiement</b> si Premium ne s’active pas automatiquement.
     </div>
     <div style="height:28px"></div>
   </section>
@@ -597,9 +597,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=premium-saspay-1"></script>
+<script src="js/questions.js?v=premium-saspay-2"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=premium-saspay-1"></script>
+<script src="js/app.js?v=premium-saspay-2"></script>
 </body>
 </html>
