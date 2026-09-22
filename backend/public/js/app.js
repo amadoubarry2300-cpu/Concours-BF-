@@ -12,6 +12,12 @@ const PAYMENT_CONFIG = window.REUSSITE_CONCOURS_BF_PAYMENT_CONFIG || {
   demoMode: true
 };
 
+const SUPABASE_CONFIG = window.REUSSITE_CONCOURS_BF_SUPABASE_CONFIG || {
+  url: 'https://scnhrcjhxqzetkrhhong.supabase.co',
+  publishableKey: 'sb_publishable_LluqoYWbpvDSzoFhhZ9lcQ_8dX_UEUT',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjbmhyY2poeHF6ZXRrcmhob25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMjI3NzYsImV4cCI6MjEwNTU5ODc3Nn0.6EtrbUI_crFEJe1tdupzXNRJkq8vcPd7AKrqqu6crVI'
+};
+
 const FREE_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo'];
 let nextAfterLogin = 'home';
 let authMode = 'register';
@@ -142,6 +148,105 @@ function setButtonLoading(btn, loading, label){
     btn.textContent = btn.dataset.label || btn.textContent;
     btn.disabled = false;
   }
+}
+
+async function apiPost(path, body){
+  const res = await fetch(path, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok){
+    const err = new Error(data.message || 'Service indisponible');
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+function shouldUseLocalFallback(err){
+  return err?.status === 404 || err?.status === 503 || err?.name === 'TypeError' || /Failed to fetch|NetworkError|Supabase service_role/i.test(err?.message || '');
+}
+
+function applyRemoteSession(data, fallbackPhone){
+  if (data?.user){
+    state.user = {
+      ...state.user,
+      phone: normalizePhone(data.user.phone || fallbackPhone),
+      firstName: data.user.firstName || '',
+      lastName: data.user.lastName || '',
+      displayName: data.user.displayName || '',
+      createdAt: data.user.createdAt || new Date().toISOString(),
+      lastLoginAt: data.user.lastLoginAt || new Date().toISOString()
+    };
+    state.phoneSaved = true;
+  }
+  if (data?.progress){
+    state.xp = Number(data.progress.xp || 0);
+    state.quizDone = Number(data.progress.quiz_done || data.progress.quizDone || 0);
+    state.correct = Number(data.progress.correct || 0);
+    state.answered = Number(data.progress.answered || 0);
+    state.errors = data.progress.errors || [];
+    state.catStats = data.progress.cat_stats || data.progress.catStats || {};
+    state.streak = Number(data.progress.streak || 0);
+    state.lastDay = data.progress.last_day || data.progress.lastDay || state.lastDay;
+  }
+  if (data?.subscription?.active || data?.subscription?.status === 'premium'){
+    state.subscription = {
+      status:'premium',
+      expiresAt:data.subscription.expiresAt,
+      txRef:data.subscription.txRef,
+      provider:data.subscription.provider
+    };
+  }
+  save();
+}
+
+async function saveProgressRemote(){
+  if (!state.user?.phone) return;
+  try{
+    await apiPost('/api/progress/save', {
+      phone: fullPhone(state.user.phone),
+      progress: {
+        xp: state.xp,
+        quizDone: state.quizDone,
+        correct: state.correct,
+        answered: state.answered,
+        errors: state.errors,
+        catStats: state.catStats,
+        streak: state.streak,
+        lastDay: state.lastDay
+      }
+    });
+  }catch(e){ /* mode local ou backend non configuré */ }
+}
+
+async function loadSupabaseQuestions(){
+  if (!SUPABASE_CONFIG.url || !SUPABASE_CONFIG.anonKey || typeof QUESTIONS === 'undefined') return;
+  try{
+    const url = SUPABASE_CONFIG.url.replace(/\/$/, '') + '/rest/v1/questions?is_active=eq.true&select=category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium';
+    const res = await fetch(url, {
+      headers:{
+        apikey: SUPABASE_CONFIG.anonKey,
+        Authorization: 'Bearer ' + SUPABASE_CONFIG.anonKey
+      }
+    });
+    if (!res.ok) return;
+    const rows = await res.json();
+    if (!Array.isArray(rows) || !rows.length) return;
+    const mapped = rows.map(r=>({
+      c:r.category,
+      level:r.level,
+      q:r.question_text,
+      o:[r.option_a,r.option_b,r.option_c,r.option_d],
+      a:Number(r.correct_answer),
+      e:r.explanation || '',
+      premium: Boolean(r.is_premium)
+    })).filter(q=>q.q && q.o.every(Boolean));
+    const existing = new Set(QUESTIONS.map(q=>q.q));
+    mapped.forEach(q=>{ if (!existing.has(q.q)) QUESTIONS.push(q); });
+  }catch(e){ /* lecture Supabase facultative */ }
 }
 
 /* ---------- navigation ---------- */
@@ -386,6 +491,7 @@ function finishQuiz(timeout){
   if (quiz.daily) state.dailyDone = today();
   if (pct > state.bestScore) state.bestScore = pct;
   save();
+  saveProgressRemote();
 
   $('#resultImg').src = pct>=50 ? 'img/success.jpg' : 'img/study.jpg';
   $('#resultTitle').textContent =
@@ -443,7 +549,7 @@ function renderLogin(){
   if (logoutBtn) logoutBtn.style.display = state.user ? 'flex' : 'none';
 }
 
-function loginUser(){
+async function loginUser(){
   const isRegister = authMode !== 'login';
   const phone = normalizePhone($('#authPhone')?.value);
   const pin = String($('#authPin')?.value || '').replace(/\D/g, '');
@@ -457,11 +563,32 @@ function loginUser(){
   if (phone.length !== 8){ toast('Numéro invalide — 8 chiffres attendus'); return; }
   if (pin.length < 4){ toast('Code PIN : 4 chiffres minimum'); return; }
 
-  if (!isRegister && state.user?.phone === phone && state.user?.pin && state.user.pin !== pin){
-    toast('Code PIN incorrect');
+  const btn = $('#authSubmitBtn');
+  setButtonLoading(btn, true, isRegister ? 'Création...' : 'Connexion...');
+  try{
+    const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
+    const data = await apiPost(endpoint, { phone: fullPhone(phone), pin, firstName, lastName });
+    applyRemoteSession(data, phone);
+    renderAccount();
+    toast(isRegister ? 'Compte créé et sauvegardé ✅' : 'Connexion réussie ✅');
+    const go = nextAfterLogin || 'home';
+    nextAfterLogin = 'home';
+    show(go);
     return;
+  }catch(err){
+    if (!shouldUseLocalFallback(err)){
+      toast(err.message || 'Connexion impossible');
+      setButtonLoading(btn, false);
+      return;
+    }
   }
 
+  // Fallback local pour l'aperçu ou tant que SUPABASE_SERVICE_ROLE_KEY n'est pas configurée dans Vercel.
+  if (!isRegister && state.user?.phone === phone && state.user?.pin && state.user.pin !== pin){
+    toast('Code PIN incorrect');
+    setButtonLoading(btn, false);
+    return;
+  }
   const previous = (!isRegister && state.user?.phone === phone) ? state.user : {};
   const createdAt = previous.createdAt || state.user?.createdAt || new Date().toISOString();
   state.user = {
@@ -477,7 +604,8 @@ function loginUser(){
   state.phoneSaved = true;
   save();
   renderAccount();
-  toast(isRegister ? 'Compte créé ✅' : 'Connexion réussie ✅');
+  toast((isRegister ? 'Compte créé' : 'Connexion réussie') + ' en mode local ✅');
+  setButtonLoading(btn, false);
   const go = nextAfterLogin || 'home';
   nextAfterLogin = 'home';
   show(go);
@@ -805,9 +933,10 @@ function startDaily(){
 /* ---------- modal offre ---------- */
 function openOffer(){ if (!state.phoneSaved && !isPremium()) $('#offerModal').classList.add('show'); }
 function closeOffer(){ $('#offerModal').classList.remove('show'); }
-function submitOffer(){
+async function submitOffer(){
   const v = normalizePhone($('#phoneInput').value.trim());
   if (v.length !== 8){ toast('Numéro invalide — 8 chiffres attendus'); return; }
+  try{ await apiPost('/api/leads/offer', { phone: fullPhone(v), source:'landing_modal' }); }catch(e){}
   state.phoneSaved = true;
   if (!state.user) state.user = {phone:v, createdAt:new Date().toISOString(), lastLoginAt:new Date().toISOString()};
   save();
@@ -829,6 +958,7 @@ window.addEventListener('scroll', ()=>{
 });
 
 document.addEventListener('DOMContentLoaded', ()=>{
+  loadSupabaseQuestions().then(()=>renderFormations(currentFormFilter));
   renderHome();
   renderFormations('Tout');
   renderAccount();
