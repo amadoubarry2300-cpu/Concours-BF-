@@ -6,8 +6,8 @@ Ce guide prépare l’étape d’intégration dans l’application **Réussite C
 
 - Banque complète validée : `content/qcm/qcm_bank_5000_v1.csv`
 - CSV prêt pour Supabase : `content/qcm/qcm_bank_5000_v1_supabase.csv`
-- Questions publiques intégrées au JavaScript : `js/questions.js`
-- Questions publiques dans le miroir backend : `backend/public/js/questions.js`
+- Questions intégrées directement au JavaScript : `js/questions.js` (**5000 QCM**)
+- Questions intégrées dans le miroir backend : `backend/public/js/questions.js` (**5000 QCM**)
 - Import réel Supabase : **non exécuté**
 - Paiement / vente : **non activé**
 
@@ -66,17 +66,22 @@ python3 tools/import_qcm_to_supabase.py \
   --execute
 ```
 
-## Protection des questions Premium
+## Mode actuel dans l’application
 
-Le fichier public `js/questions.js` contient uniquement les questions gratuites :
+À la demande du propriétaire, les **5000 QCM** sont actuellement intégrés directement dans l’application et ouverts à la révision, car la vente et le paiement restent en pause.
 
+Répartition intégrée :
+
+- Mathématiques : 1200
+- Psychotechnique : 1000
+- Français : 900
 - Burkina Faso : 500
 - Histoire-Géo : 500
 - Culture générale : 400
+- SVT : 300
+- Greffier / Droit : 200
 
-Total public embarqué : **1400 questions gratuites**.
-
-Les **3600 questions Premium** ne sont pas exposées dans le JavaScript public. Elles restent dans le CSV complet et devront être servies par le backend après import Supabase, avec vérification du compte Premium si la vente est activée plus tard.
+Le champ technique `premium` reste conservé dans `js/questions.js` pour faciliter une séparation future. Si la vente est réactivée, il faudra repasser en mode protégé : questions gratuites dans le JavaScript public, questions Premium servies par Supabase + backend après vérification.
 
 ## Contrôle après import Supabase
 
@@ -95,4 +100,4 @@ Puis vérifier dans l’application :
 
 ## Note importante
 
-Comme l’utilisateur a demandé de ne pas vendre pour le moment, aucune activation paiement/SasPay n’est faite ici.
+Comme l’utilisateur a demandé de ne pas vendre pour le moment, aucune activation paiement/SasPay n’est faite ici. Les écrans de paiement sont mis en pause côté interface, et les QCM sont ouverts en attendant.

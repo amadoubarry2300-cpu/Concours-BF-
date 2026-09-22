@@ -55,12 +55,13 @@ Banque créée pour **Réussite Concours BF**. Elle regroupe des QCM corrigés a
 
 - `content/qcm/qcm_bank_5000_v1.csv` — banque éditoriale complète des 5000 QCM
 - `content/qcm/qcm_bank_5000_v1_supabase.csv` — CSV prêt pour import Supabase
-- `js/questions.js` — banque publique embarquée, limitée aux 1400 questions gratuites
-- `backend/public/js/questions.js` — miroir public pour le backend/Vercel
+- `js/questions.js` — banque complète embarquée dans l’application : 5000 QCM accessibles en attente de paiement
+- `backend/public/js/questions.js` — miroir complet pour le backend/Vercel
 - `tools/generate_qcm_5000_v1.py` — générateur reproductible
 - `tools/export_qcm_for_supabase.py` — export CSV compatible table `questions`
 - `tools/import_qcm_to_supabase.py` — import Supabase sécurisé, simulation par défaut
-- `tools/generate_public_questions_js.py` — génération du fallback public gratuit
+- `tools/generate_public_questions_js.py` — génération du fallback public gratuit si la vente est réactivée plus tard
+- `tools/generate_app_questions_js.py` — génération de la banque complète actuellement embarquée dans l’application
 - `tools/validate_qcm_bank.py` — validateur qualité CSV
 - `content/qcm/SOURCES.md` — registre des sources
 - `content/qcm/PLAN_5000_QCM.md` — plan de production initial
@@ -84,7 +85,7 @@ Avertissements: 0
 
 ## Intégration locale réalisée
 
-Le fichier public de l’application a été régénéré avec les **1400 questions gratuites** uniquement : Burkina Faso, Histoire-Géo et Culture générale. Les **3600 questions Premium** restent hors JavaScript public et sont prêtes pour un import Supabase sécurisé plus tard.
+Le fichier de questions de l’application a été régénéré avec les **5000 QCM validés**. Tous les QCM sont accessibles dans l’application **en attendant**, car le paiement et la vente restent en pause. Le marqueur technique `is_premium` est conservé dans les données pour permettre de réactiver plus tard une séparation Gratuit/Premium si demandé.
 
 Aucun import Supabase réel n’a été effectué. Aucun paiement n’a été activé.
 

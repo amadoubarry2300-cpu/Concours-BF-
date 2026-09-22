@@ -18,7 +18,9 @@ const SUPABASE_CONFIG = window.REUSSITE_CONCOURS_BF_SUPABASE_CONFIG || {
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjbmhyY2poeHF6ZXRrcmhob25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMjI3NzYsImV4cCI6MjEwNTU5ODc3Nn0.6EtrbUI_crFEJe1tdupzXNRJkq8vcPd7AKrqqu6crVI'
 };
 
+const ACCESS_OPEN_UNTIL_PAYMENT = true; // Paiements en pause : tous les QCM sont ouverts en attendant.
 const FREE_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo'];
+const ALL_QCM_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo', 'Mathématiques', 'Psychotechnique', 'Français', 'SVT', 'Greffier / Droit'];
 let nextAfterLogin = 'home';
 let authMode = 'register';
 let paywallFeature = null;
@@ -220,6 +222,10 @@ function isPremium(){
   return sub.status === 'premium' && sub.expiresAt && new Date(sub.expiresAt).getTime() > Date.now();
 }
 
+function hasOpenAccess(){
+  return ACCESS_OPEN_UNTIL_PAYMENT || isPremium();
+}
+
 function premiumDaysLeft(){
   if (!isPremium()) return 0;
   return Math.max(1, Math.ceil((new Date(state.subscription.expiresAt).getTime() - Date.now()) / 864e5));
@@ -386,7 +392,7 @@ async function loadSupabaseQuestions(){
 /* ---------- navigation ---------- */
 function show(id){
   if (id === 'account' && !state.user){ openAuth('login'); return; }
-  if ((id === 'stats' || id === 'errors') && !isPremium()){
+  if ((id === 'stats' || id === 'errors') && !hasOpenAccess()){
     openPremium(id === 'stats' ? 'Ma progression détaillée' : 'Mes erreurs');
     return;
   }
@@ -450,10 +456,10 @@ function renderAccount(){
   }
 
   $$('.premium-locked').forEach(card=>{
-    card.classList.toggle('is-unlocked', isPremium());
+    card.classList.toggle('is-unlocked', hasOpenAccess());
   });
   $$('.lock-tag').forEach(tag=>{
-    tag.textContent = isPremium() ? 'Ouvert' : 'Premium';
+    tag.textContent = hasOpenAccess() ? 'Ouvert' : 'Premium';
   });
 
   const accountHome = $('#accountHomeCard');
@@ -479,7 +485,17 @@ function renderAccount(){
 
   const premiumHome = $('#premiumHomeCard');
   if (premiumHome){
-    if (isPremium()){
+    if (ACCESS_OPEN_UNTIL_PAYMENT){
+      premiumHome.classList.add('active-premium');
+      premiumHome.innerHTML = `
+        <img class="premium-mini-img" src="img/success.jpg" alt="Accès ouvert">
+        <div class="premium-copy">
+          <div class="premium-kicker">Accès ouvert</div>
+          <h3>5000 QCM corrigés accessibles</h3>
+          <p>Paiement en pause : révise librement en attendant l’activation officielle.</p>
+        </div>
+        <button class="mini-btn" onclick="show('formations')">Réviser</button>`;
+    } else if (isPremium()){
       premiumHome.classList.add('active-premium');
       premiumHome.innerHTML = `
         <img class="premium-mini-img" src="img/success.jpg" alt="Premium actif">
@@ -513,8 +529,8 @@ function renderAccountScreen(){
   $('#accountPhone') && ($('#accountPhone').textContent = '+226 ' + phone);
   const badge = $('#accountPlanBadge');
   if (badge){
-    badge.textContent = isPremium() ? 'Premium' : 'Gratuit';
-    badge.classList.toggle('premium', isPremium());
+    badge.textContent = ACCESS_OPEN_UNTIL_PAYMENT ? 'Accès ouvert' : (isPremium() ? 'Premium' : 'Gratuit');
+    badge.classList.toggle('premium', hasOpenAccess());
   }
   $('#accountXp') && ($('#accountXp').textContent = state.xp);
   $('#accountQuiz') && ($('#accountQuiz').textContent = state.quizDone);
@@ -547,6 +563,7 @@ function bumpStreak(){
 let quiz = null;
 
 function premiumLockForQuiz(opts){
+  if (ACCESS_OPEN_UNTIL_PAYMENT) return null;
   if (!opts || opts.free || opts.daily) return null;
   if (opts.errorsMode) return 'Révision de tes erreurs';
   if (opts.title === 'Examen blanc') return 'Examen blanc chronométré';
@@ -558,7 +575,7 @@ function premiumLockForQuiz(opts){
 function startQuiz(opts){
   opts = opts || {};
   const required = premiumLockForQuiz(opts);
-  if (required && !isPremium()){
+  if (required && !hasOpenAccess()){
     openPremium(required);
     return;
   }
@@ -834,6 +851,34 @@ function selectProvider(provider){
 function renderSubscription(){
   renderAccount();
   selectProvider(state.selectedProvider || 'ORANGE_MONEY');
+
+  const payBox = $('#subscription .pay-box');
+  const integrationNote = $('#subscription .integration-note');
+  const planTitle = $('#subscription .plan-card h2');
+  const planText = $('#subscription .plan-card p');
+  const planBadge = $('#subscription .plan-badge');
+  if (ACCESS_OPEN_UNTIL_PAYMENT){
+    if (planBadge) planBadge.textContent = '✅ Accès ouvert';
+    if (planTitle) planTitle.innerHTML = '0 FCFA <span>/ en attendant</span>';
+    if (planText) planText.textContent = 'Les 5000 QCM corrigés sont accessibles pendant que le paiement reste en pause.';
+    if (payBox) payBox.style.display = 'none';
+    if (integrationNote){
+      integrationNote.style.display = 'block';
+      integrationNote.innerHTML = '<b>Paiement en pause :</b> les questions sont ouvertes pour permettre la révision. La vente et Mobile Money seront réactivés plus tard seulement si demandé.';
+    }
+    const status = $('#subStatus');
+    if (status){
+      status.className = 'sub-status active';
+      status.innerHTML = '✅ Accès ouvert actuellement : 5000 QCM corrigés disponibles, sans paiement pour le moment.';
+    }
+    return;
+  } else {
+    if (payBox) payBox.style.display = '';
+    if (integrationNote) integrationNote.style.display = '';
+    if (planBadge) planBadge.textContent = '⭐ Premium';
+    if (planTitle) planTitle.innerHTML = '1 500 FCFA <span>/ mois</span>';
+    if (planText) planText.textContent = 'Pour préparer sérieusement tes examens et concours, sans limite.';
+  }
 
   const subPhone = $('#subPhone');
   if (subPhone && !subPhone.value && state.user?.phone) subPhone.value = prettyPhone(state.user.phone);
@@ -1113,11 +1158,11 @@ function renderFormations(filter){
     <div class="section"><div class="section-head"><h2>${g}</h2></div>
     <div class="form-list">
       ${groups[g].map(([img,name,cat])=>{
-        const free = FREE_CATEGORIES.includes(cat);
-        const locked = !free && !isPremium();
+        const free = ACCESS_OPEN_UNTIL_PAYMENT || FREE_CATEGORIES.includes(cat);
+        const locked = !free && !hasOpenAccess();
         return `<button class="form-item ${locked?'locked':''}" onclick="startQuiz({n:10,time:0,title:'${name.replace(/'/g,"\\'")}',cat:'${cat}'})">
           <img class="form-thumb" src="${img}" alt="${name}">
-          <span class="fi-body"><h4>${name}</h4><p>${free ? '10 questions gratuites · corrections incluses' : (isPremium() ? 'Premium ouvert · corrections incluses' : 'Premium · 1 500 FCFA/mois')}</p></span>
+          <span class="fi-body"><h4>${name}</h4><p>${free ? 'Ouvert · corrections incluses' : (hasOpenAccess() ? 'Ouvert · corrections incluses' : 'Premium · 1 500 FCFA/mois')}</p></span>
           <span class="${locked?'lock-dot':'chev'}">${locked?'🔒':'›'}</span>
         </button>`;
       }).join('')}
@@ -1138,7 +1183,7 @@ function startDaily(){
 }
 
 /* ---------- modal offre ---------- */
-function openOffer(){ if (!state.phoneSaved && !isPremium()) $('#offerModal').classList.add('show'); }
+function openOffer(){ if (!state.phoneSaved && !hasOpenAccess()) $('#offerModal').classList.add('show'); }
 function closeOffer(){ $('#offerModal').classList.remove('show'); }
 async function submitOffer(){
   const v = normalizePhone($('#phoneInput').value.trim());

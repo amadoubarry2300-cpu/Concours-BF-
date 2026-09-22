@@ -48,11 +48,11 @@
     <div class="premium-home" id="premiumHomeCard">
       <div class="premium-icon">⭐</div>
       <div class="premium-copy">
-        <div class="premium-kicker">Réussite Concours BF Premium</div>
-        <h3>Débloque tout pour 1 500 FCFA/mois</h3>
-        <p>Examens blancs, erreurs, statistiques détaillées et matières avancées.</p>
+        <div class="premium-kicker">Accès ouvert</div>
+        <h3>5000 QCM corrigés disponibles</h3>
+        <p>Paiement en pause : révise librement en attendant l’activation officielle.</p>
       </div>
-      <button class="mini-btn" onclick="show('subscription')">Voir</button>
+      <button class="mini-btn" onclick="show('formations')">Réviser</button>
     </div>
 
     <div class="auth-home-card" id="accountHomeCard">
@@ -78,12 +78,12 @@
           <img class="action-photo" src="img/passport.jpg" alt="Passeport de préparation"><h3>Mon passeport</h3><p>Prouve que tu as travaillé</p>
         </button>
         <button class="action-card premium-locked" onclick="show('errors')">
-          <span class="lock-tag">Premium</span>
+          <span class="lock-tag">Ouvert</span>
           <span class="badge-count" id="errCount" style="display:none">0</span>
           <img class="action-photo" src="img/study.jpg" alt="Révision des erreurs"><h3>Mes erreurs</h3><p id="errSub">Aucune pour l'instant</p>
         </button>
         <button class="action-card premium-locked" onclick="startQuiz({n:40,time:2400,title:'Examen blanc'})">
-          <span class="lock-tag">Premium</span>
+          <span class="lock-tag">Ouvert</span>
           <img class="action-photo" src="img/classroom-bf-wide.jpg" alt="Examen blanc"><h3>Examen blanc</h3><p>40 questions · 40 min</p>
         </button>
         <button class="action-card" id="dailyCard" onclick="startDaily()">
@@ -93,7 +93,7 @@
           <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20 ou 40 questions</p>
         </button>
         <button class="action-card premium-locked" onclick="show('stats')">
-          <span class="lock-tag">Premium</span>
+          <span class="lock-tag">Ouvert</span>
           <img class="action-photo" src="img/success.jpg" alt="Progression"><h3>Ma progression</h3><p>Scores et statistiques</p>
         </button>
         <button class="action-card" onclick="show('formations')">
@@ -197,8 +197,8 @@
       <h2 style="font-size:1.05rem">Nombre de questions</h2>
       <div class="pick-grid" id="nGrid" style="margin-top:10px">
         <button class="pick on" onclick="pickN(this,10)">10<small>~10 min</small></button>
-        <button class="pick" onclick="pickN(this,20)">20<small>Premium</small></button>
-        <button class="pick" onclick="pickN(this,40)">40<small>Premium</small></button>
+        <button class="pick" onclick="pickN(this,20)">20<small>Ouvert</small></button>
+        <button class="pick" onclick="pickN(this,40)">40<small>Ouvert</small></button>
       </div>
       <button class="btn btn-green btn-block" onclick="startSetupQuiz()">Commencer la révision →</button>
     </div>
@@ -215,8 +215,8 @@
       <p class="sub">Tirage aléatoire dans toutes les matières, sans chrono.</p>
       <div class="pick-list">
         <button class="pick-li" onclick="startQuiz({n:10,time:0,title:'Quiz rapide'})"><span class="em">🟢</span> 10 questions — échauffement</button>
-        <button class="pick-li premium-row" onclick="startQuiz({n:20,time:0,title:'Quiz rapide'})"><span class="em">🔒</span> 20 questions — Premium</button>
-        <button class="pick-li premium-row" onclick="startQuiz({n:40,time:0,title:'Quiz rapide'})"><span class="em">🔒</span> 40 questions — Premium</button>
+        <button class="pick-li premium-row" onclick="startQuiz({n:20,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 20 questions — ouvert</button>
+        <button class="pick-li premium-row" onclick="startQuiz({n:40,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 40 questions — ouvert</button>
       </div>
     </div>
   </section>
@@ -403,7 +403,7 @@
       </div>
 
       <div class="account-actions-panel">
-        <button class="account-action" onclick="show('subscription')"><span>⭐</span><div><b>Gérer mon abonnement</b><small>Premium, paiement et renouvellement</small></div><em>›</em></button>
+        <button class="account-action" onclick="show('subscription')"><span>⭐</span><div><b>Gérer mon accès</b><small>Accès ouvert aux QCM, paiement en pause</small></div><em>›</em></button>
         <button class="account-action" onclick="show('passport')"><span>🛂</span><div><b>Mon passeport</b><small>Niveaux, badges et progression</small></div><em>›</em></button>
         <button class="account-action" onclick="show('stats')"><span>📊</span><div><b>Mes statistiques</b><small>Scores et progression par matière</small></div><em>›</em></button>
       </div>
@@ -423,13 +423,13 @@
   <section class="screen" id="subscription">
     <div class="quiz-top">
       <button class="quiz-close" onclick="show('home')">✕</button>
-      <h2 style="font-size:1.05rem;font-weight:900">Abonnement Premium</h2>
+      <h2 style="font-size:1.05rem;font-weight:900">Accès aux QCM</h2>
     </div>
 
     <div class="plan-card">
-      <div class="plan-badge">⭐ Premium</div>
-      <h2>1 500 FCFA <span>/ mois</span></h2>
-      <p>Pour préparer sérieusement tes examens et concours, sans limite.</p>
+      <div class="plan-badge">✅ Accès ouvert</div>
+      <h2>0 FCFA <span>/ en attendant</span></h2>
+      <p>Les 5000 QCM corrigés sont accessibles pendant que le paiement reste en pause.</p>
       <div class="sub-status" id="subStatus"></div>
     </div>
 
@@ -445,7 +445,7 @@
 
     <div class="pay-box">
       <h3>Paiement Mobile Money</h3>
-      <p class="sub">Choisis ton réseau puis valide le paiement de 1 500 FCFA.</p>
+      <p class="sub">Paiement en pause pour le moment. Cette zone restera prête pour plus tard.</p>
       <div class="provider-grid" id="providerGrid">
         <button class="provider-option on" data-provider="ORANGE_MONEY" onclick="selectProvider('ORANGE_MONEY')"><img src="img/orange-money.png" alt="Orange Money Burkina Faso"><b>Orange Money</b><small>Burkina Faso</small></button>
         <button class="provider-option" data-provider="MOOV_MONEY" onclick="selectProvider('MOOV_MONEY')"><img src="img/moov-money.png" alt="Moov Money Burkina Faso"><b>Moov Money</b><small>Burkina Faso</small></button>
@@ -455,8 +455,8 @@
         <span class="cc">🇧🇫 +226</span>
         <input type="tel" id="subPhone" placeholder="70 00 00 00" maxlength="11" inputmode="numeric">
       </div>
-      <button class="btn btn-green btn-block" id="payBtn" onclick="startSubscriptionPayment()">Payer 1 500 FCFA</button>
-      <button class="btn btn-ghost btn-block" id="checkPayBtn" onclick="checkPaymentStatus()" style="margin-top:10px">Vérifier mon paiement</button>
+      <button class="btn btn-green btn-block" id="payBtn" onclick="startSubscriptionPayment()">Paiement en pause</button>
+      <button class="btn btn-ghost btn-block" id="checkPayBtn" onclick="checkPaymentStatus()" style="margin-top:10px">Vérification paiement en pause</button>
       <button class="btn btn-ghost btn-block" id="demoPayBtn" onclick="simulatePaymentSuccess()" style="margin-top:10px;display:none">Activer 30 jours en mode test</button>
       <div class="payment-result" id="paymentResult"></div>
     </div>
@@ -573,7 +573,7 @@
     <button class="nav-btn" data-target="formations" onclick="show('formations')"><span class="ni">🗂️</span>Formations</button>
     <button class="nav-btn" data-target="passport" onclick="show('passport')"><span class="ni">🛂</span>Passeport</button>
     <button class="nav-btn" data-target="stats" onclick="show('stats')"><span class="ni">📊</span>Progrès</button>
-    <button class="nav-btn" data-target="subscription" onclick="show('subscription')"><span class="ni">⭐</span>Premium</button>
+    <button class="nav-btn" data-target="subscription" onclick="show('subscription')"><span class="ni">⭐</span>Accès</button>
   </nav>
 
   <!-- ===== modal offre ===== -->
