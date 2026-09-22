@@ -580,6 +580,37 @@ app.post('/api/payments/cinetpay/webhook', async (req, res, next) => {
   }catch(err){ next(err); }
 });
 
+function safeQuestion(row){
+  return {
+    id: row.id,
+    category: row.category,
+    level: row.level,
+    question_text: row.question_text,
+    option_a: row.option_a,
+    option_b: row.option_b,
+    option_c: row.option_c,
+    option_d: row.option_d,
+    correct_answer: row.correct_answer,
+    explanation: row.explanation || '',
+    is_premium: Boolean(row.is_premium)
+  };
+}
+
+app.get('/api/questions', async (req, res, next) => {
+  try{
+    if (!supabaseReady()) return res.status(503).json({ message:'Supabase service_role non configuré dans Vercel' });
+    let premiumAllowed = false;
+    const sessionData = await getSessionFromRequest(req).catch(() => null);
+    if (sessionData?.profile?.phone){
+      const sub = await getActiveSubscription(sessionData.profile.phone);
+      premiumAllowed = Boolean(sub);
+    }
+    const premiumFilter = premiumAllowed ? '' : '&is_premium=eq.false';
+    const rows = await supabaseRequest(`questions?is_active=eq.true${premiumFilter}&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium&order=created_at.asc`);
+    res.json({ ok:true, premiumIncluded:premiumAllowed, questions:Array.isArray(rows) ? rows.map(safeQuestion) : [] });
+  }catch(err){ next(err); }
+});
+
 app.get('/api/subscription/status', async (req, res, next) => {
   try{
     const phone = normalizePhone(req.query.phone);

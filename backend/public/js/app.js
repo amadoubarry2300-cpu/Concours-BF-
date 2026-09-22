@@ -339,10 +339,38 @@ async function saveProgressRemote(){
   }catch(e){ /* mode local ou backend non configuré */ }
 }
 
+function mergeQuestionRows(rows){
+  if (typeof QUESTIONS === 'undefined' || !Array.isArray(rows) || !rows.length) return;
+  const mapped = rows.map(r=>({
+    c:r.category,
+    level:r.level,
+    q:r.question_text,
+    o:[r.option_a,r.option_b,r.option_c,r.option_d],
+    a:Number(r.correct_answer),
+    e:r.explanation || '',
+    premium: Boolean(r.is_premium)
+  })).filter(q=>q.q && q.o.every(Boolean));
+  const existing = new Set(QUESTIONS.map(q=>q.q));
+  mapped.forEach(q=>{ if (!existing.has(q.q)) QUESTIONS.push(q); });
+}
+
 async function loadSupabaseQuestions(){
-  if (!SUPABASE_CONFIG.url || !SUPABASE_CONFIG.anonKey || typeof QUESTIONS === 'undefined') return;
+  if (typeof QUESTIONS === 'undefined') return;
+
+  // Priorité au backend : il peut servir les questions Premium uniquement aux comptes Premium connectés.
   try{
-    const url = SUPABASE_CONFIG.url.replace(/\/$/, '') + '/rest/v1/questions?is_active=eq.true&select=category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium';
+    const res = await fetch('/api/questions', { headers: authHeaders({}) });
+    if (res.ok){
+      const data = await res.json().catch(()=>({}));
+      mergeQuestionRows(data.questions || []);
+      return;
+    }
+  }catch(e){ /* fallback Supabase public ci-dessous */ }
+
+  // Fallback public : depuis l'étape sécurité 1, Supabase ne renvoie ici que les questions gratuites.
+  if (!SUPABASE_CONFIG.url || !SUPABASE_CONFIG.anonKey) return;
+  try{
+    const url = SUPABASE_CONFIG.url.replace(/\/$/, '') + '/rest/v1/questions?is_active=eq.true&is_premium=eq.false&select=category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium';
     const res = await fetch(url, {
       headers:{
         apikey: SUPABASE_CONFIG.anonKey,
@@ -351,18 +379,7 @@ async function loadSupabaseQuestions(){
     });
     if (!res.ok) return;
     const rows = await res.json();
-    if (!Array.isArray(rows) || !rows.length) return;
-    const mapped = rows.map(r=>({
-      c:r.category,
-      level:r.level,
-      q:r.question_text,
-      o:[r.option_a,r.option_b,r.option_c,r.option_d],
-      a:Number(r.correct_answer),
-      e:r.explanation || '',
-      premium: Boolean(r.is_premium)
-    })).filter(q=>q.q && q.o.every(Boolean));
-    const existing = new Set(QUESTIONS.map(q=>q.q));
-    mapped.forEach(q=>{ if (!existing.has(q.q)) QUESTIONS.push(q); });
+    mergeQuestionRows(rows);
   }catch(e){ /* lecture Supabase facultative */ }
 }
 
@@ -747,6 +764,7 @@ async function loginUser(){
     if (avatarData && state.user) saveAvatarForPhone(state.user.phone, avatarData);
     pendingAvatarData = '';
     renderAccount();
+    loadSupabaseQuestions().then(()=>renderFormations(currentFormFilter));
     toast(isRegister ? 'Compte créé et sauvegardé ✅' : 'Connexion réussie ✅');
     setButtonLoading(btn, false);
     const go = (nextAfterLogin && nextAfterLogin !== 'home') ? nextAfterLogin : 'account';
@@ -785,6 +803,7 @@ async function loginUser(){
   save();
   pendingAvatarData = '';
   renderAccount();
+  loadSupabaseQuestions().then(()=>renderFormations(currentFormFilter));
   toast((isRegister ? 'Compte créé' : 'Connexion réussie') + ' en mode local ✅');
   setButtonLoading(btn, false);
   const go = (nextAfterLogin && nextAfterLogin !== 'home') ? nextAfterLogin : 'account';
@@ -957,6 +976,7 @@ async function checkPaymentStatus(){
       save();
       runtimePaymentMessage = '<div class="pay-note success">Paiement confirmé ✅ Premium activé.</div>';
       renderAccount();
+      await loadSupabaseQuestions();
       renderFormations(currentFormFilter);
       confetti();
     } else {
@@ -971,7 +991,7 @@ async function checkPaymentStatus(){
   }
 }
 
-function simulatePaymentSuccess(){
+async function simulatePaymentSuccess(){
   if (!state.user){
     nextAfterLogin = 'subscription';
     toast('Connecte-toi d’abord');
@@ -984,6 +1004,7 @@ function simulatePaymentSuccess(){
   paywallFeature = null;
   renderSubscription();
   renderAccount();
+  await loadSupabaseQuestions();
   renderFormations(currentFormFilter);
   toast('Premium activé ✅');
   confetti();
