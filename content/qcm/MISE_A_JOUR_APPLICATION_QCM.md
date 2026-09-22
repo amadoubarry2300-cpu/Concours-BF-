@@ -102,3 +102,12 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Remplacement du message technique « variables SASPAY / Vercel » par une instruction simple pour l’utilisateur.
 - Mentions légales nettoyées pour éviter l’affichage de détails d’hébergement et de code source.
 - Nouvelle version cache : `premium-saspay-4`.
+
+## 2026-09-22 — Espace administrateur de publication
+
+- Ajout d'un écran **Administration** dans l'ancien parcours compte, visible uniquement pour les comptes autorisés.
+- Ajout d'un formulaire simple pour publier un QCM : catégorie, niveau, question, 4 choix, bonne réponse, correction, source/note, Premium ou gratuit, publié ou masqué.
+- Ajout d'une liste des publications admin avec recherche, modification, masquage/publication et suppression.
+- Ajout d'API backend protégées `/api/admin/*` ; accès autorisé par rôle `admin` ou par la variable serveur `ADMIN_PHONES`.
+- Les QCM admin publiés sont fusionnés automatiquement avec la banque existante via `/api/questions`, sans modifier le code à chaque publication.
+- L'interface Premium/SasPay reste inchangée côté utilisateur.

@@ -235,6 +235,10 @@ function hasOpenAccess(){
   return ACCESS_OPEN_UNTIL_PAYMENT || isPremium();
 }
 
+function isAdmin(){
+  return Boolean(state.user?.isAdmin || state.user?.role === 'admin');
+}
+
 function premiumDaysLeft(){
   if (!isPremium()) return 0;
   return Math.max(1, Math.ceil((new Date(state.subscription.expiresAt).getTime() - Date.now()) / 864e5));
@@ -304,6 +308,8 @@ function applyRemoteSession(data, fallbackPhone){
       lastName: data.user.lastName || '',
       displayName: data.user.displayName || '',
       avatarData,
+      role: data.user.role || state.user?.role || 'student',
+      isAdmin: Boolean(data.user.isAdmin),
       createdAt: data.user.createdAt || new Date().toISOString(),
       lastLoginAt: data.user.lastLoginAt || new Date().toISOString()
     };
@@ -403,7 +409,7 @@ async function loadSupabaseQuestions(){
 
 /* ---------- navigation ---------- */
 function show(id){
-  if (id === 'account' && !state.user){ openAuth('login'); return; }
+  if ((id === 'account' || id === 'admin') && !state.user){ openAuth('login'); return; }
   if ((id === 'stats' || id === 'errors') && !hasOpenAccess()){
     openPremium(id === 'stats' ? 'Ma progression détaillée' : 'Mes erreurs');
     return;
@@ -425,6 +431,7 @@ function show(id){
   if (id==='formations') renderFormations(currentFormFilter);
   if (id==='subscription') setTimeout(renderSubscription, 20);
   if (id==='account') setTimeout(renderAccountScreen, 20);
+  if (id==='admin') setTimeout(()=>renderAdminPanel(false), 20);
   if (id==='login') setTimeout(renderLogin, 20);
 }
 
@@ -495,6 +502,9 @@ function renderAccount(){
     }
   }
 
+  const adminBtn = $('#adminPanelBtn');
+  if (adminBtn) adminBtn.style.display = isAdmin() ? 'flex' : 'none';
+
   const premiumHome = $('#premiumHomeCard');
   if (premiumHome){
     if (ACCESS_OPEN_UNTIL_PAYMENT){
@@ -550,6 +560,8 @@ function renderAccountScreen(){
   $('#accountInfoName') && ($('#accountInfoName').textContent = name);
   $('#accountInfoPhone') && ($('#accountInfoPhone').textContent = '+226 ' + phone);
   $('#accountLastLogin') && ($('#accountLastLogin').textContent = state.user.lastLoginAt ? formatDate(state.user.lastLoginAt) : 'Aujourd’hui');
+  const adminBtn = $('#adminPanelBtn');
+  if (adminBtn) adminBtn.style.display = isAdmin() ? 'flex' : 'none';
 }
 
 
@@ -880,6 +892,195 @@ function logoutUser(){
   renderAccount();
   toast('Compte déconnecté');
   show('home');
+}
+
+
+/* ---------- administration ---------- */
+let adminQuestionCache = [];
+let adminTab = 'create';
+
+async function adminFetch(path, options = {}){
+  const res = await fetch(path, {
+    ...options,
+    headers: authHeaders({'Content-Type':'application/json', ...(options.headers || {})})
+  });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw new Error(data.message || 'Action administrateur impossible');
+  return data;
+}
+
+function setAdminTab(tab){
+  adminTab = tab || 'create';
+  $('#adminCreatePane') && ($('#adminCreatePane').style.display = adminTab === 'create' ? 'block' : 'none');
+  $('#adminListPane') && ($('#adminListPane').style.display = adminTab === 'list' ? 'block' : 'none');
+  $('#adminTabCreate')?.classList.toggle('on', adminTab === 'create');
+  $('#adminTabList')?.classList.toggle('on', adminTab === 'list');
+  if (adminTab === 'list') loadAdminQuestions();
+}
+
+async function ensureAdminAccess(){
+  if (!state.user){ openAuth('login'); return false; }
+  if (isAdmin()) return true;
+  try{
+    const data = await adminFetch('/api/admin/me');
+    if (data.user){
+      state.user = {...state.user, ...data.user, isAdmin:Boolean(data.user.isAdmin)};
+      save();
+      renderAccount();
+      return isAdmin();
+    }
+  }catch(err){
+    toast('Accès admin non autorisé');
+    show('account');
+    return false;
+  }
+  return false;
+}
+
+async function renderAdminPanel(force){
+  const ok = await ensureAdminAccess();
+  if (!ok) return;
+  if (force) toast('Espace admin actualisé');
+  try{
+    const summary = await adminFetch('/api/admin/summary');
+    const stats = $('#adminStats');
+    if (stats){
+      stats.innerHTML = `
+        <div><b>${formatQcmCount(summary.localTotal || 0).replace(' QCM','')}</b><span>QCM banque</span></div>
+        <div><b>${summary.customCount || 0}</b><span>Ajouts admin</span></div>
+        <div><b>Actif</b><span>Admin</span></div>`;
+    }
+  }catch(err){
+    $('#adminResult') && ($('#adminResult').innerHTML = `<div class="pay-note error">${err.message}</div>`);
+  }
+  setAdminTab(adminTab || 'create');
+}
+
+function adminFormPayload(){
+  return {
+    id: $('#adminQuestionId')?.value || '',
+    category: $('#adminCategory')?.value || 'Culture générale',
+    level: $('#adminLevel')?.value || 'BEPC',
+    question_text: $('#adminQuestionText')?.value || '',
+    options: [$('#adminOptionA')?.value || '', $('#adminOptionB')?.value || '', $('#adminOptionC')?.value || '', $('#adminOptionD')?.value || ''],
+    correct_answer: Number($('#adminCorrect')?.value || 0),
+    explanation: $('#adminExplanation')?.value || '',
+    source: $('#adminSource')?.value || 'Ajout administrateur',
+    is_premium: Boolean($('#adminPremium')?.checked),
+    is_active: Boolean($('#adminActive')?.checked)
+  };
+}
+
+async function saveAdminQuestion(){
+  const result = $('#adminResult');
+  const btn = $('#adminSaveBtn');
+  setButtonLoading(btn, true, 'Publication...');
+  try{
+    const payload = adminFormPayload();
+    const id = payload.id;
+    const method = id ? 'PATCH' : 'POST';
+    const url = id ? '/api/admin/questions/' + encodeURIComponent(id) : '/api/admin/questions';
+    const data = await adminFetch(url, { method, body:JSON.stringify(payload) });
+    if (result) result.innerHTML = '<div class="pay-note success">QCM enregistré avec succès ✅</div>';
+    resetAdminForm(false);
+    await loadAdminQuestions();
+    await loadSupabaseQuestions();
+    renderFormations(currentFormFilter);
+    toast('QCM publié ✅');
+  }catch(err){
+    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+  }finally{
+    setButtonLoading(btn, false);
+  }
+}
+
+function resetAdminForm(clearMessage = true){
+  ['adminQuestionId','adminQuestionText','adminOptionA','adminOptionB','adminOptionC','adminOptionD','adminExplanation','adminSource'].forEach(id=>{ const el=$('#'+id); if (el) el.value=''; });
+  $('#adminCorrect') && ($('#adminCorrect').value='0');
+  $('#adminPremium') && ($('#adminPremium').checked=false);
+  $('#adminActive') && ($('#adminActive').checked=true);
+  $('#adminFormTitle') && ($('#adminFormTitle').textContent='Nouveau QCM');
+  const saveBtn = $('#adminSaveBtn');
+  if (saveBtn){ saveBtn.textContent='Publier le QCM'; delete saveBtn.dataset.label; }
+  if (clearMessage && $('#adminResult')) $('#adminResult').innerHTML='';
+}
+
+async function loadAdminQuestions(){
+  const wrap = $('#adminQuestionList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty">Chargement des publications...</div>';
+  try{
+    const search = encodeURIComponent($('#adminSearch')?.value || '');
+    const data = await adminFetch('/api/admin/questions?limit=50&search=' + search);
+    adminQuestionCache = data.questions || [];
+    if (!adminQuestionCache.length){
+      wrap.innerHTML = '<div class="empty">Aucun QCM ajouté pour le moment.</div>';
+      return;
+    }
+    wrap.innerHTML = adminQuestionCache.map((q, idx)=>`
+      <div class="admin-q-item">
+        <div class="admin-q-meta">
+          <span>${escapeHtml(q.category || 'Catégorie')}</span>
+          <span>${escapeHtml(q.level || '')}</span>
+          <span class="${q.is_active ? 'active' : ''}">${q.is_active ? 'Publié' : 'Masqué'}</span>
+          ${q.is_premium ? '<span class="premium">Premium</span>' : '<span>Gratuit</span>'}
+        </div>
+        <h4>${escapeHtml(q.question_text || '')}</h4>
+        <div class="admin-q-actions">
+          <button class="edit" onclick="editAdminQuestion(${idx})">Modifier</button>
+          <button class="pause" onclick="toggleAdminQuestion(${idx})">${q.is_active ? 'Masquer' : 'Publier'}</button>
+          <button class="delete" onclick="deleteAdminQuestion(${idx})">Supprimer</button>
+        </div>
+      </div>`).join('');
+  }catch(err){
+    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+  }
+}
+
+function editAdminQuestion(index){
+  const q = adminQuestionCache[index];
+  if (!q) return;
+  setAdminTab('create');
+  $('#adminQuestionId') && ($('#adminQuestionId').value=q.id || '');
+  $('#adminCategory') && ($('#adminCategory').value=q.category || 'Culture générale');
+  $('#adminLevel') && ($('#adminLevel').value=q.level || 'BEPC');
+  $('#adminQuestionText') && ($('#adminQuestionText').value=q.question_text || '');
+  $('#adminOptionA') && ($('#adminOptionA').value=q.option_a || '');
+  $('#adminOptionB') && ($('#adminOptionB').value=q.option_b || '');
+  $('#adminOptionC') && ($('#adminOptionC').value=q.option_c || '');
+  $('#adminOptionD') && ($('#adminOptionD').value=q.option_d || '');
+  $('#adminCorrect') && ($('#adminCorrect').value=String(q.correct_answer ?? 0));
+  $('#adminExplanation') && ($('#adminExplanation').value=q.explanation || '');
+  $('#adminSource') && ($('#adminSource').value=q.source || 'Ajout administrateur');
+  $('#adminPremium') && ($('#adminPremium').checked=Boolean(q.is_premium));
+  $('#adminActive') && ($('#adminActive').checked=Boolean(q.is_active));
+  $('#adminFormTitle') && ($('#adminFormTitle').textContent='Modifier le QCM');
+  $('#adminSaveBtn') && ($('#adminSaveBtn').textContent='Enregistrer les modifications');
+}
+
+async function toggleAdminQuestion(index){
+  const q = adminQuestionCache[index];
+  if (!q) return;
+  try{
+    await adminFetch('/api/admin/questions/' + encodeURIComponent(q.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:!q.is_active}) });
+    await loadAdminQuestions();
+    await loadSupabaseQuestions();
+    renderFormations(currentFormFilter);
+    toast(!q.is_active ? 'QCM publié' : 'QCM masqué');
+  }catch(err){ toast(err.message); }
+}
+
+async function deleteAdminQuestion(index){
+  const q = adminQuestionCache[index];
+  if (!q) return;
+  if (!confirm('Supprimer définitivement ce QCM ?')) return;
+  try{
+    await adminFetch('/api/admin/questions/' + encodeURIComponent(q.id), { method:'DELETE' });
+    await loadAdminQuestions();
+    await loadSupabaseQuestions();
+    renderFormations(currentFormFilter);
+    toast('QCM supprimé');
+  }catch(err){ toast(err.message); }
 }
 
 /* ---------- abonnement & paiements ---------- */

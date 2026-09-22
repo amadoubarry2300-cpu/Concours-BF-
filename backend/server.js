@@ -23,6 +23,10 @@ const SASPAY_NETWORKS = {
   ORANGE_MONEY: process.env.SASPAY_NETWORK_ORANGE || 'orange_bf',
   MOOV_MONEY: process.env.SASPAY_NETWORK_MOOV || 'moov_bf'
 };
+const ADMIN_PHONES = String(process.env.ADMIN_PHONES || '')
+  .split(',')
+  .map(normalizePhone)
+  .filter(Boolean);
 
 // Supabase
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://scnhrcjhxqzetkrhhong.supabase.co';
@@ -337,6 +341,54 @@ async function requireSession(req, res, next){
   }catch(err){ next(err); }
 }
 
+
+function isAdminProfile(profile){
+  if (!profile) return false;
+  return profile.role === 'admin' || ADMIN_PHONES.includes(normalizePhone(profile.phone));
+}
+
+async function requireAdmin(req, res, next){
+  try{
+    const sessionData = await getSessionFromRequest(req);
+    if (!sessionData) return res.status(401).json({ message:'Session expirée. Reconnecte-toi.' });
+    if (!isAdminProfile(sessionData.profile)) return res.status(403).json({ message:'Accès administrateur requis' });
+    req.sessionData = sessionData.session;
+    req.profile = sessionData.profile;
+    req.phone = sessionData.profile.phone;
+    next();
+  }catch(err){ next(err); }
+}
+
+function cleanText(value, max=4000){
+  return String(value || '').trim().slice(0, max);
+}
+
+function adminQuestionPayload(body){
+  const options = Array.isArray(body?.options) ? body.options : [body?.option_a, body?.option_b, body?.option_c, body?.option_d];
+  const payload = {
+    category: cleanText(body?.category, 80),
+    level: cleanText(body?.level || 'BEPC', 40),
+    question_text: cleanText(body?.question_text || body?.question, 1200),
+    option_a: cleanText(options[0], 500),
+    option_b: cleanText(options[1], 500),
+    option_c: cleanText(options[2], 500),
+    option_d: cleanText(options[3], 500),
+    correct_answer: Number(body?.correct_answer),
+    explanation: cleanText(body?.explanation, 3000),
+    is_premium: Boolean(body?.is_premium),
+    is_active: body?.is_active === undefined ? true : Boolean(body?.is_active),
+    source: cleanText(body?.source || 'Ajout administrateur', 500)
+  };
+  if (!payload.category) throw Object.assign(new Error('Catégorie requise'), { status:400 });
+  if (payload.question_text.length < 8) throw Object.assign(new Error('Question trop courte'), { status:400 });
+  const opts = [payload.option_a, payload.option_b, payload.option_c, payload.option_d];
+  if (opts.some(o => !o)) throw Object.assign(new Error('Les 4 options sont obligatoires'), { status:400 });
+  if (new Set(opts.map(o => o.toLowerCase())).size !== 4) throw Object.assign(new Error('Les options doivent être différentes'), { status:400 });
+  if (!Number.isInteger(payload.correct_answer) || payload.correct_answer < 0 || payload.correct_answer > 3) throw Object.assign(new Error('Bonne réponse invalide'), { status:400 });
+  if (payload.explanation.length < 15) throw Object.assign(new Error('Explication trop courte'), { status:400 });
+  return payload;
+}
+
 function requireCinetPayConfig(){
   if (!CINETPAY_APIKEY || !CINETPAY_SITE_ID){
     const err = new Error('CinetPay non configuré: ajoutez CINETPAY_APIKEY et CINETPAY_SITE_ID dans Vercel');
@@ -543,6 +595,8 @@ function safeProfile(row){
     lastName: row.last_name || '',
     displayName: row.display_name || '',
     avatarData: row.avatar_data || '',
+    role: row.role || 'student',
+    isAdmin: isAdminProfile(row),
     createdAt: row.created_at,
     lastLoginAt: row.last_login_at
   };
@@ -934,6 +988,84 @@ app.post('/api/payments/saspay/webhook', async (req, res, next) => {
   }catch(err){ next(err); }
 });
 
+
+app.get('/api/admin/me', requireAdmin, async (req, res) => {
+  res.json({ ok:true, user:safeProfile(req.profile) });
+});
+
+app.get('/api/admin/summary', requireAdmin, async (_req, res, next) => {
+  try{
+    const localBank = loadLocalQcmBank();
+    const localCounts = localBank.reduce((acc, q) => { acc[q.category] = (acc[q.category] || 0) + 1; return acc; }, {});
+    let customCount = 0;
+    if (supabaseReady()){
+      const rows = await supabaseRequest('questions?select=id&limit=10000').catch(()=>[]);
+      customCount = Array.isArray(rows) ? rows.length : 0;
+    }
+    res.json({ ok:true, localTotal:localBank.length, localCounts, customCount });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/admin/questions', requireAdmin, async (req, res, next) => {
+  try{
+    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 30)));
+    const search = cleanText(req.query.search, 120);
+    const category = cleanText(req.query.category, 80);
+    let query = `questions?select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,is_active,source,created_at,updated_at&order=created_at.desc&limit=${limit}`;
+    if (category) query += `&category=eq.${encodeURIComponent(category)}`;
+    if (search) query += `&question_text=ilike.${encodeURIComponent('*' + search + '*')}`;
+    const rows = await supabaseRequest(query);
+    res.json({ ok:true, questions:Array.isArray(rows) ? rows : [] });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/questions', requireAdmin, async (req, res, next) => {
+  try{
+    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    const payload = adminQuestionPayload(req.body || {});
+    const rows = await supabaseRequest('questions?select=*', {
+      method:'POST',
+      prefer:'return=representation',
+      body:[payload]
+    });
+    res.json({ ok:true, question:Array.isArray(rows) ? rows[0] || null : null });
+  }catch(err){ next(err); }
+});
+
+app.patch('/api/admin/questions/:id', requireAdmin, async (req, res, next) => {
+  try{
+    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    const payload = adminQuestionPayload(req.body || {});
+    const rows = await supabaseRequest(`questions?id=eq.${encodeURIComponent(req.params.id)}&select=*`, {
+      method:'PATCH',
+      prefer:'return=representation',
+      body:payload
+    });
+    res.json({ ok:true, question:Array.isArray(rows) ? rows[0] || null : null });
+  }catch(err){ next(err); }
+});
+
+app.patch('/api/admin/questions/:id/status', requireAdmin, async (req, res, next) => {
+  try{
+    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    const rows = await supabaseRequest(`questions?id=eq.${encodeURIComponent(req.params.id)}&select=*`, {
+      method:'PATCH',
+      prefer:'return=representation',
+      body:{ is_active:Boolean(req.body?.is_active) }
+    });
+    res.json({ ok:true, question:Array.isArray(rows) ? rows[0] || null : null });
+  }catch(err){ next(err); }
+});
+
+app.delete('/api/admin/questions/:id', requireAdmin, async (req, res, next) => {
+  try{
+    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    await supabaseRequest(`questions?id=eq.${encodeURIComponent(req.params.id)}`, { method:'DELETE', prefer:'return=minimal' });
+    res.json({ ok:true });
+  }catch(err){ next(err); }
+});
+
 function safeQuestion(row){
   return {
     id: row.id,
@@ -962,11 +1094,26 @@ app.get('/api/questions', async (req, res, next) => {
     const localBank = loadLocalQcmBank();
     if (localBank.length){
       const filtered = premiumAllowed ? localBank : localBank.filter(q => !q.is_premium);
+      const questions = filtered.map(safeLocalQuestion);
+      if (supabaseReady()){
+        const premiumFilter = premiumAllowed ? '' : '&is_premium=eq.false';
+        const extraRows = await supabaseRequest(`questions?is_active=eq.true${premiumFilter}&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source&order=created_at.desc`).catch(()=>[]);
+        const seen = new Set(questions.map(q => String(q.question_text || '').toLowerCase().trim()));
+        if (Array.isArray(extraRows)){
+          extraRows.map(safeQuestion).forEach(q => {
+            const key = String(q.question_text || '').toLowerCase().trim();
+            if (key && !seen.has(key)){
+              seen.add(key);
+              questions.push(q);
+            }
+          });
+        }
+      }
       return res.json({
         ok:true,
         source:'local_bank_5000_v1',
         premiumIncluded:premiumAllowed,
-        questions:filtered.map(safeLocalQuestion)
+        questions
       });
     }
 

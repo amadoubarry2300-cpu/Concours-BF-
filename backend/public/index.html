@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=premium-saspay-4">
+<link rel="stylesheet" href="css/styles.css?v=admin-panel-1">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
@@ -407,9 +407,10 @@
       </div>
 
       <div class="account-actions-panel">
-        <button class="account-action" onclick="show('subscription')"><span>⭐</span><div><b>Gérer mon accès</b><small>Accès ouvert aux QCM, paiement en pause</small></div><em>›</em></button>
+        <button class="account-action" onclick="show('subscription')"><span>⭐</span><div><b>Gérer mon accès</b><small>Premium, paiement et renouvellement</small></div><em>›</em></button>
         <button class="account-action" onclick="show('passport')"><span>🛂</span><div><b>Mon passeport</b><small>Niveaux, badges et progression</small></div><em>›</em></button>
         <button class="account-action" onclick="show('stats')"><span>📊</span><div><b>Mes statistiques</b><small>Scores et progression par matière</small></div><em>›</em></button>
+        <button class="account-action" id="adminPanelBtn" onclick="show('admin')" style="display:none"><span>🛠️</span><div><b>Administration</b><small>Publier et gérer les QCM</small></div><em>›</em></button>
       </div>
 
       <div class="account-info-box">
@@ -420,6 +421,109 @@
       </div>
 
       <button class="btn btn-red btn-block" onclick="logoutUser()">Se déconnecter</button>
+    </div>
+  </section>
+
+  <!-- ================= ADMIN PANEL ================= -->
+  <section class="screen" id="admin">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('account')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">Administration</h2>
+    </div>
+    <div class="admin-page">
+      <div class="admin-hero-card">
+        <div>
+          <div class="premium-kicker">Espace administrateur</div>
+          <h2>Publier du contenu sans coder</h2>
+          <p>Ajoute tes propres QCM, active ou désactive les contenus, et prépare les prochaines publications.</p>
+        </div>
+        <button class="mini-btn" onclick="renderAdminPanel(true)">Actualiser</button>
+      </div>
+
+      <div class="admin-stats" id="adminStats">
+        <div><b>—</b><span>QCM banque</span></div>
+        <div><b>—</b><span>Ajouts admin</span></div>
+        <div><b>—</b><span>Statut</span></div>
+      </div>
+
+      <div class="admin-tabs">
+        <button class="chip on" id="adminTabCreate" onclick="setAdminTab('create')">Créer un QCM</button>
+        <button class="chip" id="adminTabList" onclick="setAdminTab('list')">Mes publications</button>
+      </div>
+
+      <div id="adminCreatePane" class="admin-pane">
+        <div class="legal-card admin-card">
+          <h3 id="adminFormTitle">Nouveau QCM</h3>
+          <p class="admin-help">Remplis les champs puis publie. La question apparaîtra automatiquement dans l’application selon son statut gratuit ou Premium.</p>
+          <input type="hidden" id="adminQuestionId">
+
+          <label class="field-label" for="adminCategory">Catégorie</label>
+          <select class="input" id="adminCategory">
+            <option>Burkina Faso</option>
+            <option>Culture générale</option>
+            <option>Histoire-Géo</option>
+            <option>Mathématiques</option>
+            <option>Psychotechnique</option>
+            <option>Français</option>
+            <option>SVT</option>
+            <option>Greffier / Droit</option>
+          </select>
+
+          <label class="field-label" for="adminLevel">Niveau</label>
+          <select class="input" id="adminLevel">
+            <option>BEPC</option>
+            <option>BAC</option>
+            <option>Concours</option>
+            <option>CEP</option>
+            <option>Licence</option>
+          </select>
+
+          <label class="field-label" for="adminQuestionText">Question</label>
+          <textarea class="input admin-textarea" id="adminQuestionText" placeholder="Écris la question ici"></textarea>
+
+          <div class="admin-options-grid">
+            <div><label class="field-label" for="adminOptionA">Option A</label><input class="input" id="adminOptionA" placeholder="Réponse A"></div>
+            <div><label class="field-label" for="adminOptionB">Option B</label><input class="input" id="adminOptionB" placeholder="Réponse B"></div>
+            <div><label class="field-label" for="adminOptionC">Option C</label><input class="input" id="adminOptionC" placeholder="Réponse C"></div>
+            <div><label class="field-label" for="adminOptionD">Option D</label><input class="input" id="adminOptionD" placeholder="Réponse D"></div>
+          </div>
+
+          <label class="field-label" for="adminCorrect">Bonne réponse</label>
+          <select class="input" id="adminCorrect">
+            <option value="0">Option A</option>
+            <option value="1">Option B</option>
+            <option value="2">Option C</option>
+            <option value="3">Option D</option>
+          </select>
+
+          <label class="field-label" for="adminExplanation">Correction détaillée</label>
+          <textarea class="input admin-textarea" id="adminExplanation" placeholder="Explique clairement pourquoi la réponse est correcte"></textarea>
+
+          <label class="field-label" for="adminSource">Source ou note interne</label>
+          <input class="input" id="adminSource" placeholder="Ex : Manuel, arrêté, cours, source officielle...">
+
+          <div class="admin-switch-row">
+            <label><input type="checkbox" id="adminPremium"> Contenu Premium</label>
+            <label><input type="checkbox" id="adminActive" checked> Publié</label>
+          </div>
+
+          <button class="btn btn-green btn-block" id="adminSaveBtn" onclick="saveAdminQuestion()">Publier le QCM</button>
+          <button class="btn btn-ghost btn-block" onclick="resetAdminForm()" style="margin-top:10px">Vider le formulaire</button>
+          <div class="payment-result" id="adminResult"></div>
+        </div>
+      </div>
+
+      <div id="adminListPane" class="admin-pane" style="display:none">
+        <div class="legal-card admin-card">
+          <h3>Publications ajoutées</h3>
+          <p class="admin-help">Recherche, modifie ou désactive les QCM que tu ajoutes depuis cet espace.</p>
+          <div class="admin-search-row">
+            <input class="input" id="adminSearch" placeholder="Rechercher une question...">
+            <button class="btn btn-green" onclick="loadAdminQuestions()">Rechercher</button>
+          </div>
+          <div id="adminQuestionList" class="admin-list"></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -593,9 +697,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=premium-saspay-4"></script>
+<script src="js/questions.js?v=admin-panel-1"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=premium-saspay-4"></script>
+<script src="js/app.js?v=admin-panel-1"></script>
 </body>
 </html>

@@ -30,8 +30,9 @@ create table if not exists public.profiles (
   last_login_at timestamptz
 );
 
--- Migration douce si la table profiles existait déjà avant l'ajout de la photo de profil.
+-- Migrations douces si la table profiles existait déjà avant certains ajouts.
 alter table public.profiles add column if not exists avatar_data text;
+alter table public.profiles add column if not exists role text not null default 'student' check (role in ('student','admin'));
 
 create index if not exists profiles_phone_idx on public.profiles(phone);
 
