@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
@@ -13,6 +14,15 @@ const CINETPAY_APIKEY = process.env.CINETPAY_APIKEY;
 const CINETPAY_SITE_ID = process.env.CINETPAY_SITE_ID;
 const CINETPAY_CURRENCY = process.env.CINETPAY_CURRENCY || 'XOF';
 const PLAN_AMOUNT = 1500;
+const SASPAY_API_KEY = process.env.SASPAY_API_KEY || '';
+const SASPAY_WEBHOOK_SECRET = process.env.SASPAY_WEBHOOK_SECRET || '';
+const SASPAY_BASE_URL = (process.env.SASPAY_BASE_URL || 'https://api.saspay.me/api/v1').replace(/\/$/, '');
+const SASPAY_COUNTRY = process.env.SASPAY_COUNTRY || 'BF';
+const SASPAY_CURRENCY = process.env.SASPAY_CURRENCY || 'XOF';
+const SASPAY_NETWORKS = {
+  ORANGE_MONEY: process.env.SASPAY_NETWORK_ORANGE || 'orange_bf',
+  MOOV_MONEY: process.env.SASPAY_NETWORK_MOOV || 'moov_bf'
+};
 
 // Supabase
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://scnhrcjhxqzetkrhhong.supabase.co';
@@ -26,9 +36,11 @@ const LOGIN_LOCK_MINUTES = Number(process.env.LOGIN_LOCK_MINUTES || 15);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const LOCAL_QCM_BANK_PATH = path.join(__dirname, 'data', 'qcm_bank_5000_v1.json');
+let localQcmBankCache = null;
 
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf.toString('utf8'); } }));
 app.use(express.urlencoded({ extended: true }));
 
 // Si Vercel est configuré avec le dossier backend comme racine,
@@ -328,6 +340,135 @@ function requireCinetPayConfig(){
   }
 }
 
+
+function requireSasPayConfig(){
+  if (!SASPAY_API_KEY){
+    const err = new Error('SasPay non configuré: ajoutez SASPAY_API_KEY dans Vercel');
+    err.status = 503;
+    throw err;
+  }
+}
+
+function saspayNetwork(provider){
+  const key = String(provider || 'ORANGE_MONEY').toUpperCase();
+  return SASPAY_NETWORKS[key] || SASPAY_NETWORKS.ORANGE_MONEY;
+}
+
+async function saspayRequest(pathname, { method='GET', body, idempotencyKey } = {}){
+  requireSasPayConfig();
+  const headers = { Authorization: `Bearer ${SASPAY_API_KEY}`, 'Content-Type': 'application/json' };
+  if (idempotencyKey) headers['Idempotency-Key'] = String(idempotencyKey).slice(0, 255);
+  const res = await fetch(`${SASPAY_BASE_URL}${pathname}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const text = await res.text();
+  let data = null;
+  try{ data = text ? JSON.parse(text) : null; }catch{ data = text; }
+  if (!res.ok){
+    const err = new Error(data?.message || `Erreur SasPay ${res.status}`);
+    err.status = res.status;
+    err.details = data;
+    throw err;
+  }
+  return data;
+}
+
+function loadLocalQcmBank(){
+  if (localQcmBankCache) return localQcmBankCache;
+  try{
+    const raw = fs.readFileSync(LOCAL_QCM_BANK_PATH, 'utf8');
+    const rows = JSON.parse(raw);
+    localQcmBankCache = Array.isArray(rows) ? rows : [];
+  }catch(err){
+    localQcmBankCache = [];
+  }
+  return localQcmBankCache;
+}
+
+function safeLocalQuestion(row, index){
+  return {
+    id: row.id || `local-qcm-${index}`,
+    category: row.category,
+    level: row.level,
+    question_text: row.question_text,
+    option_a: row.option_a,
+    option_b: row.option_b,
+    option_c: row.option_c,
+    option_d: row.option_d,
+    correct_answer: row.correct_answer,
+    explanation: row.explanation || '',
+    is_premium: Boolean(row.is_premium)
+  };
+}
+
+function saspaySignatureValid(req){
+  if (!SASPAY_WEBHOOK_SECRET) return false;
+  const signature = String(req.get('X-Webhook-Signature') || '').trim();
+  const timestamp = String(req.get('X-Webhook-Timestamp') || '').trim();
+  if (!signature || !timestamp || !req.rawBody) return false;
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return false;
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - ts) > 300) return false;
+  const expected = crypto.createHmac('sha256', SASPAY_WEBHOOK_SECRET).update(`${timestamp}.${req.rawBody}`).digest('hex');
+  const a = Buffer.from(signature, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+
+function paymentRawWithSasPay(raw, data){
+  return { ...(raw || {}), saspay_id: data?.id || raw?.saspay_id, saspay: data || raw?.saspay };
+}
+
+async function createPaymentRecord({ tx, phone, provider, status='INITIATED', raw }){
+  payments.set(tx, { tx, phone, provider, amount: PLAN_AMOUNT, currency:'XOF', status, raw, createdAt:new Date().toISOString() });
+  if (!supabaseReady()) return;
+  const profile = await getProfile(phone);
+  await supabaseRequest('payments?on_conflict=tx_ref', {
+    method:'POST',
+    prefer:'resolution=merge-duplicates,return=minimal',
+    body:[{ profile_id:profile?.id || null, phone, tx_ref:tx, provider, amount:PLAN_AMOUNT, currency:'XOF', status, raw:raw || null }]
+  });
+}
+
+async function updatePaymentRecord(tx, patch){
+  const existing = payments.get(tx) || { tx };
+  payments.set(tx, { ...existing, ...patch });
+  if (!supabaseReady()) return;
+  await supabaseRequest(`payments?tx_ref=eq.${encodeURIComponent(tx)}`, {
+    method:'PATCH',
+    prefer:'return=minimal',
+    body:patch
+  });
+}
+
+async function getPaymentRecord(tx){
+  const existing = payments.get(tx);
+  if (existing) return existing;
+  if (!supabaseReady()) return null;
+  const rows = await supabaseRequest(`payments?tx_ref=eq.${encodeURIComponent(tx)}&select=*`);
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+async function findPaymentBySasPayId(paymentId){
+  for (const item of payments.values()){
+    if (item?.raw?.saspay_id === paymentId || item?.raw?.saspay?.id === paymentId) return item;
+  }
+  if (!supabaseReady()) return null;
+  const rows = await supabaseRequest('payments?provider=eq.SASPAY&select=*&order=created_at.desc&limit=200');
+  return Array.isArray(rows) ? rows.find(r => r?.raw?.saspay_id === paymentId || r?.raw?.saspay?.id === paymentId) || null : null;
+}
+
+function paymentIsSuccessful(data){
+  const status = String(data?.status || '').toUpperCase();
+  const amount = Number(data?.requested_amount || data?.amount || data?.net_amount || 0);
+  const currency = String(data?.currency || '').toUpperCase();
+  return status === 'SUCCESS' && amount === PLAN_AMOUNT && currency === 'XOF';
+}
+
 function isMissingAvatarColumnError(err){
   const msg = String(err?.message || err?.details?.message || err?.details?.hint || '');
   return /avatar_data|schema cache|column/i.test(msg);
@@ -580,6 +721,104 @@ app.post('/api/payments/cinetpay/webhook', async (req, res, next) => {
   }catch(err){ next(err); }
 });
 
+app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => {
+  try{
+    requireSasPayConfig();
+    const { amount, currency, transactionId, provider, customer, returnUrl } = req.body || {};
+    const phone = normalizePhone(customer?.phone || req.phone);
+    const selectedProvider = provider || 'ORANGE_MONEY';
+    const network = saspayNetwork(selectedProvider);
+
+    if (Number(amount) !== PLAN_AMOUNT) return res.status(400).json({ message:'Montant invalide' });
+    if ((currency || SASPAY_CURRENCY) !== 'XOF') return res.status(400).json({ message:'Devise invalide' });
+    if (!phone || phone !== req.phone) return res.status(400).json({ message:'Numéro client invalide' });
+
+    const tx = String(transactionId || `RCBF-${Date.now()}`);
+    const profile = req.profile || await getProfile(phone);
+    await createPaymentRecord({ tx, phone, provider:'SASPAY', status:'INITIATED', raw:{ local_tx_ref:tx, selected_provider:selectedProvider, network } });
+
+    const firstName = profile?.first_name || profile?.display_name?.split(' ')?.[0] || 'Client';
+    const lastName = profile?.last_name || 'Réussite Concours BF';
+    const payload = {
+      amount: `${PLAN_AMOUNT}.00`,
+      currency: 'XOF',
+      country: SASPAY_COUNTRY,
+      description: 'Réussite Concours BF Premium - abonnement 30 jours',
+      customer: {
+        email: `client-${phone.replace(/\D/g,'')}@reussite-concours-bf.local`,
+        first_name: firstName,
+        last_name: lastName,
+        phone
+      },
+      network,
+      return_url: returnUrl || `${APP_ORIGIN}/#subscription`,
+      metadata: { tx_ref: tx, phone, plan: 'premium_monthly', provider: selectedProvider }
+    };
+
+    const data = await saspayRequest('/payments/softpay/', { method:'POST', body:payload, idempotencyKey:tx });
+    const raw = paymentRawWithSasPay({ local_tx_ref:tx, selected_provider:selectedProvider, network }, data);
+    await updatePaymentRecord(tx, { status:data?.status || 'PENDING', raw });
+
+    res.json({
+      ok:true,
+      transactionId: tx,
+      paymentId: data?.id || null,
+      status: data?.status || 'PENDING',
+      paymentUrl: data?.checkout_url || '',
+      message: data?.checkout_url ? 'Redirection paiement SasPay requise' : 'Demande Mobile Money envoyée. Valide sur ton téléphone.'
+    });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/payments/saspay/status', requireSession, async (req, res, next) => {
+  try{
+    requireSasPayConfig();
+    const tx = String(req.query.transactionId || req.query.tx || '').trim();
+    if (!tx) return res.status(400).json({ message:'Référence paiement manquante' });
+    const record = await getPaymentRecord(tx);
+    if (!record || normalizePhone(record.phone) !== req.phone) return res.status(404).json({ message:'Paiement introuvable' });
+    const paymentId = String(req.query.paymentId || record?.raw?.saspay_id || record?.raw?.saspay?.id || '').trim();
+    if (!paymentId) return res.status(400).json({ message:'Identifiant SasPay manquant' });
+
+    const verified = await saspayRequest(`/payments/${encodeURIComponent(paymentId)}/verify/`);
+    const raw = paymentRawWithSasPay(record.raw, verified);
+    if (paymentIsSuccessful(verified)){
+      await updatePaymentRecord(tx, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
+      const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY' });
+      return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY' });
+    }
+    await updatePaymentRecord(tx, { status:verified?.status || 'PENDING', raw, verified_at:new Date().toISOString() });
+    res.json({ ok:true, active:false, paymentStatus:verified?.status || 'PENDING', message:'Paiement non confirmé pour le moment.' });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/payments/saspay/webhook', async (req, res, next) => {
+  try{
+    if (!saspaySignatureValid(req)) return res.status(401).send('invalid signature');
+    const event = req.body?.event || req.get('X-Webhook-Event');
+    const data = req.body?.data || {};
+    const paymentId = data?.id;
+    if (!paymentId) return res.status(400).send('payment id missing');
+    const record = await findPaymentBySasPayId(paymentId);
+    if (!record) return res.status(202).send('unknown payment');
+
+    if (event === 'transaction.success' || String(data.status).toUpperCase() === 'SUCCESS'){
+      const verified = await saspayRequest(`/payments/${encodeURIComponent(paymentId)}/verify/`);
+      const raw = paymentRawWithSasPay(record.raw, verified);
+      if (paymentIsSuccessful(verified)){
+        await updatePaymentRecord(record.tx || record.tx_ref, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
+        await activateSubscription({ phone:record.phone, txRef:record.tx || record.tx_ref, provider:'SASPAY' });
+        return res.send('OK');
+      }
+    }
+
+    if (event === 'transaction.failed'){
+      await updatePaymentRecord(record.tx || record.tx_ref, { status:'FAILED', raw:paymentRawWithSasPay(record.raw, data), verified_at:new Date().toISOString() });
+    }
+    res.send('IGNORED');
+  }catch(err){ next(err); }
+});
+
 function safeQuestion(row){
   return {
     id: row.id,
@@ -598,16 +837,28 @@ function safeQuestion(row){
 
 app.get('/api/questions', async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Supabase service_role non configuré dans Vercel' });
     let premiumAllowed = false;
     const sessionData = await getSessionFromRequest(req).catch(() => null);
     if (sessionData?.profile?.phone){
       const sub = await getActiveSubscription(sessionData.profile.phone);
       premiumAllowed = Boolean(sub);
     }
+
+    const localBank = loadLocalQcmBank();
+    if (localBank.length){
+      const filtered = premiumAllowed ? localBank : localBank.filter(q => !q.is_premium);
+      return res.json({
+        ok:true,
+        source:'local_bank_5000_v1',
+        premiumIncluded:premiumAllowed,
+        questions:filtered.map(safeLocalQuestion)
+      });
+    }
+
+    if (!supabaseReady()) return res.status(503).json({ message:'Supabase service_role non configuré dans Vercel' });
     const premiumFilter = premiumAllowed ? '' : '&is_premium=eq.false';
     const rows = await supabaseRequest(`questions?is_active=eq.true${premiumFilter}&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium&order=created_at.asc`);
-    res.json({ ok:true, premiumIncluded:premiumAllowed, questions:Array.isArray(rows) ? rows.map(safeQuestion) : [] });
+    res.json({ ok:true, source:'supabase', premiumIncluded:premiumAllowed, questions:Array.isArray(rows) ? rows.map(safeQuestion) : [] });
   }catch(err){ next(err); }
 });
 

@@ -18,9 +18,19 @@ const SUPABASE_CONFIG = window.REUSSITE_CONCOURS_BF_SUPABASE_CONFIG || {
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjbmhyY2poeHF6ZXRrcmhob25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMjI3NzYsImV4cCI6MjEwNTU5ODc3Nn0.6EtrbUI_crFEJe1tdupzXNRJkq8vcPd7AKrqqu6crVI'
 };
 
-const ACCESS_OPEN_UNTIL_PAYMENT = true; // Paiements en pause : tous les QCM sont ouverts en attendant.
+const ACCESS_OPEN_UNTIL_PAYMENT = false; // Premium réactivé : seules les catégories gratuites restent ouvertes sans paiement.
 const FREE_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo'];
 const ALL_QCM_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo', 'Mathématiques', 'Psychotechnique', 'Français', 'SVT', 'Greffier / Droit'];
+const CATEGORY_TOTALS = {
+  'Mathématiques': 1200,
+  'Psychotechnique': 1000,
+  'Français': 900,
+  'Burkina Faso': 500,
+  'Histoire-Géo': 500,
+  'Culture générale': 400,
+  'SVT': 300,
+  'Greffier / Droit': 200
+};
 let nextAfterLogin = 'home';
 let authMode = 'register';
 let paywallFeature = null;
@@ -570,6 +580,7 @@ function premiumLockForQuiz(opts){
   if (!opts || opts.free || opts.daily) return null;
   if (opts.errorsMode) return 'Révision de tes erreurs';
   if (opts.title === 'Examen blanc') return 'Examen blanc chronométré';
+  if (opts.n === 'all') return 'Banque complète 5000 QCM';
   if (opts.n && opts.n > 10) return opts.n + ' questions';
   if (opts.cat && !FREE_CATEGORIES.includes(opts.cat)) return 'Formation ' + opts.cat;
   return null;
@@ -581,8 +592,9 @@ function questionBank(){
 }
 
 function qcmCount(cat){
+  if (cat && CATEGORY_TOTALS[cat]) return CATEGORY_TOTALS[cat];
   const bank = questionBank();
-  return cat ? bank.filter(q=>q.c === cat).length : bank.length;
+  return cat ? bank.filter(q=>q.c === cat).length : (Object.values(CATEGORY_TOTALS).reduce((a,b)=>a+b, 0) || bank.length);
 }
 
 function formatQcmCount(n){
@@ -940,15 +952,19 @@ function renderSubscription(){
     if (runtimePaymentMessage){
       result.innerHTML = runtimePaymentMessage;
     } else if (!PAYMENT_CONFIG.backendBaseUrl){
-      result.innerHTML = `<div class="pay-note">⚙️ Aperçu local : le verrouillage Premium est fonctionnel. Pour encaisser réellement, configure <b>PAYMENT_CONFIG.backendBaseUrl</b> et les clés marchandes dans le backend.</div>`;
+      result.innerHTML = `<div class="pay-note">⚙️ Paiement SasPay prêt côté application. Si l’initialisation échoue, vérifie les variables SASPAY dans Vercel.</div>`;
     } else {
-      result.innerHTML = '<div class="pay-note">API paiement configurée. Clique sur “Payer” pour lancer la transaction.</div>';
+      result.innerHTML = '<div class="pay-note">Paiement SasPay configuré. Clique sur “Payer” pour recevoir la demande Mobile Money.</div>';
     }
   }
 }
 
 function makeTxRef(){
-  return 'FP-' + Date.now() + '-' + Math.random().toString(36).slice(2,8).toUpperCase();
+  return 'RCBF-' + Date.now() + '-' + Math.random().toString(36).slice(2,8).toUpperCase();
+}
+
+function paymentApiBase(){
+  return (PAYMENT_CONFIG.backendBaseUrl || location.origin).replace(/\/$/, '');
 }
 
 async function startSubscriptionPayment(){
@@ -979,25 +995,8 @@ async function startSubscriptionPayment(){
   const btn = $('#payBtn');
   setButtonLoading(btn, true, 'Initialisation...');
 
-  if (!PAYMENT_CONFIG.backendBaseUrl){
-    state.pendingPayment = {
-      ref: txRef,
-      amount: PAYMENT_CONFIG.amount,
-      currency: PAYMENT_CONFIG.currency,
-      provider: state.selectedProvider,
-      phone,
-      status: 'waiting_backend',
-      createdAt: new Date().toISOString()
-    };
-    save();
-    runtimePaymentMessage = `<div class="pay-note warn">Transaction préparée : <b>${txRef}</b>.<br>Le serveur paiement n’est pas encore relié. Déploie le backend, ajoute tes clés CinetPay/Ligdicash, puis l'utilisateur recevra la demande de paiement sur son téléphone.</div>`;
-    setButtonLoading(btn, false);
-    renderSubscription();
-    return;
-  }
-
   try{
-    const res = await fetch(PAYMENT_CONFIG.backendBaseUrl.replace(/\/$/, '') + '/api/payments/cinetpay/init', {
+    const res = await fetch(paymentApiBase() + '/api/payments/saspay/init', {
       method:'POST',
       headers: authHeaders({'Content-Type':'application/json'}),
       body: JSON.stringify(payload)
@@ -1007,6 +1006,7 @@ async function startSubscriptionPayment(){
 
     state.pendingPayment = {
       ref: data.transactionId || txRef,
+      paymentId: data.paymentId || null,
       amount: PAYMENT_CONFIG.amount,
       currency: PAYMENT_CONFIG.currency,
       provider: state.selectedProvider,
@@ -1020,7 +1020,7 @@ async function startSubscriptionPayment(){
       location.href = data.paymentUrl;
       return;
     }
-    runtimePaymentMessage = `<div class="pay-note success">Paiement lancé. Valide la demande sur ton téléphone puis clique sur “Vérifier mon paiement”. Réf. <b>${state.pendingPayment.ref}</b></div>`;
+    runtimePaymentMessage = `<div class="pay-note success">${data.message || 'Paiement lancé.'}<br>Valide sur ton téléphone puis clique sur “Vérifier mon paiement”. Réf. <b>${state.pendingPayment.ref}</b></div>`;
     renderSubscription();
   }catch(err){
     runtimePaymentMessage = `<div class="pay-note error">${err.message || 'Erreur paiement'}</div>`;
@@ -1032,17 +1032,17 @@ async function startSubscriptionPayment(){
 
 async function checkPaymentStatus(){
   if (!state.user){ nextAfterLogin='subscription'; show('login'); return; }
-  if (!PAYMENT_CONFIG.backendBaseUrl){
-    runtimePaymentMessage = '<div class="pay-note warn">Aucun backend paiement n’est configuré dans cet aperçu. Utilise le bouton “mode test” pour vérifier le verrouillage, ou configure le serveur réel.</div>';
-    renderSubscription();
-    return;
-  }
-
   const btn = $('#checkPayBtn');
   setButtonLoading(btn, true, 'Vérification...');
   try{
-    const url = PAYMENT_CONFIG.backendBaseUrl.replace(/\/$/, '') + '/api/subscription/status?phone=' + encodeURIComponent(fullPhone(state.user.phone));
-    const res = await fetch(url);
+    const pending = state.pendingPayment || {};
+    const params = new URLSearchParams({ phone: fullPhone(state.user.phone) });
+    if (pending.ref) params.set('transactionId', pending.ref);
+    if (pending.paymentId) params.set('paymentId', pending.paymentId);
+    const url = pending.ref
+      ? paymentApiBase() + '/api/payments/saspay/status?' + params.toString()
+      : paymentApiBase() + '/api/subscription/status?phone=' + encodeURIComponent(fullPhone(state.user.phone));
+    const res = await fetch(url, { headers: authHeaders({}) });
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Statut indisponible');
     if (data.active){
@@ -1250,6 +1250,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   setTimeout(openOffer, 15000);
   if (location.hash === '#subscription'){
     show('subscription');
-    if (PAYMENT_CONFIG.backendBaseUrl) setTimeout(checkPaymentStatus, 600);
+    setTimeout(checkPaymentStatus, 600);
   }
 });

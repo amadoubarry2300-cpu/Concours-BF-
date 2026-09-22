@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=qcm5000-3">
+<link rel="stylesheet" href="css/styles.css?v=premium-saspay-1">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
@@ -449,7 +449,7 @@
 
     <div class="pay-box">
       <h3>Paiement Mobile Money</h3>
-      <p class="sub">Paiement en pause pour le moment. Cette zone restera prête pour plus tard.</p>
+      <p class="sub">Choisis ton réseau puis valide le paiement SasPay de 1 500 FCFA.</p>
       <div class="provider-grid" id="providerGrid">
         <button class="provider-option on" data-provider="ORANGE_MONEY" onclick="selectProvider('ORANGE_MONEY')"><img src="img/orange-money.png" alt="Orange Money Burkina Faso"><b>Orange Money</b><small>Burkina Faso</small></button>
         <button class="provider-option" data-provider="MOOV_MONEY" onclick="selectProvider('MOOV_MONEY')"><img src="img/moov-money.png" alt="Moov Money Burkina Faso"><b>Moov Money</b><small>Burkina Faso</small></button>
@@ -459,8 +459,8 @@
         <span class="cc">🇧🇫 +226</span>
         <input type="tel" id="subPhone" placeholder="70 00 00 00" maxlength="11" inputmode="numeric">
       </div>
-      <button class="btn btn-green btn-block" id="payBtn" onclick="startSubscriptionPayment()">Paiement en pause</button>
-      <button class="btn btn-ghost btn-block" id="checkPayBtn" onclick="checkPaymentStatus()" style="margin-top:10px">Vérification paiement en pause</button>
+      <button class="btn btn-green btn-block" id="payBtn" onclick="startSubscriptionPayment()">Payer 1 500 FCFA</button>
+      <button class="btn btn-ghost btn-block" id="checkPayBtn" onclick="checkPaymentStatus()" style="margin-top:10px">Vérifier mon paiement</button>
       <button class="btn btn-ghost btn-block" id="demoPayBtn" onclick="simulatePaymentSuccess()" style="margin-top:10px;display:none">Activer 30 jours en mode test</button>
       <div class="payment-result" id="paymentResult"></div>
     </div>
@@ -597,9 +597,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=qcm5000-3"></script>
+<script src="js/questions.js?v=premium-saspay-1"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=qcm5000-3"></script>
+<script src="js/app.js?v=premium-saspay-1"></script>
 </body>
 </html>

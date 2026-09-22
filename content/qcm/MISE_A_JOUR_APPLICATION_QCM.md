@@ -64,3 +64,16 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Un clic sur une formation ouvre toutes les questions de la catégorie, par exemple 1200 en Mathématiques ou 1000 en Psychotechnique.
 - La fusion avec d’anciennes questions Supabase est désactivée pendant le mode accès ouvert pour éviter les totaux incohérents comme 501 au lieu de 500.
 - Nouvelle version de cache : `qcm5000-3`.
+
+
+## Premium réactivé avec SasPay
+
+- Le mode accès ouvert a été désactivé.
+- Le JavaScript public est revenu aux questions gratuites uniquement : Burkina Faso, Histoire-Géo et Culture générale.
+- La banque complète des 5000 QCM est disponible côté backend dans `backend/data/qcm_bank_5000_v1.json`.
+- Le backend sert les questions Premium uniquement aux comptes ayant un abonnement actif.
+- Paiement SasPay ajouté : softpay Mobile Money Burkina Faso.
+- Réseaux configurés : `orange_bf` pour Orange Money, `moov_bf` pour Moov Money.
+- Montant Premium : 1500 FCFA pour 30 jours.
+- La clé API SasPay doit être stockée dans Vercel comme variable `SASPAY_API_KEY`, jamais dans GitHub.
+- Webhook recommandé : `https://concoursbf-fawn.vercel.app/api/payments/saspay/webhook` avec event `transaction.success` et secret `SASPAY_WEBHOOK_SECRET`.
