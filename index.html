@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=admin-docs-1">
+<link rel="stylesheet" href="css/styles.css?v=notifications-1">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
@@ -379,24 +379,28 @@
       </div>
       <div class="name-grid" id="nameFields">
         <div>
-          <label class="field-label" for="firstName">Prénom</label>
-          <input class="input" type="text" id="firstName" placeholder="Ex : Amadou" autocomplete="given-name">
+          <label class="field-label" for="firstName">Prénom <span class="required-star">*</span></label>
+          <input class="input" type="text" id="firstName" placeholder="Ex : Amadou" autocomplete="given-name" required>
         </div>
         <div>
-          <label class="field-label" for="lastName">Nom</label>
-          <input class="input" type="text" id="lastName" placeholder="Ex : Barry" autocomplete="family-name">
+          <label class="field-label" for="lastName">Nom <span class="required-star">*</span></label>
+          <input class="input" type="text" id="lastName" placeholder="Ex : Barry" autocomplete="family-name" required>
         </div>
       </div>
-      <label class="field-label" for="authPhone">Numéro de téléphone</label>
+      <div id="emailField">
+        <label class="field-label" for="authEmail">Adresse e-mail / Gmail <span class="required-star">*</span></label>
+        <input class="input" type="email" id="authEmail" placeholder="exemple@gmail.com" autocomplete="email" required>
+      </div>
+      <label class="field-label" for="authPhone">Numéro de téléphone <span class="required-star">*</span></label>
       <div class="phone-row auth-phone-row">
         <span class="cc">🇧🇫 +226</span>
-        <input type="tel" id="authPhone" placeholder="70 00 00 00" maxlength="11" inputmode="numeric">
+        <input type="tel" id="authPhone" placeholder="70 00 00 00" maxlength="11" inputmode="numeric" required>
       </div>
-      <label class="field-label" for="authPin">Code PIN personnel</label>
-      <input class="input" type="password" id="authPin" placeholder="4 chiffres" maxlength="6" inputmode="numeric">
+      <label class="field-label" for="authPin">Code PIN personnel <span class="required-star">*</span></label>
+      <input class="input" type="password" id="authPin" placeholder="4 chiffres" maxlength="6" inputmode="numeric" required>
       <button class="btn btn-green btn-block" id="authSubmitBtn" onclick="loginUser()">Continuer →</button>
       <button class="btn btn-ghost btn-block" id="logoutBtn" onclick="logoutUser()" style="display:none;margin-top:10px">Déconnecter ce compte</button>
-      <p class="fine-print">Version prête pour intégration Supabase/Firebase. Dans l’aperçu actuel, le compte est sauvegardé localement.</p>
+      <p class="fine-print">Tes informations servent à protéger ton compte, envoyer les confirmations et retrouver ta progression.</p>
     </div>
   </section>
 
@@ -438,6 +442,7 @@
         <h3>Informations du compte</h3>
         <div><span>Nom complet</span><b id="accountInfoName">—</b></div>
         <div><span>Téléphone</span><b id="accountInfoPhone">—</b></div>
+        <div><span>E-mail</span><b id="accountInfoEmail">—</b></div>
         <div><span>Dernière connexion</span><b id="accountLastLogin">—</b></div>
       </div>
 
@@ -760,9 +765,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=admin-docs-1"></script>
+<script src="js/questions.js?v=notifications-1"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=admin-docs-1"></script>
+<script src="js/app.js?v=notifications-1"></script>
 </body>
 </html>

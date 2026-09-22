@@ -307,6 +307,7 @@ function applyRemoteSession(data, fallbackPhone){
       firstName: data.user.firstName || '',
       lastName: data.user.lastName || '',
       displayName: data.user.displayName || '',
+      email: data.user.email || state.user?.email || '',
       avatarData,
       role: data.user.role || state.user?.role || 'student',
       isAdmin: Boolean(data.user.isAdmin),
@@ -561,6 +562,7 @@ function renderAccountScreen(){
   $('#accountRate') && ($('#accountRate').textContent = rate);
   $('#accountInfoName') && ($('#accountInfoName').textContent = name);
   $('#accountInfoPhone') && ($('#accountInfoPhone').textContent = '+226 ' + phone);
+  $('#accountInfoEmail') && ($('#accountInfoEmail').textContent = state.user.email || '—');
   $('#accountLastLogin') && ($('#accountLastLogin').textContent = state.user.lastLoginAt ? formatDate(state.user.lastLoginAt) : 'Aujourd’hui');
   const adminBtn = $('#adminPanelBtn');
   if (adminBtn) adminBtn.style.display = isAdmin() ? 'flex' : 'none';
@@ -791,21 +793,25 @@ function renderLogin(){
   $('#loginTab')?.classList.toggle('on', !isRegister);
   if ($('#authTitle')) $('#authTitle').textContent = isRegister ? 'Créer ton compte candidat' : 'Connexion candidat';
   if ($('#authIntro')) $('#authIntro').textContent = isRegister
-    ? 'Renseigne ton nom, prénom, numéro et PIN pour sauvegarder ta progression.'
+    ? 'Renseigne ton nom, prénom, e-mail, numéro et PIN pour sauvegarder ta progression.'
     : 'Entre ton numéro et ton code PIN pour retrouver ton espace candidat.';
   if ($('#authSubmitBtn')) $('#authSubmitBtn').textContent = isRegister ? 'Créer mon compte →' : 'Me connecter →';
   const nameFields = $('#nameFields');
   if (nameFields) nameFields.style.display = isRegister ? 'grid' : 'none';
   const avatarField = $('#avatarUploadField');
   if (avatarField) avatarField.style.display = isRegister ? 'block' : 'none';
+  const emailField = $('#emailField');
+  if (emailField) emailField.style.display = isRegister ? 'block' : 'none';
   if (!isRegister) pendingAvatarData = '';
   updateAvatarPreview();
   const firstName = $('#firstName');
   const lastName = $('#lastName');
   const phoneInput = $('#authPhone');
+  const emailInput = $('#authEmail');
   const pinInput = $('#authPin');
   if (firstName && state.user?.firstName) firstName.value = state.user.firstName;
   if (lastName && state.user?.lastName) lastName.value = state.user.lastName;
+  if (emailInput && state.user?.email) emailInput.value = state.user.email;
   if (phoneInput && state.user) phoneInput.value = prettyPhone(state.user.phone);
   if (pinInput) pinInput.value = '';
   const logoutBtn = $('#logoutBtn');
@@ -818,11 +824,13 @@ async function loginUser(){
   const pin = String($('#authPin')?.value || '').replace(/\D/g, '');
   const firstName = ($('#firstName')?.value || '').trim();
   const lastName = ($('#lastName')?.value || '').trim();
+  const email = ($('#authEmail')?.value || '').trim().toLowerCase();
   const avatarData = isRegister ? (pendingAvatarData || '') : '';
 
   if (isRegister){
     if (firstName.length < 2){ toast('Entre ton prénom'); return; }
     if (lastName.length < 2){ toast('Entre ton nom'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ toast('Entre ton adresse e-mail'); return; }
   }
   if (phone.length !== 8){ toast('Numéro invalide — 8 chiffres attendus'); return; }
   if (pin.length < 4){ toast('Code PIN : 4 chiffres minimum'); return; }
@@ -831,7 +839,7 @@ async function loginUser(){
   setButtonLoading(btn, true, isRegister ? 'Création...' : 'Connexion...');
   try{
     const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-    const data = await apiPost(endpoint, { phone: fullPhone(phone), pin, firstName, lastName, avatarData });
+    const data = await apiPost(endpoint, { phone: fullPhone(phone), pin, firstName, lastName, email, avatarData });
     applyRemoteSession(data, phone);
     if (avatarData && state.user) saveAvatarForPhone(state.user.phone, avatarData);
     pendingAvatarData = '';
@@ -866,6 +874,7 @@ async function loginUser(){
     firstName: isRegister ? firstName : (previous.firstName || ''),
     lastName: isRegister ? lastName : (previous.lastName || ''),
     displayName: isRegister ? `${firstName} ${lastName}`.trim() : (previous.displayName || ''),
+    email: isRegister ? email : (previous.email || ''),
     avatarData: avatarData || previous.avatarData || (phone && state.profileAvatars?.[phone]) || '',
     createdAt,
     lastLoginAt:new Date().toISOString()
@@ -1363,7 +1372,7 @@ async function startSubscriptionPayment(){
     plan: PAYMENT_CONFIG.plan,
     provider: state.selectedProvider,
     transactionId: txRef,
-    customer: {phone: fullPhone(phone)},
+    customer: {phone: fullPhone(phone), email: state.user.email || ''},
     returnUrl: location.origin + location.pathname + '#subscription'
   };
 

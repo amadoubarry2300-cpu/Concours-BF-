@@ -39,6 +39,20 @@ const LOGIN_LOCK_MINUTES = Number(process.env.LOGIN_LOCK_MINUTES || 15);
 const RESOURCE_BUCKET = process.env.SUPABASE_RESOURCE_BUCKET || 'reussite-concours-resources';
 const RESOURCE_INDEX_PATH = 'resources/index.json';
 const MAX_RESOURCE_FILE_BYTES = Number(process.env.MAX_RESOURCE_FILE_BYTES || 4 * 1024 * 1024);
+const SMTP_HOST = process.env.SMTP_HOST || '';
+const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
+const SMTP_USER = process.env.SMTP_USER || '';
+const SMTP_PASS = process.env.SMTP_PASS || '';
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || '';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_FROM = process.env.RESEND_FROM || SMTP_FROM || '';
+const SMS_API_URL = process.env.SMS_API_URL || '';
+const SMS_API_TOKEN = process.env.SMS_API_TOKEN || '';
+const SMS_SENDER = process.env.SMS_SENDER || 'ConcoursBF';
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
+const TWILIO_FROM = process.env.TWILIO_FROM || '';
+const premiumNotificationTxSent = new Set();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -235,6 +249,107 @@ async function requestHasPremium(req){
   return Boolean(sub);
 }
 
+function normalizeEmail(value){
+  const email = String(value || '').trim().toLowerCase().slice(0, 180);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : '';
+}
+
+function htmlEscape(value){
+  return String(value || '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+}
+
+function profileDisplayName(profile, fallback='candidat'){
+  return String(profile?.display_name || `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim() || fallback).trim();
+}
+
+function appEmailFrom(){
+  return RESEND_FROM || SMTP_FROM || SMTP_USER || '';
+}
+
+async function sendEmailNotification({ to, subject, text, html }){
+  const email = normalizeEmail(to);
+  if (!email) return false;
+  const from = appEmailFrom();
+  if (RESEND_API_KEY && from){
+    const res = await fetch('https://api.resend.com/emails', {
+      method:'POST',
+      headers:{ Authorization:`Bearer ${RESEND_API_KEY}`, 'Content-Type':'application/json' },
+      body:JSON.stringify({ from, to:email, subject, text, html:html || text })
+    });
+    if (!res.ok) throw new Error(`Email non envoyé (${res.status})`);
+    return true;
+  }
+  if (SMTP_HOST && SMTP_USER && SMTP_PASS && from){
+    const nodemailer = await import('nodemailer');
+    const transporter = nodemailer.default.createTransport({
+      host:SMTP_HOST,
+      port:SMTP_PORT,
+      secure:SMTP_PORT === 465,
+      auth:{ user:SMTP_USER, pass:SMTP_PASS }
+    });
+    await transporter.sendMail({ from, to:email, subject, text, html:html || text });
+    return true;
+  }
+  return false;
+}
+
+async function sendSmsNotification({ to, message }){
+  const phone = normalizePhone(to);
+  const text = String(message || '').trim().slice(0, 480);
+  if (!phone || !text) return false;
+  if (SMS_API_URL){
+    const headers = { 'Content-Type':'application/json' };
+    if (SMS_API_TOKEN) headers.Authorization = `Bearer ${SMS_API_TOKEN}`;
+    const res = await fetch(SMS_API_URL, {
+      method:'POST',
+      headers,
+      body:JSON.stringify({ to:phone, phone, message:text, text, sender:SMS_SENDER })
+    });
+    if (!res.ok) throw new Error(`SMS non envoyé (${res.status})`);
+    return true;
+  }
+  if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_FROM){
+    const form = new URLSearchParams({ To:phone, From:TWILIO_FROM, Body:text });
+    const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(TWILIO_ACCOUNT_SID)}/Messages.json`, {
+      method:'POST',
+      headers:{ Authorization:`Basic ${auth}`, 'Content-Type':'application/x-www-form-urlencoded' },
+      body:form.toString()
+    });
+    if (!res.ok) throw new Error(`SMS non envoyé (${res.status})`);
+    return true;
+  }
+  return false;
+}
+
+async function notifyRegistration(profile, rawEmail){
+  const email = normalizeEmail(rawEmail || profile?.email);
+  const phone = profile?.phone;
+  const name = profileDisplayName(profile, 'candidat');
+  const sms = `Bienvenue ${name} sur Réussite Concours BF. Ton compte est créé. Bonne préparation !`;
+  const subject = 'Bienvenue sur Réussite Concours BF';
+  const text = `Bonjour ${name},\n\nTon compte Réussite Concours BF est bien créé. Tu peux sauvegarder ta progression et préparer tes examens et concours.\n\nBonne préparation !`;
+  const html = `<p>Bonjour <b>${htmlEscape(name)}</b>,</p><p>Ton compte <b>Réussite Concours BF</b> est bien créé.</p><p>Tu peux sauvegarder ta progression et préparer tes examens et concours.</p><p>Bonne préparation !</p>`;
+  const tasks = [sendSmsNotification({ to:phone, message:sms })];
+  if (email) tasks.push(sendEmailNotification({ to:email, subject, text, html }));
+  await Promise.allSettled(tasks).then(results => results.forEach(r => { if (r.status === 'rejected') console.warn('Notification inscription:', r.reason?.message || r.reason); }));
+}
+
+async function notifyPremiumActivation(profile, sub, rawEmail){
+  const email = normalizeEmail(rawEmail || profile?.email);
+  const phone = profile?.phone;
+  const name = profileDisplayName(profile, 'candidat');
+  const endDate = sub?.expiresAt ? new Date(sub.expiresAt).toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric' }) : '';
+  const subject = 'Ton Premium est activé';
+  const text = `Bonjour ${name},\n\nTon accès Premium Réussite Concours BF est activé${endDate ? ` jusqu'au ${endDate}` : ''}. Tu peux maintenant profiter des contenus Premium.\n\nBonne préparation !`;
+  const html = `<p>Bonjour <b>${htmlEscape(name)}</b>,</p><p>Ton accès <b>Premium Réussite Concours BF</b> est activé${endDate ? ` jusqu'au <b>${htmlEscape(endDate)}</b>` : ''}.</p><p>Tu peux maintenant profiter des contenus Premium.</p><p>Bonne préparation !</p>`;
+  const sms = `Réussite Concours BF: ton Premium est activé${endDate ? ' jusqu au ' + endDate : ''}. Bonne préparation !`;
+  const tasks = [];
+  if (email) tasks.push(sendEmailNotification({ to:email, subject, text, html }));
+  if (phone) tasks.push(sendSmsNotification({ to:phone, message:sms }));
+  await Promise.allSettled(tasks).then(results => results.forEach(r => { if (r.status === 'rejected') console.warn('Notification Premium:', r.reason?.message || r.reason); }));
+}
+
 function normalizePhone(phone){
   const digits = String(phone || '').replace(/\D/g, '');
   if (digits.startsWith('226') && digits.length >= 11) return '+226' + digits.slice(3, 11);
@@ -312,11 +427,12 @@ async function saveProgress(phone, progress){
   return Array.isArray(rows) ? rows[0] || null : null;
 }
 
-async function activateSubscription({ phone, txRef, provider }){
+async function activateSubscription({ phone, txRef, provider, email }){
   const normalized = normalizePhone(phone);
   if (!normalized) throw new Error('Numéro client invalide');
 
   const current = subscriptions.get(normalized);
+  const sameTxAlreadyInMemory = current?.txRef && txRef && current.txRef === txRef;
   const base = current && new Date(current.expiresAt).getTime() > Date.now()
     ? new Date(current.expiresAt)
     : new Date();
@@ -331,18 +447,41 @@ async function activateSubscription({ phone, txRef, provider }){
   };
   subscriptions.set(normalized, sub);
 
+  let profile = null;
+  let alreadyRecorded = sameTxAlreadyInMemory;
+  const cleanEmail = normalizeEmail(email);
   if (supabaseReady()){
-    const profile = await getProfile(normalized);
-    const payload = {
-      profile_id: profile?.id || null,
-      phone: normalized,
-      status: 'premium',
-      starts_at: new Date().toISOString(),
-      expires_at: expiresAt,
-      provider: provider || 'CINETPAY',
-      tx_ref: txRef
-    };
-    await supabaseRequest('subscriptions', { method:'POST', prefer:'return=minimal', body:[payload] });
+    profile = await getProfile(normalized);
+    if (txRef){
+      const existingRows = await supabaseRequest(`subscriptions?tx_ref=eq.${encodeURIComponent(txRef)}&select=id,expires_at,provider,tx_ref&limit=1`).catch(()=>[]);
+      alreadyRecorded = Array.isArray(existingRows) && existingRows.length > 0;
+      if (alreadyRecorded && existingRows[0]?.expires_at) sub.expiresAt = existingRows[0].expires_at;
+    }
+    if (cleanEmail && profile && !profile.email){
+      const updated = await saveProfileEmail(normalized, cleanEmail).catch(()=>null);
+      if (updated) profile = updated;
+      else profile.email = cleanEmail;
+    } else if (profile && cleanEmail && !profile.email){
+      profile.email = cleanEmail;
+    }
+    if (!alreadyRecorded){
+      const payload = {
+        profile_id: profile?.id || null,
+        phone: normalized,
+        status: 'premium',
+        starts_at: new Date().toISOString(),
+        expires_at: expiresAt,
+        provider: provider || 'CINETPAY',
+        tx_ref: txRef
+      };
+      await supabaseRequest('subscriptions', { method:'POST', prefer:'return=minimal', body:[payload] });
+    }
+  }
+
+  const notifyKey = txRef || `${normalized}:${expiresAt}`;
+  if (!alreadyRecorded && !premiumNotificationTxSent.has(notifyKey)){
+    premiumNotificationTxSent.add(notifyKey);
+    await notifyPremiumActivation(profile || { phone:normalized, email:cleanEmail }, sub, cleanEmail).catch(err => console.warn('Notification Premium:', err.message));
   }
   return sub;
 }
@@ -713,6 +852,28 @@ function isMissingAvatarColumnError(err){
   return /avatar_data|schema cache|column/i.test(msg);
 }
 
+function isMissingEmailColumnError(err){
+  const msg = String(err?.message || err?.details?.message || err?.details?.hint || '');
+  return /email|schema cache|column/i.test(msg);
+}
+
+async function saveProfileEmail(phone, email){
+  const normalized = normalizePhone(phone);
+  const clean = normalizeEmail(email);
+  if (!normalized || !clean || !supabaseReady()) return null;
+  try{
+    const rows = await supabaseRequest(`profiles?phone=eq.${encodeURIComponent(normalized)}&select=*`, {
+      method:'PATCH',
+      prefer:'return=representation',
+      body:{ email:clean }
+    });
+    return Array.isArray(rows) ? rows[0] || null : null;
+  }catch(err){
+    if (isMissingEmailColumnError(err)) return null;
+    throw err;
+  }
+}
+
 function cleanAvatarData(value){
   const v = String(value || '');
   if (!v) return '';
@@ -744,6 +905,7 @@ function safeProfile(row){
     firstName: row.first_name || '',
     lastName: row.last_name || '',
     displayName: row.display_name || '',
+    email: row.email || '',
     avatarData: row.avatar_data || '',
     role: row.role || 'student',
     isAdmin: isAdminProfile(row),
@@ -781,26 +943,42 @@ app.post('/api/auth/register', async (req, res, next) => {
     const phone = normalizePhone(req.body?.phone);
     const firstName = String(req.body?.firstName || '').trim();
     const lastName = String(req.body?.lastName || '').trim();
+    const email = normalizeEmail(req.body?.email);
     const pin = String(req.body?.pin || '').replace(/\D/g, '');
     const avatarData = cleanAvatarData(req.body?.avatarData);
     if (!phone) return res.status(400).json({ message:'Numéro invalide' });
     if (firstName.length < 2 || lastName.length < 2) return res.status(400).json({ message:'Nom et prénom requis' });
+    if (!email) return res.status(400).json({ message:'Adresse e-mail invalide' });
     if (pin.length < 4) return res.status(400).json({ message:'PIN invalide' });
 
     const displayName = `${firstName} ${lastName}`.trim();
-    const rows = await supabaseRequest('profiles?on_conflict=phone&select=*', {
-      method:'POST',
-      prefer:'resolution=merge-duplicates,return=representation',
-      body:[{
-        phone,
-        first_name:firstName,
-        last_name:lastName,
-        display_name:displayName,
-        pin_hash:hashPin(pin),
-        last_login_at:new Date().toISOString()
-      }]
-    });
+    const profilePayload = {
+      phone,
+      first_name:firstName,
+      last_name:lastName,
+      display_name:displayName,
+      email,
+      pin_hash:hashPin(pin),
+      last_login_at:new Date().toISOString()
+    };
+    let rows;
+    try{
+      rows = await supabaseRequest('profiles?on_conflict=phone&select=*', {
+        method:'POST',
+        prefer:'resolution=merge-duplicates,return=representation',
+        body:[profilePayload]
+      });
+    }catch(err){
+      if (!isMissingEmailColumnError(err)) throw err;
+      const { email: _email, ...fallbackPayload } = profilePayload;
+      rows = await supabaseRequest('profiles?on_conflict=phone&select=*', {
+        method:'POST',
+        prefer:'resolution=merge-duplicates,return=representation',
+        body:[fallbackPayload]
+      });
+    }
     let profile = Array.isArray(rows) ? rows[0] : null;
+    if (profile && !profile.email) profile.email = email;
     if (avatarData){
       const updated = await saveProfileAvatar(phone, avatarData);
       if (updated) profile = updated;
@@ -809,7 +987,10 @@ app.post('/api/auth/register', async (req, res, next) => {
     const progress = await ensureProgress(profile);
     const subscription = await getActiveSubscription(phone);
     const session = await createSession(profile, req);
-    res.json({ user:safeProfile(profile), progress, subscription, session });
+    await notifyRegistration(profile || { phone, first_name:firstName, last_name:lastName, display_name:displayName, email }, email).catch(err => console.warn('Notification inscription:', err.message));
+    const user = safeProfile(profile);
+    if (user && !user.email) user.email = email;
+    res.json({ user, progress, subscription, session });
   }catch(err){ next(err); }
 });
 
@@ -968,7 +1149,7 @@ app.post('/api/payments/cinetpay/webhook', async (req, res, next) => {
       if (supabaseReady()){
         await supabaseRequest(`payments?tx_ref=eq.${encodeURIComponent(tx)}`, { method:'PATCH', prefer:'return=minimal', body:{ status:'ACCEPTED', raw:data, verified_at:new Date().toISOString() } });
       }
-      await activateSubscription({ phone, txRef: tx, provider: 'CINETPAY' });
+      await activateSubscription({ phone, txRef: tx, provider: 'CINETPAY', email:data.customer_email });
       return res.send('OK');
     }
 
@@ -991,11 +1172,11 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
 
     const tx = String(transactionId || `RCBF-${Date.now()}`);
     const profile = req.profile || await getProfile(phone);
-    await createPaymentRecord({ tx, phone, provider:'SASPAY', status:'INITIATED', raw:{ local_tx_ref:tx, selected_provider:selectedProvider, network } });
+    const customerEmail = normalizeEmail(customer?.email || profile?.email) || customerEmailForPhone(phone);
+    await createPaymentRecord({ tx, phone, provider:'SASPAY', status:'INITIATED', raw:{ local_tx_ref:tx, selected_provider:selectedProvider, network, customer_email:customerEmail } });
 
     const firstName = profile?.first_name || profile?.display_name?.split(' ')?.[0] || 'Client';
     const lastName = profile?.last_name || 'Réussite Concours BF';
-    const customerEmail = customerEmailForPhone(phone);
     const returnTo = returnUrl || `${APP_ORIGIN}/#subscription`;
     const payload = {
       amount: `${PLAN_AMOUNT}.00`,
@@ -1016,7 +1197,7 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
       const data = await saspayRequest('/payments/softpay/', { method:'POST', body:payload, idempotencyKey:tx });
       const payment = saspayPayload(data);
       const paymentUrl = saspayCheckoutUrl(data);
-      const raw = paymentRawWithSasPay({ local_tx_ref:tx, selected_provider:selectedProvider, network }, data);
+      const raw = paymentRawWithSasPay({ local_tx_ref:tx, selected_provider:selectedProvider, network, customer_email:customerEmail }, data);
       await updatePaymentRecord(tx, { status:saspayStatus(data), raw });
       return res.json({
         ok:true,
@@ -1049,6 +1230,7 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
         local_tx_ref:tx,
         selected_provider:selectedProvider,
         network,
+        customer_email:customerEmail,
         saspay_session_id:saspayId(sessionResponse),
         saspay_session:session,
         saspay_session_response:sessionResponse,
@@ -1086,7 +1268,7 @@ app.get('/api/payments/saspay/status', requireSession, async (req, res, next) =>
       const raw = paymentRawWithSasPay(record.raw, verified);
       if (paymentIsSuccessful(verified)){
         await updatePaymentRecord(tx, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
-        const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY' });
+        const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY', email:record?.raw?.customer_email || req.profile?.email });
         return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY' });
       }
       await updatePaymentRecord(tx, { status:saspayStatus(verified), raw, verified_at:new Date().toISOString() });
@@ -1100,7 +1282,7 @@ app.get('/api/payments/saspay/status', requireSession, async (req, res, next) =>
       const transaction = session?.transaction;
       if (checkoutSessionPaid(session) || paymentIsSuccessful(transaction)){
         await updatePaymentRecord(tx, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
-        const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY' });
+        const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY', email:record?.raw?.customer_email || req.profile?.email });
         return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY' });
       }
       await updatePaymentRecord(tx, { status:saspayStatus(session), raw, verified_at:new Date().toISOString() });
@@ -1126,7 +1308,7 @@ app.post('/api/payments/saspay/webhook', async (req, res, next) => {
       const raw = paymentRawWithSasPay(record.raw, verified);
       if (paymentIsSuccessful(verified)){
         await updatePaymentRecord(record.tx || record.tx_ref, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
-        await activateSubscription({ phone:record.phone, txRef:record.tx || record.tx_ref, provider:'SASPAY' });
+        await activateSubscription({ phone:record.phone, txRef:record.tx || record.tx_ref, provider:'SASPAY', email:record?.raw?.customer_email });
         return res.send('OK');
       }
     }

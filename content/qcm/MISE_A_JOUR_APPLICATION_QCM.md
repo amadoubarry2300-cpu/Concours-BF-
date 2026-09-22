@@ -119,3 +119,11 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout d'un onglet **Documents** dans l'administration pour publier PDF, Word/DOCX et images.
 - Les documents peuvent être gratuits ou Premium, publiés ou masqués.
 - Les fichiers sont stockés côté serveur via Supabase Storage et téléchargés par l'application sans exposer de clé secrète.
+
+## 2026-09-22 — E-mail obligatoire et notifications
+
+- Ajout d'un champ **adresse e-mail / Gmail** obligatoire à l'inscription.
+- Ajout d'astérisques rouges sur les champs obligatoires de l'inscription.
+- Affichage de l'e-mail dans les informations du compte.
+- Préparation des notifications : SMS après inscription et confirmation e-mail/SMS après activation Premium, via variables serveur sécurisées.
+- La confirmation Premium utilise l'e-mail du profil ou l'e-mail envoyé au moment du paiement.

@@ -22,6 +22,7 @@ create table if not exists public.profiles (
   first_name text,
   last_name text,
   display_name text,
+  email text,
   avatar_data text,
   pin_hash text,
   role text not null default 'student' check (role in ('student','admin')),
@@ -31,10 +32,12 @@ create table if not exists public.profiles (
 );
 
 -- Migrations douces si la table profiles existait déjà avant certains ajouts.
+alter table public.profiles add column if not exists email text;
 alter table public.profiles add column if not exists avatar_data text;
 alter table public.profiles add column if not exists role text not null default 'student' check (role in ('student','admin'));
 
 create index if not exists profiles_phone_idx on public.profiles(phone);
+create index if not exists profiles_email_idx on public.profiles(email);
 
 drop trigger if exists set_profiles_updated_at on public.profiles;
 create trigger set_profiles_updated_at
