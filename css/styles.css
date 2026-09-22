@@ -492,3 +492,9 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 
 /* ---------- champs obligatoires ---------- */
 .required-star{color:#e02424!important;font-weight:900!important;text-transform:none!important;letter-spacing:0!important;margin-left:2px}
+
+/* ---------- hiérarchie premium du nom ---------- */
+.brand-title span{font-size:1.34rem!important;font-weight:1000;line-height:.96;letter-spacing:-.045em;color:var(--ink)}
+.brand-title em{font-size:1.08rem!important;font-weight:900;line-height:1.02;letter-spacing:-.018em;color:var(--green)}
+@media(max-width:420px){.brand-title span{font-size:1.12rem!important}.brand-title em{font-size:.96rem!important}}
+@media(max-width:360px){.brand-title span{font-size:1rem!important}.brand-title em{font-size:.88rem!important}}

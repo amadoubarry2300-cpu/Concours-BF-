@@ -151,3 +151,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 
 - Remplacement du logo principal et du favicon par le nouveau logo fourni par le propriétaire.
 - Le logo est synchronisé dans l'application frontend et dans le dossier public du backend.
+
+
+## 2026-09-22 — Ajustement premium du titre
+
+- Le mot **Réussite** est agrandi.
+- **Concours BF** est légèrement réduit pour donner une hiérarchie plus premium dans la barre supérieure.
