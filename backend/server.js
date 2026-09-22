@@ -512,11 +512,26 @@ function safeProfile(row){
 }
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'Réussite Concours BF API', supabase: supabaseReady(), time: new Date().toISOString() });
+  res.json({
+    ok: true,
+    service: 'Réussite Concours BF API',
+    supabase: supabaseReady(),
+    saspay: Boolean(SASPAY_API_KEY),
+    saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
+    time: new Date().toISOString()
+  });
 });
 
 app.get('/api/config', (_req, res) => {
-  res.json({ supabaseUrl: SUPABASE_URL, hasAnonKey: Boolean(SUPABASE_ANON_KEY), hasServiceRole: Boolean(SUPABASE_SERVICE_ROLE_KEY) });
+  res.json({
+    supabaseUrl: SUPABASE_URL,
+    hasAnonKey: Boolean(SUPABASE_ANON_KEY),
+    hasServiceRole: Boolean(SUPABASE_SERVICE_ROLE_KEY),
+    hasSasPay: Boolean(SASPAY_API_KEY),
+    hasSasPayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
+    saspayCountry: SASPAY_COUNTRY,
+    saspayNetworks: SASPAY_NETWORKS
+  });
 });
 
 app.post('/api/auth/register', async (req, res, next) => {
