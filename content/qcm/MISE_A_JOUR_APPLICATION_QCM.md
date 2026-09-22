@@ -111,3 +111,11 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout d'API backend protégées `/api/admin/*` ; accès autorisé par rôle `admin` ou par la variable serveur `ADMIN_PHONES`.
 - Les QCM admin publiés sont fusionnés automatiquement avec la banque existante via `/api/questions`, sans modifier le code à chaque publication.
 - L'interface Premium/SasPay reste inchangée côté utilisateur.
+
+## 2026-09-22 — Documents admin et libellé administrateur
+
+- Le compte administrateur affiche maintenant **Espace administrateur** avec badge **Admin**.
+- Ajout d'une section **Documents & fichiers** côté candidat.
+- Ajout d'un onglet **Documents** dans l'administration pour publier PDF, Word/DOCX et images.
+- Les documents peuvent être gratuits ou Premium, publiés ou masqués.
+- Les fichiers sont stockés côté serveur via Supabase Storage et téléchargés par l'application sans exposer de clé secrète.

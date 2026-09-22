@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=admin-panel-1">
+<link rel="stylesheet" href="css/styles.css?v=admin-docs-1">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
@@ -98,6 +98,9 @@
         </button>
         <button class="action-card" onclick="show('formations')">
           <img class="action-photo" src="img/teacher-class.jpg" alt="Formations"><h3>Formations</h3><p>Toutes les matières disponibles</p>
+        </button>
+        <button class="action-card" onclick="show('resources')">
+          <img class="action-photo" src="img/study.jpg" alt="Documents et fichiers"><h3>Documents & fichiers</h3><p>PDF, Word et images publiés</p>
         </button>
       </div>
     </div>
@@ -282,6 +285,24 @@
     <div style="height:20px"></div>
   </section>
 
+  <!-- ================= RESSOURCES ================= -->
+  <section class="screen" id="resources">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">📚 Documents & fichiers</h2>
+    </div>
+    <div class="section" style="padding-top:10px">
+      <div class="resource-intro-card">
+        <h2>Ressources publiées</h2>
+        <p>Retrouve ici les PDF, documents Word et images partagés par l’administration.</p>
+      </div>
+      <div id="resourceList" class="resource-list">
+        <div class="empty">Chargement des documents...</div>
+      </div>
+    </div>
+    <div style="height:24px"></div>
+  </section>
+
   <!-- ================= PASSPORT ================= -->
   <section class="screen" id="passport">
     <div class="pass-head">
@@ -389,7 +410,7 @@
       <div class="account-profile-card">
         <div class="account-avatar" id="accountAvatar">👤</div>
         <div class="account-profile-main">
-          <div class="account-kicker">Espace candidat</div>
+          <div class="account-kicker" id="accountKicker">Espace candidat</div>
           <h2 id="accountFullName">Candidat</h2>
           <p id="accountPhone">+226 —</p>
         </div>
@@ -448,7 +469,8 @@
 
       <div class="admin-tabs">
         <button class="chip on" id="adminTabCreate" onclick="setAdminTab('create')">Créer un QCM</button>
-        <button class="chip" id="adminTabList" onclick="setAdminTab('list')">Mes publications</button>
+        <button class="chip" id="adminTabList" onclick="setAdminTab('list')">Mes QCM</button>
+        <button class="chip" id="adminTabResources" onclick="setAdminTab('resources')">Documents</button>
       </div>
 
       <div id="adminCreatePane" class="admin-pane">
@@ -522,6 +544,47 @@
             <button class="btn btn-green" onclick="loadAdminQuestions()">Rechercher</button>
           </div>
           <div id="adminQuestionList" class="admin-list"></div>
+        </div>
+      </div>
+
+      <div id="adminResourcesPane" class="admin-pane" style="display:none">
+        <div class="legal-card admin-card">
+          <h3>Publier un document</h3>
+          <p class="admin-help">Ajoute un PDF, un document Word/DOCX ou une image. Les candidats verront le fichier dans “Documents & fichiers”.</p>
+
+          <label class="field-label" for="adminResourceTitle">Titre du document</label>
+          <input class="input" id="adminResourceTitle" placeholder="Ex : Sujet corrigé BEPC 2024">
+
+          <label class="field-label" for="adminResourceCategory">Catégorie</label>
+          <select class="input" id="adminResourceCategory">
+            <option>Documents</option>
+            <option>Burkina Faso</option>
+            <option>Culture générale</option>
+            <option>Histoire-Géo</option>
+            <option>Mathématiques</option>
+            <option>Psychotechnique</option>
+            <option>Français</option>
+            <option>SVT</option>
+            <option>Greffier / Droit</option>
+          </select>
+
+          <label class="field-label" for="adminResourceDescription">Petite description</label>
+          <textarea class="input admin-textarea" id="adminResourceDescription" placeholder="Ex : QCM corrigés pour réviser avant le concours"></textarea>
+
+          <label class="field-label" for="adminResourceFile">Fichier PDF, Word ou image</label>
+          <input class="input" type="file" id="adminResourceFile" accept="image/*,.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+
+          <div class="admin-switch-row">
+            <label><input type="checkbox" id="adminResourcePremium"> Document Premium</label>
+            <label><input type="checkbox" id="adminResourceActive" checked> Publié</label>
+          </div>
+
+          <button class="btn btn-green btn-block" id="adminResourceSaveBtn" onclick="uploadAdminResource()">Publier le document</button>
+          <div class="payment-result" id="adminResourceResult"></div>
+
+          <hr class="soft-separator">
+          <h3>Documents publiés</h3>
+          <div id="adminResourceList" class="admin-list"></div>
         </div>
       </div>
     </div>
@@ -697,9 +760,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=admin-panel-1"></script>
+<script src="js/questions.js?v=admin-docs-1"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=admin-panel-1"></script>
+<script src="js/app.js?v=admin-docs-1"></script>
 </body>
 </html>

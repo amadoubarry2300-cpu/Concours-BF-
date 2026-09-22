@@ -36,6 +36,9 @@ const SESSION_SECRET = process.env.SESSION_SECRET || SUPABASE_SERVICE_ROLE_KEY |
 const SESSION_DAYS = Number(process.env.SESSION_DAYS || 30);
 const LOGIN_MAX_FAILED = Number(process.env.LOGIN_MAX_FAILED || 5);
 const LOGIN_LOCK_MINUTES = Number(process.env.LOGIN_LOCK_MINUTES || 15);
+const RESOURCE_BUCKET = process.env.SUPABASE_RESOURCE_BUCKET || 'reussite-concours-resources';
+const RESOURCE_INDEX_PATH = 'resources/index.json';
+const MAX_RESOURCE_FILE_BYTES = Number(process.env.MAX_RESOURCE_FILE_BYTES || 4 * 1024 * 1024);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,6 +86,153 @@ async function supabaseRequest(endpoint, { method='GET', body, prefer, key='serv
     throw err;
   }
   return data;
+}
+
+function storageBaseUrl(){
+  return `${SUPABASE_URL.replace(/\/$/, '')}/storage/v1`;
+}
+
+function encodeStoragePath(value){
+  return String(value || '').split('/').map(part => encodeURIComponent(part)).join('/');
+}
+
+function storageHeaders(extra = {}){
+  if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error('Stockage indisponible');
+  return {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    ...extra
+  };
+}
+
+let resourceBucketReady = false;
+async function ensureResourceBucket(){
+  if (!supabaseReady()) throw Object.assign(new Error('Stockage indisponible'), { status:503 });
+  if (resourceBucketReady) return;
+  const url = `${storageBaseUrl()}/bucket/${encodeURIComponent(RESOURCE_BUCKET)}`;
+  const check = await fetch(url, { headers:storageHeaders() });
+  if (check.ok){ resourceBucketReady = true; return; }
+  if (check.status !== 404){
+    const msg = await check.text().catch(()=>'');
+    throw Object.assign(new Error('Stockage indisponible'), { status:check.status, details:msg });
+  }
+  const create = await fetch(`${storageBaseUrl()}/bucket`, {
+    method:'POST',
+    headers:storageHeaders({'Content-Type':'application/json'}),
+    body:JSON.stringify({ id:RESOURCE_BUCKET, name:RESOURCE_BUCKET, public:false })
+  });
+  if (!create.ok && create.status !== 409){
+    const msg = await create.text().catch(()=>'');
+    throw Object.assign(new Error('Création du stockage impossible'), { status:create.status, details:msg });
+  }
+  resourceBucketReady = true;
+}
+
+async function uploadResourceObject(objectPath, buffer, mimeType){
+  await ensureResourceBucket();
+  const res = await fetch(`${storageBaseUrl()}/object/${encodeURIComponent(RESOURCE_BUCKET)}/${encodeStoragePath(objectPath)}`, {
+    method:'POST',
+    headers:storageHeaders({
+      'Content-Type': mimeType || 'application/octet-stream',
+      'x-upsert':'true',
+      'cache-control':'3600'
+    }),
+    body:buffer
+  });
+  if (!res.ok){
+    const msg = await res.text().catch(()=>'');
+    throw Object.assign(new Error('Envoi du fichier impossible'), { status:res.status, details:msg });
+  }
+}
+
+async function downloadResourceObject(objectPath){
+  await ensureResourceBucket();
+  const res = await fetch(`${storageBaseUrl()}/object/${encodeURIComponent(RESOURCE_BUCKET)}/${encodeStoragePath(objectPath)}`, {
+    headers:storageHeaders()
+  });
+  if (!res.ok){
+    const err = new Error(res.status === 404 ? 'Fichier introuvable' : 'Téléchargement impossible');
+    err.status = res.status === 404 ? 404 : 500;
+    throw err;
+  }
+  const arrayBuffer = await res.arrayBuffer();
+  return { buffer:Buffer.from(arrayBuffer), contentType:res.headers.get('content-type') || 'application/octet-stream' };
+}
+
+async function deleteResourceObject(objectPath){
+  await ensureResourceBucket();
+  await fetch(`${storageBaseUrl()}/object/${encodeURIComponent(RESOURCE_BUCKET)}`, {
+    method:'DELETE',
+    headers:storageHeaders({'Content-Type':'application/json'}),
+    body:JSON.stringify({ prefixes:[objectPath] })
+  }).catch(()=>{});
+}
+
+async function loadResourceIndex(){
+  try{
+    const file = await downloadResourceObject(RESOURCE_INDEX_PATH);
+    const data = JSON.parse(file.buffer.toString('utf8') || '[]');
+    return Array.isArray(data) ? data : [];
+  }catch(err){
+    if (err.status === 404) return [];
+    throw err;
+  }
+}
+
+async function saveResourceIndex(resources){
+  const body = Buffer.from(JSON.stringify(resources || [], null, 2), 'utf8');
+  await uploadResourceObject(RESOURCE_INDEX_PATH, body, 'application/json; charset=utf-8');
+}
+
+function headerText(req, name, max=500){
+  const raw = String(req.headers[name.toLowerCase()] || '').trim();
+  let decoded = raw;
+  try{ decoded = decodeURIComponent(raw); }catch{}
+  return decoded.slice(0, max).trim();
+}
+
+function safeFileName(name){
+  const raw = String(name || 'document').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  const cleaned = raw.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^[-.]+|[-.]+$/g, '');
+  return (cleaned || 'document').slice(0, 120);
+}
+
+function fileKind(fileName, mimeType){
+  const name = String(fileName || '').toLowerCase();
+  const mime = String(mimeType || '').toLowerCase();
+  if (mime.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(name)) return 'image';
+  if (mime.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
+  if (mime.includes('word') || mime.includes('officedocument') || /\.(docx?|odt)$/i.test(name)) return 'word';
+  return 'document';
+}
+
+function isAllowedResourceFile(fileName, mimeType){
+  const kind = fileKind(fileName, mimeType);
+  return ['image','pdf','word'].includes(kind);
+}
+
+function publicResource(row){
+  return {
+    id: row.id,
+    title: row.title || row.file_name || 'Document',
+    category: row.category || 'Documents',
+    description: row.description || '',
+    fileName: row.file_name || 'document',
+    mimeType: row.mime_type || 'application/octet-stream',
+    kind: row.kind || fileKind(row.file_name, row.mime_type),
+    size: Number(row.size || 0),
+    is_premium: Boolean(row.is_premium),
+    is_active: row.is_active !== false,
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  };
+}
+
+async function requestHasPremium(req){
+  const sessionData = await getSessionFromRequest(req).catch(() => null);
+  if (!sessionData?.profile?.phone) return false;
+  const sub = await getActiveSubscription(sessionData.profile.phone);
+  return Boolean(sub);
 }
 
 function normalizePhone(phone){
@@ -1063,6 +1213,136 @@ app.delete('/api/admin/questions/:id', requireAdmin, async (req, res, next) => {
     if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
     await supabaseRequest(`questions?id=eq.${encodeURIComponent(req.params.id)}`, { method:'DELETE', prefer:'return=minimal' });
     res.json({ ok:true });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/admin/resources', requireAdmin, async (_req, res, next) => {
+  try{
+    const resources = await loadResourceIndex();
+    res.json({ ok:true, resources:resources.map(publicResource) });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/resources/upload', requireAdmin, express.raw({ type:() => true, limit:'8mb' }), async (req, res, next) => {
+  try{
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
+    const fileName = safeFileName(headerText(req, 'x-file-name', 160));
+    const mimeType = String(req.headers['content-type'] || 'application/octet-stream').split(';')[0].trim() || 'application/octet-stream';
+    const title = headerText(req, 'x-title', 160) || fileName;
+    const category = headerText(req, 'x-category', 80) || 'Documents';
+    const description = headerText(req, 'x-description', 1000);
+    const isPremiumResource = String(req.headers['x-is-premium'] || '').toLowerCase() === 'true';
+    const isActiveResource = String(req.headers['x-is-active'] || 'true').toLowerCase() !== 'false';
+
+    if (!buffer.length) return res.status(400).json({ message:'Choisis un fichier à publier' });
+    if (buffer.length > MAX_RESOURCE_FILE_BYTES) return res.status(413).json({ message:`Fichier trop lourd. Maximum ${Math.round(MAX_RESOURCE_FILE_BYTES/1024/1024)} Mo.` });
+    if (!isAllowedResourceFile(fileName, mimeType)) return res.status(400).json({ message:'Format accepté : image, PDF, Word ou DOCX' });
+    if (title.length < 3) return res.status(400).json({ message:'Titre du document requis' });
+
+    const id = crypto.randomUUID();
+    const kind = fileKind(fileName, mimeType);
+    const objectPath = `resources/files/${new Date().getFullYear()}/${id}-${fileName}`;
+    await uploadResourceObject(objectPath, buffer, mimeType);
+
+    const now = new Date().toISOString();
+    const resource = {
+      id,
+      title,
+      category,
+      description,
+      file_name:fileName,
+      mime_type:mimeType,
+      kind,
+      size:buffer.length,
+      storage_path:objectPath,
+      is_premium:isPremiumResource,
+      is_active:isActiveResource,
+      author_phone:req.phone,
+      created_at:now,
+      updated_at:now
+    };
+    const resources = await loadResourceIndex();
+    resources.unshift(resource);
+    await saveResourceIndex(resources);
+    res.json({ ok:true, resource:publicResource(resource) });
+  }catch(err){ next(err); }
+});
+
+app.patch('/api/admin/resources/:id', requireAdmin, async (req, res, next) => {
+  try{
+    const resources = await loadResourceIndex();
+    const idx = resources.findIndex(r => r.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ message:'Document introuvable' });
+    const current = resources[idx];
+    const patch = req.body || {};
+    resources[idx] = {
+      ...current,
+      title: patch.title === undefined ? current.title : cleanText(patch.title, 160),
+      category: patch.category === undefined ? current.category : cleanText(patch.category, 80),
+      description: patch.description === undefined ? current.description : cleanText(patch.description, 1000),
+      is_premium: patch.is_premium === undefined ? Boolean(current.is_premium) : Boolean(patch.is_premium),
+      is_active: patch.is_active === undefined ? current.is_active !== false : Boolean(patch.is_active),
+      updated_at:new Date().toISOString()
+    };
+    await saveResourceIndex(resources);
+    res.json({ ok:true, resource:publicResource(resources[idx]) });
+  }catch(err){ next(err); }
+});
+
+app.patch('/api/admin/resources/:id/status', requireAdmin, async (req, res, next) => {
+  try{
+    const resources = await loadResourceIndex();
+    const idx = resources.findIndex(r => r.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ message:'Document introuvable' });
+    resources[idx] = { ...resources[idx], is_active:Boolean(req.body?.is_active), updated_at:new Date().toISOString() };
+    await saveResourceIndex(resources);
+    res.json({ ok:true, resource:publicResource(resources[idx]) });
+  }catch(err){ next(err); }
+});
+
+app.delete('/api/admin/resources/:id', requireAdmin, async (req, res, next) => {
+  try{
+    const resources = await loadResourceIndex();
+    const item = resources.find(r => r.id === req.params.id);
+    if (!item) return res.status(404).json({ message:'Document introuvable' });
+    await saveResourceIndex(resources.filter(r => r.id !== req.params.id));
+    if (item.storage_path) await deleteResourceObject(item.storage_path);
+    res.json({ ok:true });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/resources', async (req, res, next) => {
+  try{
+    const premiumAllowed = await requestHasPremium(req);
+    const resources = await loadResourceIndex().catch(err => {
+      if (err.status === 503 || /Stockage indisponible/i.test(err.message)) return [];
+      throw err;
+    });
+    const visible = resources
+      .filter(r => r.is_active !== false)
+      .filter(r => premiumAllowed || !r.is_premium)
+      .map(publicResource);
+    res.json({ ok:true, premiumIncluded:premiumAllowed, resources:visible });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/resources/:id/download', async (req, res, next) => {
+  try{
+    const resources = await loadResourceIndex();
+    const item = resources.find(r => r.id === req.params.id && r.is_active !== false);
+    if (!item) return res.status(404).json({ message:'Document introuvable' });
+    if (item.is_premium){
+      const premiumAllowed = await requestHasPremium(req);
+      if (!premiumAllowed) return res.status(402).json({ message:'Ce document est réservé aux comptes Premium' });
+    }
+    const file = await downloadResourceObject(item.storage_path);
+    const filename = safeFileName(item.file_name || item.title || 'document');
+    const inline = ['image','pdf'].includes(item.kind || fileKind(filename, item.mime_type));
+    res.setHeader('Content-Type', item.mime_type || file.contentType || 'application/octet-stream');
+    res.setHeader('Content-Length', file.buffer.length);
+    res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.send(file.buffer);
   }catch(err){ next(err); }
 });
 

@@ -429,6 +429,7 @@ function show(id){
   if (id==='home') renderHome();
   if (id==='errors') renderErrors();
   if (id==='formations') renderFormations(currentFormFilter);
+  if (id==='resources') loadResources();
   if (id==='subscription') setTimeout(renderSubscription, 20);
   if (id==='account') setTimeout(renderAccountScreen, 20);
   if (id==='admin') setTimeout(()=>renderAdminPanel(false), 20);
@@ -549,10 +550,11 @@ function renderAccountScreen(){
   setAvatarElement($('#accountAvatar'));
   $('#accountFullName') && ($('#accountFullName').textContent = name);
   $('#accountPhone') && ($('#accountPhone').textContent = '+226 ' + phone);
+  $('#accountKicker') && ($('#accountKicker').textContent = isAdmin() ? 'Espace administrateur' : 'Espace candidat');
   const badge = $('#accountPlanBadge');
   if (badge){
-    badge.textContent = ACCESS_OPEN_UNTIL_PAYMENT ? 'Accès ouvert' : (isPremium() ? 'Premium' : 'Gratuit');
-    badge.classList.toggle('premium', hasOpenAccess());
+    badge.textContent = isAdmin() ? 'Admin' : (ACCESS_OPEN_UNTIL_PAYMENT ? 'Accès ouvert' : (isPremium() ? 'Premium' : 'Gratuit'));
+    badge.classList.toggle('premium', hasOpenAccess() || isAdmin());
   }
   $('#accountXp') && ($('#accountXp').textContent = state.xp);
   $('#accountQuiz') && ($('#accountQuiz').textContent = state.quizDone);
@@ -897,6 +899,8 @@ function logoutUser(){
 
 /* ---------- administration ---------- */
 let adminQuestionCache = [];
+let adminResourceCache = [];
+let resourceCache = [];
 let adminTab = 'create';
 
 async function adminFetch(path, options = {}){
@@ -913,9 +917,12 @@ function setAdminTab(tab){
   adminTab = tab || 'create';
   $('#adminCreatePane') && ($('#adminCreatePane').style.display = adminTab === 'create' ? 'block' : 'none');
   $('#adminListPane') && ($('#adminListPane').style.display = adminTab === 'list' ? 'block' : 'none');
+  $('#adminResourcesPane') && ($('#adminResourcesPane').style.display = adminTab === 'resources' ? 'block' : 'none');
   $('#adminTabCreate')?.classList.toggle('on', adminTab === 'create');
   $('#adminTabList')?.classList.toggle('on', adminTab === 'list');
+  $('#adminTabResources')?.classList.toggle('on', adminTab === 'resources');
   if (adminTab === 'list') loadAdminQuestions();
+  if (adminTab === 'resources') loadAdminResources();
 }
 
 async function ensureAdminAccess(){
@@ -1080,6 +1087,174 @@ async function deleteAdminQuestion(index){
     await loadSupabaseQuestions();
     renderFormations(currentFormFilter);
     toast('QCM supprimé');
+  }catch(err){ toast(err.message); }
+}
+
+
+function formatBytes(bytes){
+  const n = Number(bytes || 0);
+  if (n < 1024) return n + ' o';
+  if (n < 1024*1024) return Math.round(n/1024) + ' Ko';
+  return (n/1024/1024).toFixed(n > 10*1024*1024 ? 0 : 1).replace('.', ',') + ' Mo';
+}
+
+function resourceIcon(kind){
+  if (kind === 'image') return '🖼️';
+  if (kind === 'pdf') return '📄';
+  if (kind === 'word') return '📝';
+  return '📎';
+}
+
+async function loadResources(){
+  const wrap = $('#resourceList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty">Chargement des documents...</div>';
+  try{
+    const res = await fetch('/api/resources', { headers:authHeaders({}) });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(data.message || 'Documents indisponibles');
+    resourceCache = data.resources || [];
+    if (!resourceCache.length){
+      wrap.innerHTML = '<div class="empty">Aucun document publié pour le moment.</div>';
+      return;
+    }
+    wrap.innerHTML = resourceCache.map(r => `
+      <div class="resource-card">
+        <div class="resource-icon">${resourceIcon(r.kind)}</div>
+        <div>
+          <h3>${escapeHtml(r.title)}</h3>
+          <p>${escapeHtml(r.description || 'Document de révision publié par l’administration.')}</p>
+          <div class="resource-meta">
+            <span>${escapeHtml(r.category || 'Documents')}</span>
+            <span>${formatBytes(r.size)}</span>
+            ${r.is_premium ? '<span class="premium">Premium</span>' : '<span>Gratuit</span>'}
+          </div>
+          <button class="mini-btn" onclick="openResource('${escapeHtml(r.id)}')">Ouvrir</button>
+        </div>
+      </div>`).join('');
+  }catch(err){
+    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+  }
+}
+
+async function openResource(id){
+  try{
+    const res = await fetch('/api/resources/' + encodeURIComponent(id) + '/download', { headers:authHeaders({}) });
+    if (!res.ok){
+      const data = await res.json().catch(()=>({}));
+      throw new Error(data.message || 'Ouverture impossible');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    const disp = res.headers.get('Content-Disposition') || '';
+    const m = disp.match(/filename\*=UTF-8''([^;]+)/);
+    if (m) a.download = decodeURIComponent(m[1]);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  }catch(err){
+    toast(err.message || 'Document indisponible');
+  }
+}
+
+function clearAdminResourceForm(){
+  $('#adminResourceTitle') && ($('#adminResourceTitle').value='');
+  $('#adminResourceDescription') && ($('#adminResourceDescription').value='');
+  $('#adminResourceFile') && ($('#adminResourceFile').value='');
+  $('#adminResourcePremium') && ($('#adminResourcePremium').checked=false);
+  $('#adminResourceActive') && ($('#adminResourceActive').checked=true);
+}
+
+async function uploadAdminResource(){
+  const btn = $('#adminResourceSaveBtn');
+  const result = $('#adminResourceResult');
+  const file = $('#adminResourceFile')?.files?.[0];
+  if (!file){
+    if (result) result.innerHTML = '<div class="pay-note error">Choisis un fichier PDF, Word ou image.</div>';
+    return;
+  }
+  setButtonLoading(btn, true, 'Publication...');
+  try{
+    const headers = authHeaders({
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(file.name || 'document'),
+      'X-Title': encodeURIComponent($('#adminResourceTitle')?.value || file.name || 'Document'),
+      'X-Category': encodeURIComponent($('#adminResourceCategory')?.value || 'Documents'),
+      'X-Description': encodeURIComponent($('#adminResourceDescription')?.value || ''),
+      'X-Is-Premium': String(Boolean($('#adminResourcePremium')?.checked)),
+      'X-Is-Active': String(Boolean($('#adminResourceActive')?.checked))
+    });
+    const res = await fetch('/api/admin/resources/upload', { method:'POST', headers, body:file });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(data.message || 'Publication impossible');
+    if (result) result.innerHTML = '<div class="pay-note success">Document publié avec succès ✅</div>';
+    clearAdminResourceForm();
+    await loadAdminResources();
+    await loadResources();
+    toast('Document publié ✅');
+  }catch(err){
+    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+  }finally{
+    setButtonLoading(btn, false);
+  }
+}
+
+async function loadAdminResources(){
+  const wrap = $('#adminResourceList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty">Chargement des documents...</div>';
+  try{
+    const data = await adminFetch('/api/admin/resources');
+    adminResourceCache = data.resources || [];
+    if (!adminResourceCache.length){
+      wrap.innerHTML = '<div class="empty">Aucun document publié pour le moment.</div>';
+      return;
+    }
+    wrap.innerHTML = adminResourceCache.map((r, idx)=>`
+      <div class="admin-q-item">
+        <div class="admin-q-meta">
+          <span>${resourceIcon(r.kind)} ${escapeHtml(r.kind || 'document')}</span>
+          <span>${escapeHtml(r.category || 'Documents')}</span>
+          <span class="${r.is_active ? 'active' : ''}">${r.is_active ? 'Publié' : 'Masqué'}</span>
+          ${r.is_premium ? '<span class="premium">Premium</span>' : '<span>Gratuit</span>'}
+        </div>
+        <h4>${escapeHtml(r.title || r.fileName || 'Document')}</h4>
+        <p class="admin-help">${escapeHtml(r.description || r.fileName || '')} · ${formatBytes(r.size)}</p>
+        <div class="admin-q-actions">
+          <button class="edit" onclick="openResource('${escapeHtml(r.id)}')">Ouvrir</button>
+          <button class="pause" onclick="toggleAdminResource(${idx})">${r.is_active ? 'Masquer' : 'Publier'}</button>
+          <button class="delete" onclick="deleteAdminResource(${idx})">Supprimer</button>
+        </div>
+      </div>`).join('');
+  }catch(err){
+    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+  }
+}
+
+async function toggleAdminResource(index){
+  const r = adminResourceCache[index];
+  if (!r) return;
+  try{
+    await adminFetch('/api/admin/resources/' + encodeURIComponent(r.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:!r.is_active}) });
+    await loadAdminResources();
+    await loadResources();
+    toast(!r.is_active ? 'Document publié' : 'Document masqué');
+  }catch(err){ toast(err.message); }
+}
+
+async function deleteAdminResource(index){
+  const r = adminResourceCache[index];
+  if (!r) return;
+  if (!confirm('Supprimer définitivement ce document ?')) return;
+  try{
+    await adminFetch('/api/admin/resources/' + encodeURIComponent(r.id), { method:'DELETE' });
+    await loadAdminResources();
+    await loadResources();
+    toast('Document supprimé');
   }catch(err){ toast(err.message); }
 }
 
