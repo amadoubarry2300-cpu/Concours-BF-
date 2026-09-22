@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=premium-saspay-3">
+<link rel="stylesheet" href="css/styles.css?v=premium-saspay-4">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
@@ -461,13 +461,9 @@
       </div>
       <button class="btn btn-green btn-block" id="payBtn" onclick="startSubscriptionPayment()">Payer 1 500 FCFA</button>
       <button class="btn btn-ghost btn-block" id="checkPayBtn" onclick="checkPaymentStatus()" style="margin-top:10px">Vérifier mon paiement</button>
-      <button class="btn btn-ghost btn-block" id="demoPayBtn" onclick="simulatePaymentSuccess()" style="margin-top:10px;display:none">Activer 30 jours en mode test</button>
       <div class="payment-result" id="paymentResult"></div>
     </div>
 
-    <div class="integration-note">
-      <b>SasPay actif :</b> cette page appelle l’endpoint backend <code>/api/payments/saspay/init</code>. Après validation Mobile Money, clique sur <b>Vérifier mon paiement</b> si Premium ne s’active pas automatiquement.
-    </div>
     <div style="height:28px"></div>
   </section>
 
@@ -545,7 +541,7 @@
       </div>
       <div class="legal-card">
         <h3>Hébergement</h3>
-        <p>Application hébergée sur Vercel. Code source synchronisé depuis GitHub.</p>
+        <p>Plateforme éducative en ligne pour la préparation aux examens et concours au Burkina Faso.</p>
       </div>
     </div>
   </section>
@@ -597,9 +593,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=premium-saspay-3"></script>
+<script src="js/questions.js?v=premium-saspay-4"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=premium-saspay-3"></script>
+<script src="js/app.js?v=premium-saspay-4"></script>
 </body>
 </html>

@@ -94,3 +94,11 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Le lien `checkout_url` est extrait même quand SasPay le retourne dans une enveloppe.
 - Si SasPay ne renvoie vraiment aucun lien de checkout, l’application affiche une erreur claire au lieu de dire de vérifier le téléphone.
 - Nouvelle version cache : `premium-saspay-3`.
+
+## Nettoyage interface paiement
+
+- Suppression du bloc technique visible sous le paiement.
+- Suppression du bouton test caché dans la page de paiement.
+- Remplacement du message technique « variables SASPAY / Vercel » par une instruction simple pour l’utilisateur.
+- Mentions légales nettoyées pour éviter l’affichage de détails d’hébergement et de code source.
+- Nouvelle version cache : `premium-saspay-4`.

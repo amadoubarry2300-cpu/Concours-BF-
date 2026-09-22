@@ -5,10 +5,9 @@ const PAYMENT_CONFIG = window.REUSSITE_CONCOURS_BF_PAYMENT_CONFIG || {
   amount: 1500,
   currency: 'XOF',
   plan: 'premium_monthly',
-  // À renseigner quand le backend est déployé, ex: https://api.reussite-concours-bf.com
   backendBaseUrl: '',
   // Laisse true pour tester le verrouillage premium dans l'aperçu local.
-  // En production, mettre false et activer le backend CinetPay/Ligdicash.
+  // Le mode démonstration est désactivé en production.
   demoMode: false
 };
 
@@ -352,7 +351,7 @@ async function saveProgressRemote(){
         lastDay: state.lastDay
       }
     });
-  }catch(e){ /* mode local ou backend non configuré */ }
+  }catch(e){ /* sauvegarde distante facultative */ }
 }
 
 function mergeQuestionRows(rows){
@@ -376,7 +375,7 @@ async function loadSupabaseQuestions(){
   // On ne fusionne pas les anciennes lignes Supabase pour éviter des totaux incohérents.
   if (ACCESS_OPEN_UNTIL_PAYMENT) return;
 
-  // Priorité au backend : il peut servir les questions Premium uniquement aux comptes Premium connectés.
+  // Les questions Premium sont servies uniquement aux comptes Premium connectés.
   try{
     const res = await fetch('/api/questions', { headers: authHeaders({}) });
     if (res.ok){
@@ -838,7 +837,7 @@ async function loginUser(){
     }
   }
 
-  // Fallback local pour l'aperçu ou tant que SUPABASE_SERVICE_ROLE_KEY n'est pas configurée dans Vercel.
+  // Fallback local si le service distant est indisponible.
   if (!isRegister && state.user?.phone === phone && state.user?.pin && state.user.pin !== pin){
     toast('Code PIN incorrect');
     setButtonLoading(btn, false);
@@ -952,9 +951,9 @@ function renderSubscription(){
     if (runtimePaymentMessage){
       result.innerHTML = runtimePaymentMessage;
     } else if (!PAYMENT_CONFIG.backendBaseUrl){
-      result.innerHTML = `<div class="pay-note">⚙️ Paiement SasPay prêt côté application. Si l’initialisation échoue, vérifie les variables SASPAY dans Vercel.</div>`;
+      result.innerHTML = `<div class="pay-note">Choisis ton réseau, entre ton numéro Mobile Money puis appuie sur “Payer 1 500 FCFA”.</div>`;
     } else {
-      result.innerHTML = '<div class="pay-note">Paiement SasPay configuré. Clique sur “Payer” pour recevoir la demande Mobile Money.</div>';
+      result.innerHTML = '<div class="pay-note">Choisis ton réseau, entre ton numéro Mobile Money puis appuie sur “Payer 1 500 FCFA”.</div>'; 
     }
   }
 }
@@ -1022,11 +1021,11 @@ async function startSubscriptionPayment(){
       return;
     }
     runtimePaymentMessage = data.mode === 'checkout'
-      ? `<div class="pay-note warn">La page SasPay n’a pas renvoyé de lien de redirection. Réessaie le paiement ou contacte le support SasPay. Réf. <b>${state.pendingPayment.ref}</b></div>`
+      ? `<div class="pay-note warn">La page de paiement n’a pas pu s’ouvrir. Réessaie le paiement dans quelques instants. Réf. <b>${state.pendingPayment.ref}</b></div>`
       : `<div class="pay-note success">${data.message || 'Paiement lancé.'}<br>Valide sur ton téléphone puis clique sur “Vérifier mon paiement”. Réf. <b>${state.pendingPayment.ref}</b></div>`;
     renderSubscription();
   }catch(err){
-    runtimePaymentMessage = `<div class="pay-note error">${err.message || 'Erreur paiement'}</div>`;
+    runtimePaymentMessage = '<div class="pay-note error">Paiement indisponible pour le moment. Vérifie le numéro puis réessaie.</div>'; 
     renderSubscription();
   }finally{
     setButtonLoading(btn, false);
@@ -1063,7 +1062,7 @@ async function checkPaymentStatus(){
     }
     renderSubscription();
   }catch(err){
-    runtimePaymentMessage = `<div class="pay-note error">${err.message || 'Erreur de vérification'}</div>`;
+    runtimePaymentMessage = '<div class="pay-note error">Vérification indisponible pour le moment. Réessaie dans quelques instants.</div>'; 
     renderSubscription();
   }finally{
     setButtonLoading(btn, false);
