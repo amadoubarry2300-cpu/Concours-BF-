@@ -179,3 +179,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 
 - Correction de `/api/questions` : le compte administrateur/pro reçoit maintenant toute la banque 5000 QCM, comme un accès complet.
 - Les matières Premium affichées dans Formations ouvrent bien leurs QCM pour l'administrateur.
+
+
+## 2026-09-22 — Bouton WhatsApp flottant
+
+- Ajout d'un bouton WhatsApp flottant à droite de l'application.
+- Le numéro n'est pas affiché à l'écran ; le clic ouvre directement WhatsApp pour contacter le support.

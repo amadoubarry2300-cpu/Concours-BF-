@@ -521,3 +521,9 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .nav-btn .nav-label{display:block;line-height:1.05;text-align:center;white-space:normal}.nav-access{font-size:.6rem!important;font-weight:900;min-width:0}.nav-access .ni{font-size:1.24rem}.nav-access.on{color:var(--green-dark)}
 @media(max-width:420px){.bottom-nav{padding-left:3px;padding-right:3px}.nav-btn{font-size:.6rem!important;padding-left:1px!important;padding-right:1px!important}.nav-access{font-size:.54rem!important}.nav-access .ni{font-size:1.14rem!important}.account-plan{font-size:.66rem!important;padding:6px 9px!important}}
 @media(max-width:360px){.nav-btn{font-size:.56rem!important}.nav-access{font-size:.5rem!important}.nav-access .ni{font-size:1.05rem!important}}
+
+
+/* ---------- bouton WhatsApp flottant ---------- */
+.whatsapp-float{position:fixed;right:max(16px,calc((100vw - 520px)/2 + 16px));bottom:calc(94px + env(safe-area-inset-bottom));z-index:75;width:58px;height:58px;border-radius:999px;background:#25D366;color:#fff;display:grid;place-items:center;box-shadow:0 16px 34px rgba(37,211,102,.34);border:3px solid rgba(255,255,255,.92);text-decoration:none;transition:transform .22s ease, box-shadow .22s ease}.whatsapp-float svg{width:34px;height:34px;display:block}.whatsapp-float:hover{transform:translateY(-3px) scale(1.04);box-shadow:0 20px 42px rgba(37,211,102,.42)}.whatsapp-float:active{transform:scale(.96)}
+@media(prefers-reduced-motion:no-preference){.whatsapp-float::after{content:"";position:absolute;inset:-7px;border-radius:inherit;border:2px solid rgba(37,211,102,.36);animation:whatsappPulse 2.4s ease-out infinite}@keyframes whatsappPulse{0%{transform:scale(.86);opacity:.9}70%,100%{transform:scale(1.28);opacity:0}}}
+@media(max-width:420px){.whatsapp-float{width:54px;height:54px;right:14px;bottom:calc(86px + env(safe-area-inset-bottom))}.whatsapp-float svg{width:31px;height:31px}}
