@@ -53,11 +53,18 @@ Banque créée pour **Réussite Concours BF**. Elle regroupe des QCM corrigés a
 
 ## Fichiers livrés
 
-- `content/qcm/qcm_bank_5000_v1.csv` — banque complète des 5000 QCM
+- `content/qcm/qcm_bank_5000_v1.csv` — banque éditoriale complète des 5000 QCM
+- `content/qcm/qcm_bank_5000_v1_supabase.csv` — CSV prêt pour import Supabase
+- `js/questions.js` — banque publique embarquée, limitée aux 1400 questions gratuites
+- `backend/public/js/questions.js` — miroir public pour le backend/Vercel
 - `tools/generate_qcm_5000_v1.py` — générateur reproductible
+- `tools/export_qcm_for_supabase.py` — export CSV compatible table `questions`
+- `tools/import_qcm_to_supabase.py` — import Supabase sécurisé, simulation par défaut
+- `tools/generate_public_questions_js.py` — génération du fallback public gratuit
 - `tools/validate_qcm_bank.py` — validateur qualité CSV
 - `content/qcm/SOURCES.md` — registre des sources
 - `content/qcm/PLAN_5000_QCM.md` — plan de production initial
+- `content/qcm/IMPORT_SUPABASE_GUIDE.md` — guide d’import sans activation automatique
 
 ## Commande de validation exécutée
 
@@ -74,6 +81,12 @@ Validées: 5000
 Erreurs: 0
 Avertissements: 0
 ```
+
+## Intégration locale réalisée
+
+Le fichier public de l’application a été régénéré avec les **1400 questions gratuites** uniquement : Burkina Faso, Histoire-Géo et Culture générale. Les **3600 questions Premium** restent hors JavaScript public et sont prêtes pour un import Supabase sécurisé plus tard.
+
+Aucun import Supabase réel n’a été effectué. Aucun paiement n’a été activé.
 
 ## Note qualité
 
