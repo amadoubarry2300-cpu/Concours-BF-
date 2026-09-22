@@ -192,3 +192,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout d'un onglet admin **Actualités** pour créer, modifier, masquer/publier et supprimer les annonces.
 - Les actualités sont stockées côté serveur via Supabase Storage, comme les documents, sans exposer de clé secrète.
 - Ajout de filtres publics : Tout, Concours, Recrutement et Communiqué.
+
+## 2026-09-22 — PDF joint aux communiqués
+
+- Ajout d'un champ **Communiqué PDF** dans le formulaire admin des actualités.
+- Les communiqués peuvent maintenant être publiés avec un PDF joint.
+- Les candidats voient un bouton **Ouvrir le PDF** dans l'actualité publiée.

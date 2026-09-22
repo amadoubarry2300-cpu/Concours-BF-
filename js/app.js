@@ -1200,6 +1200,7 @@ function renderNewsList(){
   }
   wrap.innerHTML = items.map(n => {
     const source = n.sourceUrl ? `<a class="news-source" href="${escapeHtml(n.sourceUrl)}" target="_blank" rel="noopener">Source officielle</a>` : '';
+    const pdf = n.hasPdf ? `<button class="news-source news-pdf-btn" onclick="openNewsPdf('${escapeHtml(n.id)}')">📄 Ouvrir le PDF</button>` : '';
     const deadline = n.deadline ? `<span>📅 ${formatDate(n.deadline)}</span>` : '';
     return `<article class="news-card">
       <div class="news-card-top">
@@ -1212,9 +1213,29 @@ function renderNewsList(){
       </div>
       <p>${escapeHtml(n.summary || n.content || '')}</p>
       ${n.content && n.content !== n.summary ? `<details><summary>Lire le communiqué</summary><div>${escapeHtml(n.content).replace(/\n/g,'<br>')}</div></details>` : ''}
-      ${source}
+      <div class="news-actions">${pdf}${source}</div>
     </article>`;
   }).join('');
+}
+
+async function openNewsPdf(id){
+  try{
+    const res = await fetch('/api/news/' + encodeURIComponent(id) + '/pdf', { headers:authHeaders({}) });
+    if (!res.ok){
+      const data = await res.json().catch(()=>({}));
+      throw new Error(data.message || 'PDF indisponible');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.download = 'communique.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  }catch(err){ toast(err.message || 'PDF indisponible'); }
 }
 
 function adminNewsPayload(){
@@ -1241,7 +1262,10 @@ async function saveAdminNews(){
     const id = payload.id;
     const url = id ? '/api/admin/news/' + encodeURIComponent(id) : '/api/admin/news';
     const method = id ? 'PATCH' : 'POST';
-    await adminFetch(url, { method, body:JSON.stringify(payload) });
+    const data = await adminFetch(url, { method, body:JSON.stringify(payload) });
+    const savedId = data.item?.id || id;
+    const pdfFile = $('#adminNewsPdf')?.files?.[0];
+    if (pdfFile && savedId) await uploadAdminNewsPdf(savedId, pdfFile);
     if (result) result.innerHTML = '<div class="pay-note success">Actualité enregistrée ✅</div>';
     resetAdminNewsForm(false);
     await loadAdminNews();
@@ -1254,8 +1278,19 @@ async function saveAdminNews(){
   }
 }
 
+async function uploadAdminNewsPdf(newsId, file){
+  if (!file) return;
+  const headers = authHeaders({
+    'Content-Type': file.type || 'application/pdf',
+    'X-File-Name': encodeURIComponent(file.name || 'communique.pdf')
+  });
+  const res = await fetch('/api/admin/news/' + encodeURIComponent(newsId) + '/pdf', { method:'POST', headers, body:file });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw new Error(data.message || 'Envoi du PDF impossible');
+}
+
 function resetAdminNewsForm(clearMessage = true){
-  ['adminNewsId','adminNewsTitle','adminNewsOrganization','adminNewsDeadline','adminNewsSummary','adminNewsContent','adminNewsSource'].forEach(id=>{ const el=$('#'+id); if (el) el.value=''; });
+  ['adminNewsId','adminNewsTitle','adminNewsOrganization','adminNewsDeadline','adminNewsSummary','adminNewsContent','adminNewsSource','adminNewsPdf'].forEach(id=>{ const el=$('#'+id); if (el) el.value=''; });
   $('#adminNewsType') && ($('#adminNewsType').value='Concours');
   $('#adminNewsStatus') && ($('#adminNewsStatus').value='Ouvert');
   $('#adminNewsActive') && ($('#adminNewsActive').checked=true);
@@ -1282,12 +1317,14 @@ async function loadAdminNews(){
           <span>${newsTypeIcon(n.type)} ${escapeHtml(n.type || 'Communiqué')}</span>
           <span class="${n.is_active ? 'active' : ''}">${n.is_active ? 'Publié' : 'Masqué'}</span>
           <span>${escapeHtml(n.status || 'Info')}</span>
+          ${n.hasPdf ? '<span>PDF joint</span>' : ''}
           ${n.deadline ? `<span>${formatDate(n.deadline)}</span>` : ''}
         </div>
         <h4>${escapeHtml(n.title || '')}</h4>
         <p class="admin-help">${escapeHtml(n.summary || n.organization || '')}</p>
         <div class="admin-q-actions">
           <button class="edit" onclick="editAdminNews(${idx})">Modifier</button>
+          ${n.hasPdf ? `<button class="edit" onclick="openNewsPdf('${escapeHtml(n.id)}')">PDF</button>` : ''}
           <button class="pause" onclick="toggleAdminNews(${idx})">${n.is_active ? 'Masquer' : 'Publier'}</button>
           <button class="delete" onclick="deleteAdminNews(${idx})">Supprimer</button>
         </div>

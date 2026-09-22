@@ -245,6 +245,10 @@ function publicNews(row){
     summary: row.summary || '',
     content: row.content || '',
     sourceUrl: row.source_url || '',
+    fileName: row.file_name || '',
+    mimeType: row.mime_type || '',
+    fileSize: Number(row.size || 0),
+    hasPdf: Boolean(row.storage_path),
     is_active: row.is_active !== false,
     created_at: row.created_at,
     updated_at: row.updated_at
@@ -293,6 +297,10 @@ function fileKind(fileName, mimeType){
 function isAllowedResourceFile(fileName, mimeType){
   const kind = fileKind(fileName, mimeType);
   return ['image','pdf','word'].includes(kind);
+}
+
+function isPdfFile(fileName, mimeType){
+  return String(mimeType || '').toLowerCase().includes('pdf') || String(fileName || '').toLowerCase().endsWith('.pdf');
 }
 
 function publicResource(row){
@@ -1608,6 +1616,33 @@ app.patch('/api/admin/news/:id', requireAdmin, async (req, res, next) => {
   }catch(err){ next(err); }
 });
 
+app.post('/api/admin/news/:id/pdf', requireAdmin, express.raw({ type:() => true, limit:'8mb' }), async (req, res, next) => {
+  try{
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
+    const fileName = safeFileName(headerText(req, 'x-file-name', 180) || 'communique.pdf');
+    const mimeType = String(req.headers['content-type'] || 'application/pdf').split(';')[0].trim() || 'application/pdf';
+    if (!buffer.length) return res.status(400).json({ message:'Choisis un fichier PDF' });
+    if (buffer.length > MAX_RESOURCE_FILE_BYTES) return res.status(413).json({ message:`Fichier trop lourd. Maximum ${Math.round(MAX_RESOURCE_FILE_BYTES/1024/1024)} Mo.` });
+    if (!isPdfFile(fileName, mimeType)) return res.status(400).json({ message:'Seuls les communiqués PDF sont acceptés ici' });
+    const news = await loadNewsIndex();
+    const idx = news.findIndex(item => item.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ message:'Actualité introuvable' });
+    if (news[idx].storage_path) await deleteResourceObject(news[idx].storage_path).catch(()=>{});
+    const objectPath = `news/files/${new Date().getFullYear()}/${req.params.id}-${fileName}`;
+    await uploadResourceObject(objectPath, buffer, mimeType || 'application/pdf');
+    news[idx] = {
+      ...news[idx],
+      file_name:fileName,
+      mime_type:mimeType || 'application/pdf',
+      size:buffer.length,
+      storage_path:objectPath,
+      updated_at:new Date().toISOString()
+    };
+    await saveNewsIndex(news);
+    res.json({ ok:true, item:publicNews(news[idx]) });
+  }catch(err){ next(err); }
+});
+
 app.patch('/api/admin/news/:id/status', requireAdmin, async (req, res, next) => {
   try{
     const news = await loadNewsIndex();
@@ -1622,10 +1657,26 @@ app.patch('/api/admin/news/:id/status', requireAdmin, async (req, res, next) => 
 app.delete('/api/admin/news/:id', requireAdmin, async (req, res, next) => {
   try{
     const news = await loadNewsIndex();
-    const exists = news.some(item => item.id === req.params.id);
-    if (!exists) return res.status(404).json({ message:'Actualité introuvable' });
+    const item = news.find(item => item.id === req.params.id);
+    if (!item) return res.status(404).json({ message:'Actualité introuvable' });
     await saveNewsIndex(news.filter(item => item.id !== req.params.id));
+    if (item.storage_path) await deleteResourceObject(item.storage_path).catch(()=>{});
     res.json({ ok:true });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/news/:id/pdf', async (req, res, next) => {
+  try{
+    const news = await loadNewsIndex();
+    const item = news.find(item => item.id === req.params.id && item.is_active !== false && item.storage_path);
+    if (!item) return res.status(404).json({ message:'Communiqué PDF introuvable' });
+    const file = await downloadResourceObject(item.storage_path);
+    const filename = safeFileName(item.file_name || 'communique.pdf');
+    res.setHeader('Content-Type', item.mime_type || file.contentType || 'application/pdf');
+    res.setHeader('Content-Length', file.buffer.length);
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.send(file.buffer);
   }catch(err){ next(err); }
 });
 
