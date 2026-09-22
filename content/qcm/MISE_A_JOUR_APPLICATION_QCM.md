@@ -139,3 +139,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 ## 2026-09-22 — Libellé e-mail simplifié
 
 - Le champ d'inscription affiche maintenant **Adresse e-mail** pour accepter Gmail, Yahoo ou toute autre adresse valide.
+
+
+## 2026-09-22 — Correction stockage documents
+
+- Correction du premier chargement des documents lorsque le bucket Supabase vient d'être créé et que le fichier d'index n'existe pas encore.
+- `/api/resources` renvoie maintenant une liste vide au lieu d'une erreur tant qu'aucun document n'est publié.

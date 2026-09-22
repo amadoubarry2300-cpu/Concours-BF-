@@ -165,8 +165,14 @@ async function downloadResourceObject(objectPath){
     headers:storageHeaders()
   });
   if (!res.ok){
-    const err = new Error(res.status === 404 ? 'Fichier introuvable' : 'Téléchargement impossible');
-    err.status = res.status === 404 ? 404 : 500;
+    const text = await res.text().catch(()=>'');
+    let data = null;
+    try{ data = text ? JSON.parse(text) : null; }catch{ data = text; }
+    const msg = String(data?.message || data?.error || text || '');
+    const missing = res.status === 404 || /not found|does not exist|object.*not|resource.*not|introuvable/i.test(msg);
+    const err = new Error(missing ? 'Fichier introuvable' : 'Téléchargement impossible');
+    err.status = missing ? 404 : res.status;
+    err.details = data;
     throw err;
   }
   const arrayBuffer = await res.arrayBuffer();
@@ -188,7 +194,8 @@ async function loadResourceIndex(){
     const data = JSON.parse(file.buffer.toString('utf8') || '[]');
     return Array.isArray(data) ? data : [];
   }catch(err){
-    if (err.status === 404) return [];
+    // Nouveau bucket: l'index resources/index.json n'existe pas encore. On démarre avec une liste vide.
+    if (err.status === 404 || /Fichier introuvable|not found|does not exist|object.*not/i.test(String(err.message || err.details?.message || ''))) return [];
     throw err;
   }
 }
