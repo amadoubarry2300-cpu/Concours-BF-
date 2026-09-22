@@ -232,7 +232,7 @@ function isPremium(){
 }
 
 function hasOpenAccess(){
-  return ACCESS_OPEN_UNTIL_PAYMENT || isPremium();
+  return ACCESS_OPEN_UNTIL_PAYMENT || isPremium() || isAdmin();
 }
 
 function isAdmin(){
@@ -551,10 +551,10 @@ function renderAccountScreen(){
   setAvatarElement($('#accountAvatar'));
   $('#accountFullName') && ($('#accountFullName').textContent = name);
   $('#accountPhone') && ($('#accountPhone').textContent = '+226 ' + phone);
-  $('#accountKicker') && ($('#accountKicker').textContent = isAdmin() ? 'Espace administrateur' : 'Espace candidat');
+  $('#accountKicker') && ($('#accountKicker').textContent = isAdmin() ? 'Compte Pro administrateur' : 'Espace candidat');
   const badge = $('#accountPlanBadge');
   if (badge){
-    badge.textContent = isAdmin() ? 'Admin' : (ACCESS_OPEN_UNTIL_PAYMENT ? 'Accès ouvert' : (isPremium() ? 'Premium' : 'Gratuit'));
+    badge.textContent = isAdmin() ? 'Pro' : (ACCESS_OPEN_UNTIL_PAYMENT ? 'Accès ouvert' : (isPremium() ? 'Premium' : 'Gratuit'));
     badge.classList.toggle('premium', hasOpenAccess() || isAdmin());
   }
   const greetingCard = $('#accountGreetingCard');
@@ -569,7 +569,13 @@ function renderAccountScreen(){
   }
   const renewalCard = $('#premiumRenewalCard');
   if (renewalCard){
-    if (isPremium()){
+    if (isAdmin()){
+      renewalCard.style.display = 'block';
+      renewalCard.innerHTML = `
+        <div><span>Compte Pro administrateur</span><b>Accès complet actif</b><small>Toutes les ressources et fonctions de gestion sont ouvertes.</small></div>
+        <button class="mini-btn" onclick="show('admin')">Admin</button>
+        <i><em style="width:100%"></em></i>`;
+    } else if (isPremium()){
       const days = premiumDaysLeft();
       const pct = Math.max(4, Math.min(100, Math.round(days / 30 * 100)));
       renewalCard.style.display = 'block';
@@ -1386,7 +1392,10 @@ function renderSubscription(){
 
   const status = $('#subStatus');
   if (status){
-    if (isPremium()){
+    if (isAdmin()){
+      status.className = 'sub-status active';
+      status.innerHTML = '🔓 Accès complet actif — ton compte administrateur est au niveau Pro.';
+    } else if (isPremium()){
       status.className = 'sub-status active';
       status.innerHTML = `✅ Premium actif — expire le <b>${formatDate(state.subscription.expiresAt)}</b> (${premiumDaysLeft()} jour${premiumDaysLeft()>1?'s':''} restant${premiumDaysLeft()>1?'s':''})`;
     } else if (state.pendingPayment){
@@ -1402,7 +1411,7 @@ function renderSubscription(){
   }
 
   const payBtn = $('#payBtn');
-  if (payBtn) payBtn.textContent = isPremium() ? 'Renouveler 1 500 FCFA' : 'Payer 1 500 FCFA';
+  if (payBtn) payBtn.textContent = isAdmin() ? 'Accès complet actif' : (isPremium() ? 'Renouveler 1 500 FCFA' : 'Payer 1 500 FCFA');
   const demoBtn = $('#demoPayBtn');
   if (demoBtn) demoBtn.style.display = (PAYMENT_CONFIG.demoMode && !isPremium()) ? 'flex' : 'none';
 

@@ -514,3 +514,10 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
   .feature:hover,.action-card:hover,.account-action:hover,.resource-card:hover{transform:translateY(-2px);transition:transform .24s ease, box-shadow .24s ease;box-shadow:0 14px 34px rgba(17,24,39,.10)}
   @keyframes bubbleFloat{0%,100%{transform:translate3d(0,0,0) scale(.92);opacity:.55}50%{transform:translate3d(-18px,-16px,0) scale(1.12);opacity:.9}}
 }
+
+
+/* ---------- compte Pro + navigation Accès complet lisible ---------- */
+.account-plan{font-size:.76rem!important;letter-spacing:-.01em;white-space:nowrap}.account-plan.premium{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#111827;border:0;box-shadow:0 8px 20px rgba(245,158,11,.25)}
+.nav-btn .nav-label{display:block;line-height:1.05;text-align:center;white-space:normal}.nav-access{font-size:.6rem!important;font-weight:900;min-width:0}.nav-access .ni{font-size:1.24rem}.nav-access.on{color:var(--green-dark)}
+@media(max-width:420px){.bottom-nav{padding-left:3px;padding-right:3px}.nav-btn{font-size:.6rem!important;padding-left:1px!important;padding-right:1px!important}.nav-access{font-size:.54rem!important}.nav-access .ni{font-size:1.14rem!important}.account-plan{font-size:.66rem!important;padding:6px 9px!important}}
+@media(max-width:360px){.nav-btn{font-size:.56rem!important}.nav-access{font-size:.5rem!important}.nav-access .ni{font-size:1.05rem!important}}

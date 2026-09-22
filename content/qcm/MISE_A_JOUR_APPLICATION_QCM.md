@@ -166,3 +166,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Message personnalisé après reconnexion : bon retour avec le nom complet.
 - Ajout d'un compteur Premium dans le compte avec jours restants et date de renouvellement.
 - Ajout de bulles animées légères sur certains blocs pour un rendu plus premium sans surcharger l'interface.
+
+
+## 2026-09-22 — Compte Pro admin et Accès complet
+
+- Le compte administrateur est affiché comme **Compte Pro administrateur** avec badge **Pro**.
+- Le compte administrateur bénéficie de l'accès complet sans devoir souscrire à Premium.
+- Le menu du bas remplace **Accès** par **🔓 Accès complet** avec une taille adaptée pour rester lisible.
