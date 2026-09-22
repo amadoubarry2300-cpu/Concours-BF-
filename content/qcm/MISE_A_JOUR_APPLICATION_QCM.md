@@ -127,3 +127,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Affichage de l'e-mail dans les informations du compte.
 - Préparation des notifications : SMS après inscription et confirmation e-mail/SMS après activation Premium, via variables serveur sécurisées.
 - La confirmation Premium utilise l'e-mail du profil ou l'e-mail envoyé au moment du paiement.
+
+
+## 2026-09-22 — Test admin des notifications
+
+- Ajout d'un onglet admin **Notifications**.
+- Ajout d'un statut e-mail/SMS sans révéler les secrets.
+- Ajout d'un envoi de test e-mail/SMS réservé à l'administrateur.

@@ -1493,6 +1493,59 @@ app.delete('/api/admin/resources/:id', requireAdmin, async (req, res, next) => {
   }catch(err){ next(err); }
 });
 
+function emailNotificationsConfigured(){
+  return Boolean((RESEND_API_KEY && appEmailFrom()) || (SMTP_HOST && SMTP_USER && SMTP_PASS && appEmailFrom()));
+}
+
+function smsNotificationsConfigured(){
+  return Boolean(SMS_API_URL || (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_FROM));
+}
+
+app.get('/api/admin/notifications/status', requireAdmin, async (_req, res) => {
+  res.json({
+    ok:true,
+    emailConfigured:emailNotificationsConfigured(),
+    smsConfigured:smsNotificationsConfigured()
+  });
+});
+
+app.post('/api/admin/notifications/test', requireAdmin, async (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  const phone = normalizePhone(req.body?.phone || req.phone);
+  const channel = String(req.body?.channel || 'both');
+  const results = { email:{ attempted:false, sent:false, configured:emailNotificationsConfigured() }, sms:{ attempted:false, sent:false, configured:smsNotificationsConfigured() } };
+
+  if ((channel === 'both' || channel === 'email') && email){
+    results.email.attempted = true;
+    try{
+      results.email.sent = await sendEmailNotification({
+        to:email,
+        subject:'Test Réussite Concours BF',
+        text:'Ceci est un message de test. Les notifications e-mail de Réussite Concours BF fonctionnent.',
+        html:'<p>Ceci est un message de test.</p><p>Les notifications e-mail de <b>Réussite Concours BF</b> fonctionnent.</p>'
+      });
+    }catch(err){
+      results.email.error = 'Envoi e-mail impossible';
+      console.warn('Test email admin:', err.message);
+    }
+  }
+
+  if ((channel === 'both' || channel === 'sms') && phone){
+    results.sms.attempted = true;
+    try{
+      results.sms.sent = await sendSmsNotification({
+        to:phone,
+        message:'Test Réussite Concours BF: les notifications SMS fonctionnent.'
+      });
+    }catch(err){
+      results.sms.error = 'Envoi SMS impossible';
+      console.warn('Test SMS admin:', err.message);
+    }
+  }
+
+  res.json({ ok:true, results });
+});
+
 app.get('/api/resources', async (req, res, next) => {
   try{
     const premiumAllowed = await requestHasPremium(req);

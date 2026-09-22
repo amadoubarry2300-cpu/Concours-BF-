@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=notifications-1">
+<link rel="stylesheet" href="css/styles.css?v=notifications-2">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
@@ -476,6 +476,7 @@
         <button class="chip on" id="adminTabCreate" onclick="setAdminTab('create')">Créer un QCM</button>
         <button class="chip" id="adminTabList" onclick="setAdminTab('list')">Mes QCM</button>
         <button class="chip" id="adminTabResources" onclick="setAdminTab('resources')">Documents</button>
+        <button class="chip" id="adminTabNotifications" onclick="setAdminTab('notifications')">Notifications</button>
       </div>
 
       <div id="adminCreatePane" class="admin-pane">
@@ -590,6 +591,28 @@
           <hr class="soft-separator">
           <h3>Documents publiés</h3>
           <div id="adminResourceList" class="admin-list"></div>
+        </div>
+      </div>
+
+
+      <div id="adminNotificationsPane" class="admin-pane" style="display:none">
+        <div class="legal-card admin-card">
+          <h3>Tester les notifications</h3>
+          <p class="admin-help">Après avoir ajouté les variables e-mail/SMS dans Vercel et redéployé, utilise ce test pour vérifier que les messages partent.</p>
+          <div class="admin-stats" id="adminNotificationStatus">
+            <div><b>—</b><span>E-mail</span></div>
+            <div><b>—</b><span>SMS</span></div>
+            <div><b>Test</b><span>Admin</span></div>
+          </div>
+          <label class="field-label" for="adminTestEmail">Adresse e-mail de test</label>
+          <input class="input" type="email" id="adminTestEmail" placeholder="exemple@gmail.com">
+          <label class="field-label" for="adminTestPhone">Téléphone SMS de test</label>
+          <div class="phone-row auth-phone-row">
+            <span class="cc">🇧🇫 +226</span>
+            <input type="tel" id="adminTestPhone" placeholder="70 00 00 00" maxlength="11" inputmode="numeric">
+          </div>
+          <button class="btn btn-green btn-block" id="adminTestNotificationBtn" onclick="sendAdminNotificationTest()">Envoyer un test</button>
+          <div class="payment-result" id="adminNotificationResult"></div>
         </div>
       </div>
     </div>
@@ -765,9 +788,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=notifications-1"></script>
+<script src="js/questions.js?v=notifications-2"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=notifications-1"></script>
+<script src="js/app.js?v=notifications-2"></script>
 </body>
 </html>

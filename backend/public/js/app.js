@@ -927,11 +927,14 @@ function setAdminTab(tab){
   $('#adminCreatePane') && ($('#adminCreatePane').style.display = adminTab === 'create' ? 'block' : 'none');
   $('#adminListPane') && ($('#adminListPane').style.display = adminTab === 'list' ? 'block' : 'none');
   $('#adminResourcesPane') && ($('#adminResourcesPane').style.display = adminTab === 'resources' ? 'block' : 'none');
+  $('#adminNotificationsPane') && ($('#adminNotificationsPane').style.display = adminTab === 'notifications' ? 'block' : 'none');
   $('#adminTabCreate')?.classList.toggle('on', adminTab === 'create');
   $('#adminTabList')?.classList.toggle('on', adminTab === 'list');
   $('#adminTabResources')?.classList.toggle('on', adminTab === 'resources');
+  $('#adminTabNotifications')?.classList.toggle('on', adminTab === 'notifications');
   if (adminTab === 'list') loadAdminQuestions();
   if (adminTab === 'resources') loadAdminResources();
+  if (adminTab === 'notifications') loadAdminNotificationStatus();
 }
 
 async function ensureAdminAccess(){
@@ -1265,6 +1268,43 @@ async function deleteAdminResource(index){
     await loadResources();
     toast('Document supprimé');
   }catch(err){ toast(err.message); }
+}
+
+async function loadAdminNotificationStatus(){
+  const wrap = $('#adminNotificationStatus');
+  if (!wrap) return;
+  try{
+    const data = await adminFetch('/api/admin/notifications/status');
+    wrap.innerHTML = `
+      <div><b>${data.emailConfigured ? 'Prêt' : 'À configurer'}</b><span>E-mail</span></div>
+      <div><b>${data.smsConfigured ? 'Prêt' : 'À configurer'}</b><span>SMS</span></div>
+      <div><b>Test</b><span>Admin</span></div>`;
+  }catch(err){
+    wrap.innerHTML = `<div><b>Erreur</b><span>${escapeHtml(err.message)}</span></div>`;
+  }
+}
+
+async function sendAdminNotificationTest(){
+  const btn = $('#adminTestNotificationBtn');
+  const result = $('#adminNotificationResult');
+  const email = ($('#adminTestEmail')?.value || state.user?.email || '').trim();
+  const phone = normalizePhone($('#adminTestPhone')?.value || state.user?.phone || '');
+  if (!email && !phone){ toast('Entre un e-mail ou un téléphone'); return; }
+  setButtonLoading(btn, true, 'Envoi du test...');
+  try{
+    const data = await adminFetch('/api/admin/notifications/test', {
+      method:'POST',
+      body:JSON.stringify({ email, phone: fullPhone(phone), channel:'both' })
+    });
+    const emailText = data.results?.email?.sent ? 'E-mail envoyé ✅' : (data.results?.email?.attempted ? 'E-mail non envoyé' : 'E-mail non testé');
+    const smsText = data.results?.sms?.sent ? 'SMS envoyé ✅' : (data.results?.sms?.attempted ? 'SMS non envoyé' : 'SMS non testé');
+    if (result) result.innerHTML = `<div class="pay-note ${data.results?.email?.sent || data.results?.sms?.sent ? 'success' : 'warn'}">${emailText}<br>${smsText}</div>`;
+    await loadAdminNotificationStatus();
+  }catch(err){
+    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+  }finally{
+    setButtonLoading(btn, false);
+  }
 }
 
 /* ---------- abonnement & paiements ---------- */
