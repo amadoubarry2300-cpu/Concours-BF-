@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/styles.css?v=qcm5000-2">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
@@ -90,7 +90,7 @@
           <img class="action-photo" src="img/students-group.jpg" alt="Défi du jour"><h3>Défi du jour</h3><p id="dailySub">15 questions · 1 fois/jour</p>
         </button>
         <button class="action-card" onclick="show('quickpick')">
-          <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20 ou 40 questions</p>
+          <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20, 40, 100 ou toutes les questions</p>
         </button>
         <button class="action-card premium-locked" onclick="show('stats')">
           <span class="lock-tag">Ouvert</span>
@@ -199,6 +199,8 @@
         <button class="pick on" onclick="pickN(this,10)">10<small>~10 min</small></button>
         <button class="pick" onclick="pickN(this,20)">20<small>Ouvert</small></button>
         <button class="pick" onclick="pickN(this,40)">40<small>Ouvert</small></button>
+        <button class="pick" onclick="pickN(this,100)">100<small>Entraînement</small></button>
+        <button class="pick" onclick="pickN(this,'all')">Tous<small>Banque complète</small></button>
       </div>
       <button class="btn btn-green btn-block" onclick="startSetupQuiz()">Commencer la révision →</button>
     </div>
@@ -217,6 +219,8 @@
         <button class="pick-li" onclick="startQuiz({n:10,time:0,title:'Quiz rapide'})"><span class="em">🟢</span> 10 questions — échauffement</button>
         <button class="pick-li premium-row" onclick="startQuiz({n:20,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 20 questions — ouvert</button>
         <button class="pick-li premium-row" onclick="startQuiz({n:40,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 40 questions — ouvert</button>
+        <button class="pick-li premium-row" onclick="startQuiz({n:100,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 100 questions — entraînement</button>
+        <button class="pick-li premium-row" onclick="startQuiz({n:'all',time:0,title:'Banque complète 5000 QCM'})"><span class="em">📚</span> Toutes les questions disponibles</button>
       </div>
     </div>
   </section>
@@ -593,9 +597,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js"></script>
+<script src="js/questions.js?v=qcm5000-2"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js"></script>
+<script src="js/app.js?v=qcm5000-2"></script>
 </body>
 </html>

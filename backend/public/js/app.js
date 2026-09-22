@@ -572,6 +572,25 @@ function premiumLockForQuiz(opts){
   return null;
 }
 
+
+function questionBank(){
+  return (typeof QUESTIONS !== 'undefined' && Array.isArray(QUESTIONS)) ? QUESTIONS : [];
+}
+
+function qcmCount(cat){
+  const bank = questionBank();
+  return cat ? bank.filter(q=>q.c === cat).length : bank.length;
+}
+
+function formatQcmCount(n){
+  return new Intl.NumberFormat('fr-FR').format(n || 0) + ' QCM';
+}
+
+function sessionSizeFor(total){
+  return Math.min(40, Math.max(10, total || 10));
+}
+
+
 function startQuiz(opts){
   opts = opts || {};
   const required = premiumLockForQuiz(opts);
@@ -580,18 +599,25 @@ function startQuiz(opts){
     return;
   }
 
-  // opts: {n, time (sec, 0=sans), title, cat (opt), errorsMode, free}
+  // opts: {n, time (sec, 0=sans), title, cat (opt), level (opt), errorsMode, free}
+  const bank = questionBank();
   let pool;
   if (opts.errorsMode){
     const errQs = state.errors.map(e=>e.q);
-    pool = QUESTIONS.filter(q=>errQs.includes(q.q));
+    pool = bank.filter(q=>errQs.includes(q.q));
     if (!pool.length){ toast('Aucune erreur à réviser 🎉'); return; }
   } else if (opts.cat){
-    pool = QUESTIONS.filter(q=>q.c===opts.cat);
+    pool = bank.filter(q=>q.c===opts.cat);
   } else {
-    pool = QUESTIONS;
+    pool = bank;
   }
-  const qs = shuffle(pool).slice(0, Math.min(opts.n || 10, pool.length));
+  if (opts.level){
+    const levelPool = pool.filter(q=>q.level === opts.level);
+    if (levelPool.length) pool = levelPool;
+  }
+  if (!pool.length){ toast('Aucun QCM disponible pour ce choix'); return; }
+  const requested = opts.n === 'all' ? pool.length : Math.max(1, Number(opts.n || 10));
+  const qs = shuffle(pool).slice(0, Math.min(requested, pool.length));
   quiz = {
     qs, i:0, ok:0, ko:0, title:opts.title || 'Quiz', daily:opts.daily||false,
     time: opts.time||0, left: opts.time||0, answered:false, wrongList:[]
@@ -725,8 +751,9 @@ let setup = {level:null, n:10};
 function pickLevel(el, lv){ setup.level = lv; $$('#levelGrid .pick-li').forEach(p=>p.classList.remove('on')); el.classList.add('on'); }
 function pickN(el, n){ setup.n = n; $$('#nGrid .pick').forEach(p=>p.classList.remove('on')); el.classList.add('on'); }
 function startSetupQuiz(){
-  if (!setup.level){ toast('Choisis d\u2019abord ton niveau 👆'); return; }
-  startQuiz({n: setup.n, time: setup.n*60, title: setup.level});
+  if (!setup.level){ toast('Choisis d’abord ton niveau 👆'); return; }
+  const duration = setup.n === 'all' ? 0 : Number(setup.n || 10) * 60;
+  startQuiz({n: setup.n, time: duration, title: setup.level});
 }
 
 /* ---------- compte candidat ---------- */
@@ -1140,8 +1167,8 @@ function renderFormations(filter){
     'Concours & examens':[
       ['img/level-bac.svg','BAC','Culture générale'],
       ['img/level-bepc.svg','BEPC','Culture générale'],
-      ['img/subject-greffier.svg','Greffier (SG & Parquet)','Culture générale'],
-      ['img/subject-economy.svg','Économie & Droit','Culture générale']
+      ['img/subject-greffier.svg','Greffier (SG & Parquet)','Greffier / Droit'],
+      ['img/subject-economy.svg','Économie & Droit','Greffier / Droit']
     ],
     'Culture & monde':[
       ['img/subject-culture.svg','Culture générale','Culture générale'],
@@ -1158,11 +1185,15 @@ function renderFormations(filter){
     <div class="section"><div class="section-head"><h2>${g}</h2></div>
     <div class="form-list">
       ${groups[g].map(([img,name,cat])=>{
+        const total = qcmCount(cat);
+        const sessionN = sessionSizeFor(total);
         const free = ACCESS_OPEN_UNTIL_PAYMENT || FREE_CATEGORIES.includes(cat);
         const locked = !free && !hasOpenAccess();
-        return `<button class="form-item ${locked?'locked':''}" onclick="startQuiz({n:10,time:0,title:'${name.replace(/'/g,"\\'")}',cat:'${cat}'})">
+        const safeTitle = name.replace(/'/g,"\'");
+        const safeCat = cat.replace(/'/g,"\'");
+        return `<button class="form-item ${locked?'locked':''}" onclick="startQuiz({n:${sessionN},time:0,title:'${safeTitle}',cat:'${safeCat}'})">
           <img class="form-thumb" src="${img}" alt="${name}">
-          <span class="fi-body"><h4>${name}</h4><p>${free ? 'Ouvert · corrections incluses' : (hasOpenAccess() ? 'Ouvert · corrections incluses' : 'Premium · 1 500 FCFA/mois')}</p></span>
+          <span class="fi-body"><h4>${name}</h4><p>${formatQcmCount(total)} disponibles · session ${sessionN} QCM · corrections incluses</p></span>
           <span class="${locked?'lock-dot':'chev'}">${locked?'🔒':'›'}</span>
         </button>`;
       }).join('')}

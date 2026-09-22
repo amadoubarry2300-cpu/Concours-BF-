@@ -44,3 +44,13 @@ backend/server.js: OK
 - Aucun paiement n’a été activé.
 - La vente reste en pause.
 - Quand le propriétaire voudra vendre, il faudra repasser en mode protégé : gratuit dans le JS public, Premium via Supabase/backend.
+
+## Correction interface après vérification
+
+L’interface a été ajustée pour ne plus donner l’impression que l’application contient seulement 10 QCM :
+
+- Les formations affichent maintenant le nombre total disponible par matière, par exemple 1200 QCM en Mathématiques.
+- Les boutons de formation lancent une session de 40 QCM par défaut au lieu de 10.
+- Le quiz rapide propose désormais 10, 20, 40, 100 ou toutes les questions disponibles.
+- Le choix de révision propose aussi 100 QCM et « Tous ».
+- Les fichiers JavaScript sont chargés avec une nouvelle version `qcm5000-2` pour éviter que le navigateur garde l’ancien cache.
