@@ -205,3 +205,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - L'IA génère des QCM en brouillon selon catégorie, niveau, thème et nombre demandé.
 - Les brouillons restent sous contrôle administrateur : vérifier/modifier, publier, publier tout ou retirer.
 - L'accès utilise `GEMINI_API_KEY` côté serveur uniquement, sans exposer la clé dans le frontend.
+
+
+## 2026-09-23 — Correction modèles IA Gemini
+
+- L'intégration IA détecte automatiquement les modèles Gemini disponibles pour la clé API.
+- Les anciens noms de modèles indisponibles ne bloquent plus la génération.
+- Le message d'erreur affiché à l'admin est maintenant clair et non technique.

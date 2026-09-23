@@ -758,8 +758,33 @@ function adminQuestionPayload(body){
   return payload;
 }
 
-function geminiModelsToTry(){
-  return Array.from(new Set([GEMINI_MODEL, 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest'].filter(Boolean)));
+function normalizeGeminiModelName(name){
+  return String(name || '').replace(/^models\//, '').trim();
+}
+
+async function listGeminiModels(){
+  if (!GEMINI_API_KEY) return [];
+  try{
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(GEMINI_API_KEY)}`);
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok || !Array.isArray(data.models)) return [];
+    return data.models
+      .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+      .map(m => normalizeGeminiModelName(m.name))
+      .filter(Boolean);
+  }catch{
+    return [];
+  }
+}
+
+async function geminiModelsToTry(){
+  const preferred = [GEMINI_MODEL, 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'].map(normalizeGeminiModelName).filter(Boolean);
+  const available = await listGeminiModels();
+  const availableSet = new Set(available);
+  const prioritized = available.length
+    ? preferred.filter(m => availableSet.has(m)).concat(available.filter(m => /flash/i.test(m)), available)
+    : preferred;
+  return Array.from(new Set(prioritized.map(normalizeGeminiModelName).filter(Boolean)));
 }
 
 function extractJsonFromAi(text){
@@ -805,29 +830,39 @@ function normalizeAiQuestion(item, defaults = {}){
 async function callGeminiGenerate(prompt){
   if (!GEMINI_API_KEY) throw Object.assign(new Error('IA non configurée'), { status:503 });
   let lastError = null;
-  for (const model of geminiModelsToTry()){
+  const models = await geminiModelsToTry();
+  for (const model of models){
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-    const res = await fetch(url, {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body:JSON.stringify({
-        contents:[{ role:'user', parts:[{ text:prompt }] }],
-        generationConfig:{ temperature:0.35, topP:0.9, maxOutputTokens:6000, responseMimeType:'application/json' }
-      })
-    });
-    const data = await res.json().catch(()=>({}));
-    if (!res.ok){
-      lastError = data?.error?.message || `Erreur IA ${res.status}`;
-      continue;
+    for (const jsonMode of [true, false]){
+      const generationConfig = { temperature:0.35, topP:0.9, maxOutputTokens:6000 };
+      if (jsonMode) generationConfig.responseMimeType = 'application/json';
+      const res = await fetch(url, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body:JSON.stringify({
+          contents:[{ role:'user', parts:[{ text:prompt }] }],
+          generationConfig
+        })
+      });
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok){
+        lastError = data?.error?.message || `Erreur IA ${res.status}`;
+        if (res.status === 400 && jsonMode && /responseMimeType|mime|schema/i.test(lastError || '')) continue;
+        break;
+      }
+      const text = (data?.candidates || [])
+        .flatMap(c => c?.content?.parts || [])
+        .map(part => part?.text || '')
+        .join('\n')
+        .trim();
+      return { model, text };
     }
-    const text = (data?.candidates || [])
-      .flatMap(c => c?.content?.parts || [])
-      .map(part => part?.text || '')
-      .join('\n')
-      .trim();
-    return { model, text };
   }
-  const err = new Error(lastError || 'Service IA indisponible');
+  console.warn('Gemini generation failed:', lastError);
+  const friendly = /quota|rate|429/i.test(lastError || '')
+    ? 'Quota gratuit IA atteint pour le moment. Réessaie plus tard.'
+    : 'IA indisponible pour le moment. Vérifie la clé Gemini dans Vercel ou réessaie.';
+  const err = new Error(friendly);
   err.status = /quota|rate|429/i.test(lastError || '') ? 429 : 502;
   throw err;
 }
