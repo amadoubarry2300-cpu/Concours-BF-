@@ -1299,8 +1299,11 @@ async function generateAiQcm(){
   const btn = $('#aiGenerateBtn');
   const result = $('#aiResult');
   const list = $('#aiDraftList');
-  setButtonLoading(btn, true, 'Génération...');
-  if (result) result.innerHTML = '<div class="pay-note">L’IA prépare les brouillons. Vérifie toujours avant publication.</div>';
+  const pdfFile = $('#aiPdfSource')?.files?.[0] || null;
+  setButtonLoading(btn, true, pdfFile ? 'Lecture PDF...' : 'Génération...');
+  if (result) result.innerHTML = pdfFile
+    ? '<div class="pay-note">L’IA lit le PDF et prépare des brouillons. Vérifie toujours avant publication.</div>'
+    : '<div class="pay-note">L’IA prépare les brouillons. Vérifie toujours avant publication.</div>';
   if (list) list.innerHTML = '<div class="empty">Génération en cours...</div>';
   try{
     const payload = {
@@ -1310,10 +1313,26 @@ async function generateAiQcm(){
       count: Number($('#aiCount')?.value || 5),
       is_premium: Boolean($('#aiPremium')?.checked)
     };
-    const publicationName = ($('#aiPublicationName')?.value || payload.theme || ('QCM IA ' + formatDate(new Date().toISOString()))).trim();
-    const data = await adminFetch('/api/admin/ai/qcm', { method:'POST', body:JSON.stringify(payload) });
+    const publicationName = ($('#aiPublicationName')?.value || payload.theme || (pdfFile?.name ? pdfFile.name.replace(/\.pdf$/i,'') : '') || ('QCM IA ' + formatDate(new Date().toISOString()))).trim();
+    let data;
+    if (pdfFile){
+      const headers = authHeaders({
+        'Content-Type': pdfFile.type || 'application/pdf',
+        'X-File-Name': encodeURIComponent(pdfFile.name || 'source.pdf'),
+        'X-Ai-Category': encodeURIComponent(payload.category),
+        'X-Ai-Level': encodeURIComponent(payload.level),
+        'X-Ai-Theme': encodeURIComponent(payload.theme || publicationName),
+        'X-Ai-Count': String(payload.count),
+        'X-Ai-Is-Premium': String(Boolean(payload.is_premium))
+      });
+      const res = await fetch('/api/admin/ai/qcm-pdf', { method:'POST', headers, body:pdfFile });
+      data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.message || 'Génération depuis PDF impossible');
+    }else{
+      data = await adminFetch('/api/admin/ai/qcm', { method:'POST', body:JSON.stringify(payload) });
+    }
     aiDraftCache = (data.questions || []).map(q => ({...q, source:publicationName, is_premium:payload.is_premium, is_active:true, _published:false}));
-    if (result) result.innerHTML = `<div class="pay-note success">${aiDraftCache.length} brouillon${aiDraftCache.length>1?'s':''} généré${aiDraftCache.length>1?'s':''} ✅</div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">${aiDraftCache.length} brouillon${aiDraftCache.length>1?'s':''} généré${aiDraftCache.length>1?'s':''}${pdfFile ? ' depuis le PDF' : ''} ✅</div>`;
     renderAiDrafts();
   }catch(err){
     aiDraftCache = [];
@@ -1416,14 +1435,15 @@ async function scanOfficialNews(){
   const result = $('#aiNewsResult');
   const list = $('#aiNewsDraftList');
   setButtonLoading(btn, true, 'Recherche...');
-  if (result) result.innerHTML = '<div class="pay-note">Recherche sur les sources officielles. Les résultats restent des brouillons à vérifier.</div>';
+  if (result) result.innerHTML = '<div class="pay-note">Recherche sur les sources officielles avec filtre à jour : année en cours, échéances non dépassées. Les résultats restent des brouillons à vérifier.</div>';
   if (list) list.innerHTML = '<div class="empty">Analyse des communiqués en cours...</div>';
   try{
     const data = await adminFetch('/api/admin/ai/news-scan', { method:'POST', body:JSON.stringify({ limit:6 }) });
     aiNewsDraftCache = data.items || [];
     if (result){
       const note = data.notificationSent ? ' Notification envoyée.' : '';
-      result.innerHTML = `<div class="pay-note success">${aiNewsDraftCache.length} nouvelle${aiNewsDraftCache.length>1?'s':''} proposée${aiNewsDraftCache.length>1?'s':''} par la veille IA ✅${note}</div>`;
+      const fresh = data.today ? ` Filtre à jour appliqué (${data.today}).` : ' Filtre à jour appliqué.';
+      result.innerHTML = `<div class="pay-note success">${aiNewsDraftCache.length} nouvelle${aiNewsDraftCache.length>1?'s':''} actuelle${aiNewsDraftCache.length>1?'s':''} proposée${aiNewsDraftCache.length>1?'s':''} par la veille IA ✅${fresh}${note}</div>`;
     }
     renderAiNewsDrafts();
   }catch(err){
@@ -1439,7 +1459,7 @@ function renderAiNewsDrafts(){
   const wrap = $('#aiNewsDraftList');
   if (!wrap) return;
   if (!aiNewsDraftCache.length){
-    wrap.innerHTML = '<div class="empty">Aucune nouvelle détectée pour le moment.</div>';
+    wrap.innerHTML = '<div class="empty">Aucune actualité officielle récente ou échéance non dépassée détectée pour le moment.</div>';
     return;
   }
   wrap.innerHTML = aiNewsDraftCache.map((item, idx)=>`

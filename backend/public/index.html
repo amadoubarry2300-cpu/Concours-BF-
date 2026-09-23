@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=subscription-plans-1">
+<link rel="stylesheet" href="css/styles.css?v=ai-fresh-pdf-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -790,6 +790,10 @@
           <label class="field-label" for="aiPublicationName">Nom du QCM publié</label>
           <input class="input" id="aiPublicationName" placeholder="Ex : Culture générale Burkina Faso — Actualités 2026">
 
+          <label class="field-label" for="aiPdfSource">PDF source <span>(facultatif)</span></label>
+          <input class="input" type="file" id="aiPdfSource" accept="application/pdf,.pdf">
+          <p class="admin-help">Si tu ajoutes un PDF, l’IA génère les QCM à partir de ce document seulement. Les QCM restent des brouillons à vérifier.</p>
+
           <div class="admin-options-grid">
             <div>
               <label class="field-label" for="aiCount">Nombre de QCM</label>
@@ -816,7 +820,7 @@
             <img src="img/ai-qcm-logo.svg" alt="Logo veille IA">
             <div>
               <h3>Veille IA des concours</h3>
-              <p class="admin-help">Recherche sur les sources officielles : Ministère de la Fonction publique et plateformes eConcours. Rien n’est publié sans ta validation.</p>
+              <p class="admin-help">Recherche uniquement les informations à jour : session en cours, échéances non dépassées et sources officielles. Rien n’est publié sans ta validation.</p>
             </div>
           </div>
           <button class="btn btn-ghost btn-block" id="aiNewsScanBtn" onclick="scanOfficialNews()">🔎 Rechercher les nouvelles officielles</button>
@@ -1053,9 +1057,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=subscription-plans-1"></script>
+<script src="js/questions.js?v=ai-fresh-pdf-1"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=subscription-plans-1"></script>
+<script src="js/app.js?v=ai-fresh-pdf-1"></script>
 </body>
 </html>

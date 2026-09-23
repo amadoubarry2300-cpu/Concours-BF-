@@ -240,3 +240,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - L’offre annuelle affiche l’ancien total **18 000 FCFA**, la réduction **8 000 FCFA**, l’accès 12 mois, toutes les formations, QCM/exercices et examens blancs.
 - La page paiement est mieux organisée : choix de l’abonnement, réseaux Mobile Money plus compacts côte à côte, bouton dynamique **S’abonner / mois** ou **S’abonner / an**.
 - Le backend SasPay accepte maintenant le montant et la durée correspondant à l’offre choisie.
+
+## 2026-09-23 — IA actualités à jour et QCM depuis PDF
+
+- La veille IA des concours filtre maintenant les anciennes actualités : pas de communiqués 2024/2025 si l’année courante est 2026, et pas d’inscriptions avec date limite déjà dépassée.
+- Le prompt IA reçoit la date du jour et demande uniquement des brouillons issus de sources officielles à jour.
+- Ajout d’un champ **PDF source** dans **IA QCM** : l’admin peut joindre un PDF, et Gemini génère des QCM brouillons à partir du document.
+- Les QCM issus d’un PDF restent non publiés tant que l’admin ne les vérifie pas.

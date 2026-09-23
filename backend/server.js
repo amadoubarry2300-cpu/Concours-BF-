@@ -859,7 +859,26 @@ function normalizeAiQuestion(item, defaults = {}){
   });
 }
 
-async function callGeminiGenerate(prompt){
+function normalizeAiQuestionList(aiText, defaults, count){
+  const parsed = extractJsonFromAi(aiText);
+  const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.questions) ? parsed.questions : []);
+  const questions = [];
+  for (const row of rows){
+    try{
+      questions.push(normalizeAiQuestion(row, defaults));
+    }catch(err){ /* ignore invalid draft */ }
+  }
+  return questions.slice(0, count);
+}
+
+function aiQcmPrompt({ count, category, level, theme, fromPdf = false }){
+  const sourceLine = fromPdf
+    ? `Lis le PDF joint et génère exactement ${count} QCM en français à partir de son contenu. Si une information n'est pas clairement présente dans le PDF, ne l'invente pas.`
+    : `Génère exactement ${count} QCM en français.`;
+  return `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\n${sourceLine}\nCatégorie: ${category}. Niveau: ${level}. Thème: ${theme}.\nContraintes importantes:\n- chaque QCM doit être factuel, clair, non ambigu, adapté au Burkina Faso si pertinent;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse;\n- correction détaillée et pédagogique;\n- éviter les affirmations incertaines ou inventées;\n- si le thème concerne un fait officiel récent, rester général et mentionner qu'il faut vérifier la source officielle;\n- les QCM générés sont des brouillons à vérifier par l'administrateur.\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Généré par IA - à vérifier"}]}`;
+}
+
+async function callGeminiGenerateParts(parts){
   if (!GEMINI_API_KEY) throw Object.assign(new Error('IA non configurée'), { status:503 });
   let lastError = null;
   const models = await geminiModelsToTry();
@@ -872,7 +891,7 @@ async function callGeminiGenerate(prompt){
         method:'POST',
         headers:{ 'Content-Type':'application/json' },
         body:JSON.stringify({
-          contents:[{ role:'user', parts:[{ text:prompt }] }],
+          contents:[{ role:'user', parts }],
           generationConfig
         })
       });
@@ -897,6 +916,10 @@ async function callGeminiGenerate(prompt){
   const err = new Error(friendly);
   err.status = /quota|rate|429/i.test(lastError || '') ? 429 : 502;
   throw err;
+}
+
+async function callGeminiGenerate(prompt){
+  return callGeminiGenerateParts([{ text:prompt }]);
 }
 
 
@@ -944,6 +967,65 @@ function officialNewsKeyword(text){
   return /(concours|recrut|communiqu|résultat|resultat|admissibil|admission|inscription|econcours|e-concours|session|fonction publique|calendrier|ouverture|dépôt|depot)/i.test(String(text || ''));
 }
 
+const FRENCH_MONTHS = {
+  janvier:0, février:1, fevrier:1, mars:2, avril:3, mai:4, juin:5,
+  juillet:6, août:7, aout:7, septembre:8, octobre:9, novembre:10, décembre:11, decembre:11
+};
+
+function startOfDay(date = new Date()){
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function parseOfficialDates(text, now = new Date()){
+  const raw = String(text || '').toLowerCase();
+  const dates = [];
+  let m;
+  const add = (year, month, day) => {
+    const y = Number(year), mo = Number(month), d = Number(day);
+    if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return;
+    if (y < 2020 || y > now.getFullYear() + 2 || mo < 1 || mo > 12 || d < 1 || d > 31) return;
+    const dt = new Date(y, mo - 1, d);
+    if (!Number.isNaN(dt.getTime())) dates.push(dt);
+  };
+  const numeric = /\b(\d{1,2})[\/.-](\d{1,2})[\/.-](20\d{2})\b/g;
+  while ((m = numeric.exec(raw))) add(m[3], m[2], m[1]);
+  const iso = /\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/g;
+  while ((m = iso.exec(raw))) add(m[1], m[2], m[3]);
+  const monthNames = Object.keys(FRENCH_MONTHS).join('|');
+  const fr = new RegExp(`\b(\d{1,2})(?:er)?\s+(${monthNames})\s+(20\d{2})\b`, 'gi');
+  while ((m = fr.exec(raw))) add(m[3], FRENCH_MONTHS[m[2].normalize('NFD').replace(/[\u0300-\u036f]/g, '')] + 1 || FRENCH_MONTHS[m[2]] + 1, m[1]);
+  return dates;
+}
+
+function officialYears(text){
+  return Array.from(new Set((String(text || '').match(/\b20\d{2}\b/g) || []).map(Number))).filter(Boolean);
+}
+
+function hasDeadlineMeaning(text){
+  return /(date limite|cl[oô]ture|fin des inscriptions|dernier délai|dernier delai|jusqu(?:'|’|e|au)|du\s+\d{1,2}|au\s+\d{1,2}|inscriptions? en ligne|dépôt des dossiers|depot des dossiers)/i.test(String(text || ''));
+}
+
+function isCurrentOfficialCandidate(item, now = new Date()){
+  const today = startOfDay(now);
+  const currentYear = now.getFullYear();
+  const titleText = String(item?.title || '');
+  const titleYears = officialYears(titleText);
+  if (titleYears.length && Math.max(...titleYears) < currentYear) return false;
+  const text = `${item?.title || ''} ${item?.snippet || ''} ${item?.url || ''}`;
+  const years = officialYears(text);
+  if (years.length && Math.max(...years) < currentYear) return false;
+  const dates = parseOfficialDates(text, now);
+  if (dates.length){
+    const maxDate = dates.reduce((a, b) => a > b ? a : b);
+    if (maxDate.getFullYear() < currentYear) return false;
+    if (hasDeadlineMeaning(text) && maxDate < today) return false;
+    return maxDate.getFullYear() >= currentYear;
+  }
+  if (years.length) return years.some(y => y >= currentYear);
+  // Sans année/date explicite, on évite de proposer un vieux communiqué.
+  return false;
+}
+
 async function fetchOfficialSource(source){
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
@@ -963,31 +1045,38 @@ async function fetchOfficialSource(source){
   }
 }
 
-function extractOfficialCandidates(page){
+function extractOfficialCandidates(page, now = new Date()){
   const html = String(page.html || '');
   const cleanPageText = stripHtml(html).slice(0, 9000);
   const candidates = [];
   const seen = new Set();
   const anchorRe = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let match;
-  while ((match = anchorRe.exec(html)) && candidates.length < 18){
+  while ((match = anchorRe.exec(html)) && candidates.length < 30){
     const url = absoluteSourceUrl(match[1], page.url);
     const title = stripHtml(match[2]).replace(/\s+/g, ' ').trim();
     if (!url || title.length < 8 || title.length > 260) continue;
-    if (!officialNewsKeyword(title + ' ' + url)) continue;
+    const contextStart = Math.max(0, match.index - 900);
+    const contextEnd = Math.min(html.length, anchorRe.lastIndex + 900);
+    const context = stripHtml(html.slice(contextStart, contextEnd)).replace(/\s+/g, ' ').trim();
+    const snippet = cleanText(context || title, 900);
+    if (!officialNewsKeyword(title + ' ' + snippet + ' ' + url)) continue;
+    const item = { title, url, sourceName:page.name, snippet };
+    if (!isCurrentOfficialCandidate(item, now)) continue;
     const key = title.toLowerCase() + '|' + url;
     if (seen.has(key)) continue;
     seen.add(key);
-    candidates.push({ title, url, sourceName:page.name, snippet:title });
+    candidates.push(item);
   }
   if (!candidates.length && officialNewsKeyword(cleanPageText)){
     const pageTitle = stripHtml((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [,'Actualités concours'])[1]);
-    candidates.push({
+    const item = {
       title:pageTitle || `Actualités — ${page.name}`,
       url:page.url,
       sourceName:page.name,
       snippet:cleanPageText.slice(0, 900)
-    });
+    };
+    if (isCurrentOfficialCandidate(item, now)) candidates.push(item);
   }
   return candidates.map(item => ({ ...item, snippet:String(item.snippet || cleanPageText).slice(0, 900) }));
 }
@@ -1021,33 +1110,44 @@ function normalizeOfficialNewsDraft(item, fallback = {}){
 }
 
 async function buildOfficialNewsDrafts(limit = 6){
+  const now = new Date();
+  const todayIso = now.toISOString().slice(0, 10);
+  const currentYear = now.getFullYear();
   const pages = await Promise.allSettled(officialNewsSources().map(fetchOfficialSource));
   const candidates = pages
     .filter(r => r.status === 'fulfilled')
-    .flatMap(r => extractOfficialCandidates(r.value));
+    .flatMap(r => extractOfficialCandidates(r.value, now));
   const unique = [];
   const seen = new Set();
   for (const item of candidates){
+    if (!isCurrentOfficialCandidate(item, now)) continue;
     const key = `${String(item.title || '').toLowerCase()}|${item.url}`;
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(item);
   }
-  if (!unique.length) return { candidates:[], items:[] };
+  if (!unique.length) return { candidates:[], items:[], today:todayIso, currentYear };
   let items = [];
   if (GEMINI_API_KEY){
     try{
-      const prompt = `Tu es assistant de veille pour Réussite Concours BF. À partir de cette liste issue de sources officielles, propose au maximum ${limit} brouillons d'actualités concours. N'invente rien hors des extraits. Si une date limite n'est pas claire, laisse deadline vide. Réponds uniquement en JSON valide: {"items":[{"title":"...","type":"Concours|Recrutement|Communiqué|Résultat|Calendrier","organization":"...","deadline":"YYYY-MM-DD ou vide","status":"Ouvert|Bientôt|Info|Clôturé","summary":"...","content":"...","sourceUrl":"...","sourceName":"..."}]}\n\nSources extraites:\n${JSON.stringify(unique.slice(0, 30), null, 2)}`;
+      const prompt = `Tu es assistant de veille pour Réussite Concours BF. Date du jour: ${todayIso}. À partir de cette liste issue de sources officielles, propose au maximum ${limit} brouillons d'actualités concours À JOUR UNIQUEMENT. Règles strictes: ne propose aucun communiqué de 2025, 2024 ou année antérieure; ne propose aucune inscription/date limite déjà clôturée avant ${todayIso}; privilégie session ${currentYear}, résultats récents ${currentYear}, ouvertures en cours ou échéances futures; n'invente rien hors des extraits. Si une date limite n'est pas claire, laisse deadline vide et mets status "Info". Réponds uniquement en JSON valide: {"items":[{"title":"...","type":"Concours|Recrutement|Communiqué|Résultat|Calendrier","organization":"...","deadline":"YYYY-MM-DD ou vide","status":"Ouvert|Bientôt|Info|Clôturé","summary":"...","content":"...","sourceUrl":"...","sourceName":"..."}]}\n\nSources filtrées actuelles:\n${JSON.stringify(unique.slice(0, 30), null, 2)}`;
       const ai = await callGeminiGenerate(prompt);
       const parsed = extractJsonFromAi(ai.text);
       const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.items) ? parsed.items : []);
-      items = rows.map(row => normalizeOfficialNewsDraft(row)).filter(item => item.title && item.summary && item.sourceUrl).slice(0, limit);
+      items = rows
+        .map(row => normalizeOfficialNewsDraft(row))
+        .filter(item => item.title && item.summary && item.sourceUrl && isCurrentOfficialCandidate({ title:item.title, url:item.sourceUrl, snippet:`${item.summary} ${item.content} ${item.deadline}` }, now))
+        .slice(0, limit);
     }catch(err){
       console.warn('Veille IA actualités fallback:', err.message);
     }
   }
-  if (!items.length) items = fallbackOfficialDrafts(unique, limit).map(item => normalizeOfficialNewsDraft(item));
-  return { candidates:unique, items:items.slice(0, limit) };
+  if (!items.length){
+    items = fallbackOfficialDrafts(unique, limit)
+      .map(item => normalizeOfficialNewsDraft(item))
+      .filter(item => isCurrentOfficialCandidate({ title:item.title, url:item.sourceUrl, snippet:`${item.summary} ${item.content} ${item.deadline}` }, now));
+  }
+  return { candidates:unique, items:items.slice(0, limit), today:todayIso, currentYear };
 }
 
 function requireCinetPayConfig(){
@@ -1734,18 +1834,37 @@ app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
     const theme = cleanText(req.body?.theme || category, 200);
     const count = Math.min(10, Math.max(1, Number(req.body?.count || 5)));
     const isPremiumDraft = Boolean(req.body?.is_premium);
-    const prompt = `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\nGénère exactement ${count} QCM en français.\nCatégorie: ${category}. Niveau: ${level}. Thème: ${theme}.\nContraintes importantes:\n- chaque QCM doit être factuel, clair, non ambigu, adapté au Burkina Faso si pertinent;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse;\n- correction détaillée et pédagogique;\n- éviter les affirmations incertaines ou inventées;\n- si le thème concerne un fait officiel récent, rester général et mentionner qu'il faut vérifier la source officielle.\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Généré par IA - à vérifier"}]}`;
+    const prompt = aiQcmPrompt({ count, category, level, theme });
     const ai = await callGeminiGenerate(prompt);
-    const parsed = extractJsonFromAi(ai.text);
-    const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.questions) ? parsed.questions : []);
-    const questions = [];
-    for (const row of rows){
-      try{
-        questions.push(normalizeAiQuestion(row, { category, level, is_premium:isPremiumDraft }));
-      }catch(err){ /* ignore invalid draft */ }
-    }
+    const questions = normalizeAiQuestionList(ai.text, { category, level, is_premium:isPremiumDraft }, count);
     if (!questions.length) return res.status(502).json({ message:'L’IA n’a pas produit de QCM valide. Réessaie avec un thème plus précis.' });
-    res.json({ ok:true, model:ai.model, questions:questions.slice(0, count) });
+    res.json({ ok:true, model:ai.model, questions });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/ai/qcm-pdf', requireAdmin, express.raw({ type:() => true, limit:'8mb' }), async (req, res, next) => {
+  try{
+    if (!GEMINI_API_KEY) return res.status(503).json({ message:'IA non configurée. Ajoute GEMINI_API_KEY dans Vercel puis redéploie.' });
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
+    const fileName = safeFileName(headerText(req, 'x-file-name', 180) || 'source.pdf');
+    const mimeType = String(req.headers['content-type'] || 'application/pdf').split(';')[0].trim() || 'application/pdf';
+    if (!buffer.length) return res.status(400).json({ message:'Choisis un PDF source pour générer des QCM.' });
+    if (buffer.length > MAX_RESOURCE_FILE_BYTES) return res.status(413).json({ message:`PDF trop lourd. Maximum ${Math.round(MAX_RESOURCE_FILE_BYTES/1024/1024)} Mo.` });
+    if (!isPdfFile(fileName, mimeType)) return res.status(400).json({ message:'Seuls les fichiers PDF sont acceptés pour cette option IA.' });
+
+    const category = headerText(req, 'x-ai-category', 80) || 'Culture générale';
+    const level = headerText(req, 'x-ai-level', 40) || 'Concours';
+    const theme = headerText(req, 'x-ai-theme', 200) || `PDF ${fileName}`;
+    const count = Math.min(10, Math.max(1, Number(req.headers['x-ai-count'] || 5)));
+    const isPremiumDraft = String(req.headers['x-ai-is-premium'] || '').toLowerCase() === 'true';
+    const prompt = aiQcmPrompt({ count, category, level, theme, fromPdf:true });
+    const ai = await callGeminiGenerateParts([
+      { text:prompt },
+      { inline_data:{ mime_type:mimeType || 'application/pdf', data:buffer.toString('base64') } }
+    ]);
+    const questions = normalizeAiQuestionList(ai.text, { category, level, is_premium:isPremiumDraft }, count);
+    if (!questions.length) return res.status(502).json({ message:'L’IA n’a pas pu produire de QCM valide depuis ce PDF. Vérifie que le PDF contient du texte lisible.' });
+    res.json({ ok:true, model:ai.model, fileName, questions });
   }catch(err){ next(err); }
 });
 
@@ -1764,7 +1883,7 @@ app.post('/api/admin/ai/news-scan', requireAdmin, async (req, res, next) => {
         html:`<p>Réussite Concours BF a détecté des actualités officielles à vérifier :</p><ol>${result.items.map(item => `<li><b>${htmlEscape(item.title)}</b><br>${htmlEscape(item.summary)}<br><a href="${htmlEscape(item.sourceUrl)}">Source officielle</a></li>`).join('')}</ol>`
       }).catch(err => { console.warn('Notification veille IA:', err.message); return false; });
     }
-    res.json({ ok:true, sources:officialNewsSources(), found:result.candidates.length, items:result.items, notificationSent });
+    res.json({ ok:true, sources:officialNewsSources(), found:result.candidates.length, items:result.items, notificationSent, today:result.today, currentYear:result.currentYear, freshness:'current_only' });
   }catch(err){ next(err); }
 });
 
