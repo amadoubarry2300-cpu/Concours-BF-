@@ -253,3 +253,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout d’animations plus fluides sur les blocs, boutons, images et cartes principales pour donner une impression plus premium sans surcharger l’interface.
 - Ajout d’une mini animation visuelle sur l’accueil pour dynamiser les blocs d’image.
 - Ajout de l’adresse **Réussite Concours BF — Ouagadougou, Burkina Faso** dans la politique de confidentialité.
+
+## 2026-09-23 — Nettoyage des textes d’interface
+
+- Suppression du bloc d’accueil qui affichait une consigne interne de type “mini vidéo animée”.
+- Conservation des animations premium directement sur les cartes, images et boutons, sans texte technique visible pour les candidats.
+- Vérification des textes visibles pour éviter d’afficher les demandes de conception dans l’application.

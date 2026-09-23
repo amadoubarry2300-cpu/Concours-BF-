@@ -542,7 +542,7 @@ function renderAccount(){
         <div class="premium-copy">
           <div class="premium-kicker">Accès ouvert</div>
           <h3>5000 QCM corrigés accessibles</h3>
-          <p>Paiement en pause : révise librement en attendant l’activation officielle.</p>
+          <p>Révise librement les contenus disponibles pendant la période d’accès.</p>
         </div>
         <button class="mini-btn" onclick="show('formations')">Réviser</button>`;
     } else if (isPremium()){
@@ -1972,17 +1972,17 @@ function renderSubscription(){
   const instruction = $('#paymentInstruction');
   if (ACCESS_OPEN_UNTIL_PAYMENT){
     if (planBadge) planBadge.textContent = '✅ Accès ouvert';
-    if (planTitle) planTitle.innerHTML = '0 FCFA <span>/ en attendant</span>';
-    if (planText) planText.textContent = 'Les 5000 QCM corrigés sont accessibles pendant que le paiement reste en pause.';
+    if (planTitle) planTitle.innerHTML = 'Accès découverte';
+    if (planText) planText.textContent = 'Les QCM corrigés disponibles peuvent être révisés librement pendant la période d’accès.';
     if (payBox) payBox.style.display = 'none';
     if (integrationNote){
       integrationNote.style.display = 'block';
-      integrationNote.innerHTML = '<b>Paiement en pause :</b> les questions sont ouvertes pour permettre la révision. La vente et Mobile Money seront réactivés plus tard seulement si demandé.';
+      integrationNote.innerHTML = '<b>Accès découverte :</b> révise les contenus disponibles librement pendant la période d’accès.';
     }
     const status = $('#subStatus');
     if (status){
       status.className = 'sub-status active';
-      status.innerHTML = '✅ Accès ouvert actuellement : 5000 QCM corrigés disponibles, sans paiement pour le moment.';
+      status.innerHTML = '✅ Accès découverte actif : révise les QCM corrigés disponibles librement.';
     }
     return;
   } else {
@@ -2158,7 +2158,7 @@ async function simulatePaymentSuccess(){
   const plan = selectedSubscriptionPlan();
   activatePremium(plan.days, tx, state.selectedProvider);
   state.subscription.plan = plan.id;
-  runtimePaymentMessage = `<div class="pay-note success">Mode test : Premium activé pour ${plan.days} jours ✅</div>`;
+  runtimePaymentMessage = `<div class="pay-note success">Simulation : Premium activé pour ${plan.days} jours ✅</div>`;
   paywallFeature = null;
   renderSubscription();
   renderAccount();
