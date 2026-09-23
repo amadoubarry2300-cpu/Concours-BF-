@@ -53,6 +53,8 @@ const SMS_SENDER = process.env.SMS_SENDER || 'ConcoursBF';
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_FROM = process.env.TWILIO_FROM || '';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 const premiumNotificationTxSent = new Set();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -756,6 +758,80 @@ function adminQuestionPayload(body){
   return payload;
 }
 
+function geminiModelsToTry(){
+  return Array.from(new Set([GEMINI_MODEL, 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest'].filter(Boolean)));
+}
+
+function extractJsonFromAi(text){
+  const raw = String(text || '').trim();
+  if (!raw) throw Object.assign(new Error('Réponse IA vide'), { status:502 });
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1].trim() : raw;
+  try{ return JSON.parse(candidate); }catch{}
+  const startArray = candidate.indexOf('[');
+  const endArray = candidate.lastIndexOf(']');
+  if (startArray >= 0 && endArray > startArray){
+    return JSON.parse(candidate.slice(startArray, endArray + 1));
+  }
+  const startObj = candidate.indexOf('{');
+  const endObj = candidate.lastIndexOf('}');
+  if (startObj >= 0 && endObj > startObj){
+    return JSON.parse(candidate.slice(startObj, endObj + 1));
+  }
+  throw Object.assign(new Error('Réponse IA non lisible'), { status:502 });
+}
+
+function normalizeAiQuestion(item, defaults = {}){
+  const options = Array.isArray(item?.options) ? item.options : [item?.option_a, item?.option_b, item?.option_c, item?.option_d];
+  const correctRaw = item?.correct_answer ?? item?.answer_index ?? item?.answer ?? item?.correctIndex;
+  let correct = Number(correctRaw);
+  if (!Number.isInteger(correct)){
+    const label = String(correctRaw || '').trim().toUpperCase();
+    correct = ({A:0, B:1, C:2, D:3})[label] ?? -1;
+  }
+  return adminQuestionPayload({
+    category:item?.category || defaults.category,
+    level:item?.level || defaults.level,
+    question_text:item?.question_text || item?.question,
+    options,
+    correct_answer:correct,
+    explanation:item?.explanation || item?.correction || item?.reason,
+    source:item?.source || 'Généré par IA - à vérifier',
+    is_premium:defaults.is_premium,
+    is_active:false
+  });
+}
+
+async function callGeminiGenerate(prompt){
+  if (!GEMINI_API_KEY) throw Object.assign(new Error('IA non configurée'), { status:503 });
+  let lastError = null;
+  for (const model of geminiModelsToTry()){
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const res = await fetch(url, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body:JSON.stringify({
+        contents:[{ role:'user', parts:[{ text:prompt }] }],
+        generationConfig:{ temperature:0.35, topP:0.9, maxOutputTokens:6000, responseMimeType:'application/json' }
+      })
+    });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok){
+      lastError = data?.error?.message || `Erreur IA ${res.status}`;
+      continue;
+    }
+    const text = (data?.candidates || [])
+      .flatMap(c => c?.content?.parts || [])
+      .map(part => part?.text || '')
+      .join('\n')
+      .trim();
+    return { model, text };
+  }
+  const err = new Error(lastError || 'Service IA indisponible');
+  err.status = /quota|rate|429/i.test(lastError || '') ? 429 : 502;
+  throw err;
+}
+
 function requireCinetPayConfig(){
   if (!CINETPAY_APIKEY || !CINETPAY_SITE_ID){
     const err = new Error('CinetPay non configuré: ajoutez CINETPAY_APIKEY et CINETPAY_SITE_ID dans Vercel');
@@ -1413,6 +1489,33 @@ app.get('/api/admin/summary', requireAdmin, async (_req, res, next) => {
       customCount = Array.isArray(rows) ? rows.length : 0;
     }
     res.json({ ok:true, localTotal:localBank.length, localCounts, customCount });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/admin/ai/status', requireAdmin, async (_req, res) => {
+  res.json({ ok:true, configured:Boolean(GEMINI_API_KEY), model:GEMINI_MODEL });
+});
+
+app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
+  try{
+    if (!GEMINI_API_KEY) return res.status(503).json({ message:'IA non configurée. Ajoute GEMINI_API_KEY dans Vercel puis redéploie.' });
+    const category = cleanText(req.body?.category || 'Culture générale', 80);
+    const level = cleanText(req.body?.level || 'Concours', 40);
+    const theme = cleanText(req.body?.theme || category, 200);
+    const count = Math.min(10, Math.max(1, Number(req.body?.count || 5)));
+    const isPremiumDraft = Boolean(req.body?.is_premium);
+    const prompt = `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\nGénère exactement ${count} QCM en français.\nCatégorie: ${category}. Niveau: ${level}. Thème: ${theme}.\nContraintes importantes:\n- chaque QCM doit être factuel, clair, non ambigu, adapté au Burkina Faso si pertinent;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse;\n- correction détaillée et pédagogique;\n- éviter les affirmations incertaines ou inventées;\n- si le thème concerne un fait officiel récent, rester général et mentionner qu'il faut vérifier la source officielle.\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Généré par IA - à vérifier"}]}`;
+    const ai = await callGeminiGenerate(prompt);
+    const parsed = extractJsonFromAi(ai.text);
+    const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.questions) ? parsed.questions : []);
+    const questions = [];
+    for (const row of rows){
+      try{
+        questions.push(normalizeAiQuestion(row, { category, level, is_premium:isPremiumDraft }));
+      }catch(err){ /* ignore invalid draft */ }
+    }
+    if (!questions.length) return res.status(502).json({ message:'L’IA n’a pas produit de QCM valide. Réessaie avec un thème plus précis.' });
+    res.json({ ok:true, model:ai.model, questions:questions.slice(0, count) });
   }catch(err){ next(err); }
 });
 

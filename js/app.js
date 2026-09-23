@@ -952,6 +952,7 @@ function logoutUser(){
 let adminQuestionCache = [];
 let adminResourceCache = [];
 let adminNewsCache = [];
+let aiDraftCache = [];
 let resourceCache = [];
 let newsCache = [];
 let currentNewsFilter = 'Tout';
@@ -973,15 +974,18 @@ function setAdminTab(tab){
   $('#adminListPane') && ($('#adminListPane').style.display = adminTab === 'list' ? 'block' : 'none');
   $('#adminResourcesPane') && ($('#adminResourcesPane').style.display = adminTab === 'resources' ? 'block' : 'none');
   $('#adminNewsPane') && ($('#adminNewsPane').style.display = adminTab === 'news' ? 'block' : 'none');
+  $('#adminAiPane') && ($('#adminAiPane').style.display = adminTab === 'ai' ? 'block' : 'none');
   $('#adminNotificationsPane') && ($('#adminNotificationsPane').style.display = adminTab === 'notifications' ? 'block' : 'none');
   $('#adminTabCreate')?.classList.toggle('on', adminTab === 'create');
   $('#adminTabList')?.classList.toggle('on', adminTab === 'list');
   $('#adminTabResources')?.classList.toggle('on', adminTab === 'resources');
   $('#adminTabNews')?.classList.toggle('on', adminTab === 'news');
+  $('#adminTabAi')?.classList.toggle('on', adminTab === 'ai');
   $('#adminTabNotifications')?.classList.toggle('on', adminTab === 'notifications');
   if (adminTab === 'list') loadAdminQuestions();
   if (adminTab === 'resources') loadAdminResources();
   if (adminTab === 'news') loadAdminNews();
+  if (adminTab === 'ai') loadAiStatus();
   if (adminTab === 'notifications') loadAdminNotificationStatus();
 }
 
@@ -1150,6 +1154,129 @@ async function deleteAdminQuestion(index){
   }catch(err){ toast(err.message); }
 }
 
+
+async function loadAiStatus(){
+  const wrap = $('#adminAiStatus');
+  if (!wrap) return;
+  try{
+    const data = await adminFetch('/api/admin/ai/status');
+    wrap.innerHTML = `
+      <div><b>${data.configured ? 'Prête' : 'À configurer'}</b><span>IA Gemini</span></div>
+      <div><b>Brouillon</b><span>Non publié</span></div>
+      <div><b>Admin</b><span>Validation</span></div>`;
+  }catch(err){
+    wrap.innerHTML = `<div><b>Erreur</b><span>${escapeHtml(err.message)}</span></div>`;
+  }
+}
+
+async function generateAiQcm(){
+  const btn = $('#aiGenerateBtn');
+  const result = $('#aiResult');
+  const list = $('#aiDraftList');
+  setButtonLoading(btn, true, 'Génération...');
+  if (result) result.innerHTML = '<div class="pay-note">L’IA prépare les brouillons. Vérifie toujours avant publication.</div>';
+  if (list) list.innerHTML = '<div class="empty">Génération en cours...</div>';
+  try{
+    const payload = {
+      category: $('#aiCategory')?.value || 'Culture générale',
+      level: $('#aiLevel')?.value || 'Concours',
+      theme: $('#aiTheme')?.value || '',
+      count: Number($('#aiCount')?.value || 5),
+      is_premium: Boolean($('#aiPremium')?.checked)
+    };
+    const data = await adminFetch('/api/admin/ai/qcm', { method:'POST', body:JSON.stringify(payload) });
+    aiDraftCache = (data.questions || []).map(q => ({...q, is_premium:payload.is_premium, is_active:true, _published:false}));
+    if (result) result.innerHTML = `<div class="pay-note success">${aiDraftCache.length} brouillon${aiDraftCache.length>1?'s':''} généré${aiDraftCache.length>1?'s':''} ✅</div>`;
+    renderAiDrafts();
+  }catch(err){
+    aiDraftCache = [];
+    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    if (list) list.innerHTML = '';
+  }finally{
+    setButtonLoading(btn, false);
+  }
+}
+
+function renderAiDrafts(){
+  const wrap = $('#aiDraftList');
+  if (!wrap) return;
+  if (!aiDraftCache.length){ wrap.innerHTML = ''; return; }
+  const publishAll = aiDraftCache.some(q => !q._published)
+    ? '<button class="btn btn-green btn-block" onclick="publishAllAiDrafts()" style="margin-bottom:10px">Publier tous les brouillons vérifiés</button>'
+    : '';
+  wrap.innerHTML = publishAll + aiDraftCache.map((q, idx)=>`
+    <div class="admin-q-item ${q._published ? 'ai-published' : ''}">
+      <div class="admin-q-meta">
+        <span>${escapeHtml(q.category || 'Catégorie')}</span>
+        <span>${escapeHtml(q.level || '')}</span>
+        ${q.is_premium ? '<span class="premium">Premium</span>' : '<span>Gratuit</span>'}
+        ${q._published ? '<span class="active">Publié</span>' : '<span>Brouillon IA</span>'}
+      </div>
+      <h4>${escapeHtml(q.question_text || '')}</h4>
+      <p class="admin-help"><b>A.</b> ${escapeHtml(q.option_a)} · <b>B.</b> ${escapeHtml(q.option_b)} · <b>C.</b> ${escapeHtml(q.option_c)} · <b>D.</b> ${escapeHtml(q.option_d)}</p>
+      <p class="admin-help"><b>Correction :</b> ${escapeHtml(q.explanation || '')}</p>
+      <div class="admin-q-actions">
+        <button class="edit" onclick="editAiDraft(${idx})">Vérifier / Modifier</button>
+        <button class="pause" onclick="publishAiDraft(${idx})" ${q._published ? 'disabled' : ''}>Publier</button>
+        <button class="delete" onclick="removeAiDraft(${idx})">Retirer</button>
+      </div>
+    </div>`).join('');
+}
+
+function editAiDraft(index){
+  const q = aiDraftCache[index];
+  if (!q) return;
+  setAdminTab('create');
+  $('#adminQuestionId') && ($('#adminQuestionId').value='');
+  $('#adminCategory') && ($('#adminCategory').value=q.category || 'Culture générale');
+  $('#adminLevel') && ($('#adminLevel').value=q.level || 'Concours');
+  $('#adminQuestionText') && ($('#adminQuestionText').value=q.question_text || '');
+  $('#adminOptionA') && ($('#adminOptionA').value=q.option_a || '');
+  $('#adminOptionB') && ($('#adminOptionB').value=q.option_b || '');
+  $('#adminOptionC') && ($('#adminOptionC').value=q.option_c || '');
+  $('#adminOptionD') && ($('#adminOptionD').value=q.option_d || '');
+  $('#adminCorrect') && ($('#adminCorrect').value=String(q.correct_answer ?? 0));
+  $('#adminExplanation') && ($('#adminExplanation').value=q.explanation || '');
+  $('#adminSource') && ($('#adminSource').value=q.source || 'Généré par IA - à vérifier');
+  $('#adminPremium') && ($('#adminPremium').checked=Boolean(q.is_premium));
+  $('#adminActive') && ($('#adminActive').checked=true);
+  $('#adminFormTitle') && ($('#adminFormTitle').textContent='Vérifier un brouillon IA');
+}
+
+async function publishAiDraft(index){
+  const q = aiDraftCache[index];
+  if (!q || q._published) return;
+  try{
+    await adminFetch('/api/admin/questions', { method:'POST', body:JSON.stringify({
+      category:q.category,
+      level:q.level,
+      question_text:q.question_text,
+      options:[q.option_a,q.option_b,q.option_c,q.option_d],
+      correct_answer:q.correct_answer,
+      explanation:q.explanation,
+      source:q.source || 'Généré par IA - vérifié admin',
+      is_premium:Boolean(q.is_premium),
+      is_active:true
+    }) });
+    q._published = true;
+    renderAiDrafts();
+    await loadAdminQuestions();
+    await loadSupabaseQuestions();
+    renderFormations(currentFormFilter);
+    toast('Brouillon IA publié ✅');
+  }catch(err){ toast(err.message); }
+}
+
+async function publishAllAiDrafts(){
+  for (let i=0; i<aiDraftCache.length; i++){
+    if (!aiDraftCache[i]._published) await publishAiDraft(i);
+  }
+}
+
+function removeAiDraft(index){
+  aiDraftCache.splice(index, 1);
+  renderAiDrafts();
+}
 
 function newsTypeIcon(type){
   const t = String(type || '').toLowerCase();

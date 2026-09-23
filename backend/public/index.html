@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=news-pdf-1">
+<link rel="stylesheet" href="css/styles.css?v=ai-qcm-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -507,6 +507,7 @@
         <button class="chip" id="adminTabList" onclick="setAdminTab('list')">Mes QCM</button>
         <button class="chip" id="adminTabResources" onclick="setAdminTab('resources')">Documents</button>
         <button class="chip" id="adminTabNews" onclick="setAdminTab('news')">Actualités</button>
+        <button class="chip" id="adminTabAi" onclick="setAdminTab('ai')">IA QCM</button>
         <button class="chip" id="adminTabNotifications" onclick="setAdminTab('notifications')">Notifications</button>
       </div>
 
@@ -686,6 +687,69 @@
           <hr class="soft-separator">
           <h3>Actualités publiées</h3>
           <div id="adminNewsList" class="admin-list"></div>
+        </div>
+      </div>
+
+
+      <div id="adminAiPane" class="admin-pane" style="display:none">
+        <div class="legal-card admin-card">
+          <h3>Générer des QCM avec l’IA</h3>
+          <p class="admin-help">L’IA prépare des brouillons. Vérifie toujours les réponses et corrections avant de publier.</p>
+          <div class="admin-stats" id="adminAiStatus">
+            <div><b>—</b><span>IA Gemini</span></div>
+            <div><b>Brouillon</b><span>Mode sûr</span></div>
+            <div><b>Admin</b><span>Validation</span></div>
+          </div>
+
+          <div class="admin-options-grid">
+            <div>
+              <label class="field-label" for="aiCategory">Catégorie</label>
+              <select class="input" id="aiCategory">
+                <option>Burkina Faso</option>
+                <option>Culture générale</option>
+                <option>Histoire-Géo</option>
+                <option>Mathématiques</option>
+                <option>Psychotechnique</option>
+                <option>Français</option>
+                <option>SVT</option>
+                <option>Greffier / Droit</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label" for="aiLevel">Niveau</label>
+              <select class="input" id="aiLevel">
+                <option>Concours</option>
+                <option>BEPC</option>
+                <option>BAC</option>
+                <option>CEP</option>
+                <option>Licence</option>
+              </select>
+            </div>
+          </div>
+
+          <label class="field-label" for="aiTheme">Thème ou consigne</label>
+          <textarea class="input admin-textarea" id="aiTheme" placeholder="Ex : institutions du Burkina Faso, pour concours directs, avec corrections détaillées"></textarea>
+
+          <div class="admin-options-grid">
+            <div>
+              <label class="field-label" for="aiCount">Nombre de QCM</label>
+              <select class="input" id="aiCount">
+                <option value="3">3</option>
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label">Options</label>
+              <div class="admin-switch-row" style="margin-top:0">
+                <label><input type="checkbox" id="aiPremium"> Premium</label>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-green btn-block" id="aiGenerateBtn" onclick="generateAiQcm()">Générer des brouillons</button>
+          <div class="payment-result" id="aiResult"></div>
+          <div id="aiDraftList" class="admin-list"></div>
         </div>
       </div>
 
@@ -888,9 +952,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=news-pdf-1"></script>
+<script src="js/questions.js?v=ai-qcm-1"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=news-pdf-1"></script>
+<script src="js/app.js?v=ai-qcm-1"></script>
 </body>
 </html>

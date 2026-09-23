@@ -198,3 +198,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout d'un champ **Communiqué PDF** dans le formulaire admin des actualités.
 - Les communiqués peuvent maintenant être publiés avec un PDF joint.
 - Les candidats voient un bouton **Ouvrir le PDF** dans l'actualité publiée.
+
+## 2026-09-22 — IA QCM Gemini dans l'admin
+
+- Ajout d'un onglet **IA QCM** dans l'espace administrateur.
+- L'IA génère des QCM en brouillon selon catégorie, niveau, thème et nombre demandé.
+- Les brouillons restent sous contrôle administrateur : vérifier/modifier, publier, publier tout ou retirer.
+- L'accès utilise `GEMINI_API_KEY` côté serveur uniquement, sans exposer la clé dans le frontend.
