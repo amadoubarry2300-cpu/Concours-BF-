@@ -2103,6 +2103,15 @@ async function premiumAllowedForRequest(req){
   return Boolean(sub);
 }
 
+function publicQcmPublicationTitle(row){
+  const date = String(row?.created_at || new Date().toISOString()).slice(0, 10);
+  const raw = cleanText(row?.source || '', 180);
+  if (!raw || /^généré par ia/i.test(raw) || /^ajout administrateur$/i.test(raw)){
+    return `QCM ${row?.category || 'Concours'} — ${date}`;
+  }
+  return raw;
+}
+
 app.get('/api/qcm-publications', async (req, res, next) => {
   try{
     if (!supabaseReady()) return res.json({ ok:true, publications:[], premiumIncluded:false });
@@ -2110,8 +2119,8 @@ app.get('/api/qcm-publications', async (req, res, next) => {
     const rows = await supabaseRequest('questions?is_active=eq.true&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.desc&limit=800').catch(()=>[]);
     const groups = new Map();
     for (const row of (Array.isArray(rows) ? rows : [])){
-      const name = cleanText(row.source || `${row.category || 'QCM'} — ${String(row.created_at || '').slice(0, 10)}`, 180) || 'QCM publié';
       const date = String(row.created_at || new Date().toISOString()).slice(0, 10);
+      const name = publicQcmPublicationTitle(row);
       const key = `${name}|${date}|${Boolean(row.is_premium)}|${row.category || ''}|${row.level || ''}`;
       if (!groups.has(key)){
         groups.set(key, {
