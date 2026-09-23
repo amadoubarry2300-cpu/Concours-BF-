@@ -285,3 +285,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Suppression des phrases inutiles sur l’écran **Nouveaux QCM** : plus de mention “classés par nom et date” ni “Chaque publication porte un nom et une date”.
 - Nettoyage du bloc **Documents & fichiers** : remplacement de “PDF, Word et images publiés” par une formulation orientée révision.
 - Nettoyage des textes candidats qui mentionnaient inutilement “publié par l’administration” ou “document publié”.
+
+## 2026-09-23 — Bloc Premium reformulé
+
+- Le bloc supérieur de l’écran **Accès complet** ne répète plus le prix de l’abonnement mensuel.
+- Il présente maintenant clairement l’intérêt de Premium : 5000 QCM, matières avancées, examens blancs, erreurs et progression.
+- Ajout d’une image d’arrière-plan très transparente dans le bloc Premium, avec texte lisible et rendu plus professionnel.
+- Les cartes d’abonnement en bas restent inchangées.

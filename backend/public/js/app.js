@@ -1963,14 +1963,10 @@ function renderSubscription(){
 
   const payBox = $('#subscription .pay-box');
   const integrationNote = $('#subscription .integration-note');
-  const planTitle = $('#selectedPlanPrice') || $('#subscription .plan-card h2');
-  const planText = $('#selectedPlanText') || $('#subscription .plan-card p');
   const planBadge = $('#subscription .plan-badge');
   const instruction = $('#paymentInstruction');
   if (ACCESS_OPEN_UNTIL_PAYMENT){
-    if (planBadge) planBadge.textContent = '✅ Accès ouvert';
-    if (planTitle) planTitle.innerHTML = 'Accès découverte';
-    if (planText) planText.textContent = 'Les QCM corrigés disponibles peuvent être révisés librement pendant la période d’accès.';
+    if (planBadge) planBadge.textContent = '✅ Accès découverte';
     if (payBox) payBox.style.display = 'none';
     if (integrationNote){
       integrationNote.style.display = 'block';
@@ -1985,9 +1981,7 @@ function renderSubscription(){
   } else {
     if (payBox) payBox.style.display = '';
     if (integrationNote) integrationNote.style.display = '';
-    if (planBadge) planBadge.textContent = plan.id === 'premium_annual' ? '⭐ Premium annuel' : '⭐ Premium mensuel';
-    if (planTitle) planTitle.innerHTML = planPriceHtml(plan);
-    if (planText) planText.textContent = plan.description;
+    if (planBadge) planBadge.textContent = '⭐ Réussite Premium';
     if (instruction) instruction.innerHTML = `Abonnement sélectionné : <b>${plan.label}</b> — ${money(plan.amount)} / ${plan.durationLabel}. Choisis ton réseau puis valide le paiement.`;
   }
 
@@ -2007,11 +2001,11 @@ function renderSubscription(){
       const pendingPlan = subscriptionPlan(state.pendingPayment.plan || state.selectedPlan);
       status.innerHTML = `⏳ Paiement ${pendingPlan.label} en attente — référence <b>${state.pendingPayment.ref}</b>`;
     } else if (paywallFeature){
-      status.className = 'sub-status locked';
-      status.innerHTML = `🔒 <b>${paywallFeature}</b> nécessite Premium.`;
+      status.className = 'sub-status premium-prompt';
+      status.innerHTML = `🔓 Premium ouvre <b>${paywallFeature}</b> et tous les entraînements avancés.`;
     } else {
-      status.className = 'sub-status';
-      status.innerHTML = 'Ton compte est actuellement en formule gratuite.';
+      status.className = 'sub-status premium-prompt';
+      status.innerHTML = 'Avec Premium, révise sans limite avec toutes les matières, les examens blancs et la correction de tes erreurs.';
     }
   }
 

@@ -305,6 +305,15 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .sub-status.active{background:rgba(16,185,129,.18);border-color:rgba(16,185,129,.32);color:#d1fae5}
 .sub-status.pending{background:rgba(245,166,35,.18);border-color:rgba(245,166,35,.38);color:#fde68a}
 .sub-status.locked{background:rgba(239,68,68,.18);border-color:rgba(239,68,68,.34);color:#fee2e2}
+.sub-status.premium-prompt{background:rgba(245,166,35,.14);border-color:rgba(251,191,36,.34);color:#fff7ed}
+.subscription-hero{min-height:315px;padding:28px 24px 24px;background:linear-gradient(135deg,rgba(17,24,39,.98),rgba(15,23,42,.94) 54%,rgba(6,95,70,.9));display:flex;flex-direction:column;justify-content:center}
+.subscription-hero::after{content:"";position:absolute;right:-18px;top:16px;width:210px;height:210px;border-radius:36px;background:linear-gradient(90deg,rgba(17,24,39,.16),rgba(17,24,39,.56)),url('../img/success.jpg') center/cover;opacity:.18;filter:saturate(1.05);transform:rotate(-4deg);box-shadow:0 24px 60px rgba(0,0,0,.22)}
+.subscription-hero::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 0% 10%,rgba(245,166,35,.28),transparent 34%),radial-gradient(circle at 92% 86%,rgba(14,159,110,.28),transparent 38%);pointer-events:none}
+.subscription-hero>*{position:relative;z-index:1}.subscription-hero .plan-badge{width:max-content;backdrop-filter:blur(10px)}
+.subscription-hero h2{max-width:360px;font-size:2.08rem;line-height:1.06;margin-top:18px;text-shadow:0 8px 28px rgba(0,0,0,.32)}
+.subscription-hero p{max-width:355px;font-size:.95rem;line-height:1.55;opacity:.9;margin-top:10px}
+.premium-hero-points{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 0}.premium-hero-points span{display:inline-flex;align-items:center;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);padding:7px 10px;font-size:.72rem;font-weight:950;color:#fff}
+@media(max-width:420px){.subscription-hero{min-height:300px;padding:24px 20px 22px}.subscription-hero::after{width:170px;height:170px;right:-48px;top:20px;opacity:.14}.subscription-hero h2{font-size:1.74rem;max-width:300px}.subscription-hero p{font-size:.84rem;max-width:300px}.premium-hero-points span{font-size:.66rem;padding:6px 8px}}
 
 .premium-benefits{padding-top:4px}
 .benefit-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
