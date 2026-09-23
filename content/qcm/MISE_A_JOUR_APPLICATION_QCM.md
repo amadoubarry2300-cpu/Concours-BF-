@@ -270,3 +270,7 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 
 - Remplacement du titre **Quiz ajoutés par l’administration** par **Nouveaux QCM** dans l’écran des QCM publiés.
 - Remplacement du texte d’accueil **Nouveaux quiz** par **Nouveaux QCM** pour garder un vocabulaire cohérent.
+
+## 2026-09-23 — Adresse e-mail de contact
+
+- Remplacement de l’e-mail de contact affiché par **reussiteconcoursbf@yahoo.com** dans le pied de page, les mentions et la page contact.
