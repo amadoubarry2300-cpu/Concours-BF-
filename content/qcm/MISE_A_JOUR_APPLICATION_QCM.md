@@ -274,3 +274,8 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 ## 2026-09-23 — Adresse e-mail de contact
 
 - Remplacement de l’e-mail de contact affiché par **reussiteconcoursbf@yahoo.com** dans le pied de page, les mentions et la page contact.
+
+## 2026-09-23 — Écran Nouveaux QCM
+
+- Renommage complet des libellés visibles **QCM publiés** en **Nouveaux QCM** sur l’accueil, l’en-tête de l’écran, les boutons et les messages de chargement.
+- L’e-mail de contact Yahoo reste affiché dans le pied de page, les mentions et la page contact.

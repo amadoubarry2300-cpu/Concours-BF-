@@ -1124,7 +1124,7 @@ async function saveAdminQuestion(){
     const url = id ? '/api/admin/questions/' + encodeURIComponent(id) : '/api/admin/questions';
     const data = await adminFetch(url, { method, body:JSON.stringify(payload) });
     const destination = payload.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
-    if (result) result.innerHTML = `<div class="pay-note success">QCM enregistré dans <b>${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les QCM publiés</button></div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">QCM enregistré dans <b>${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
     resetAdminForm(false);
     await loadAdminQuestions();
     await loadSupabaseQuestions();
@@ -1410,7 +1410,7 @@ async function publishAiDraft(index){
     renderFormations(currentFormFilter);
     const destination = qcmDestinationText(q);
     const result = $('#aiResult');
-    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>Mes QCM → ${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les QCM publiés</button></div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>Mes QCM → ${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
     toast('QCM IA publié dans ' + destination + ' ✅');
   }catch(err){ toast(err.message); }
 }
@@ -2325,7 +2325,7 @@ function filterFormAccess(f){
 }
 
 
-/* ---------- QCM publiés par l'administration ---------- */
+/* ---------- Nouveaux QCM ---------- */
 function mapPublishedQuestion(row){
   return {
     c:row.category,
@@ -2342,11 +2342,11 @@ async function loadPublishedQcm(filter){
   currentPublishedQcmFilter = filter || currentPublishedQcmFilter || 'all';
   const wrap = $('#publishedQcmList');
   if (!wrap) return;
-  wrap.innerHTML = '<div class="empty">Chargement des QCM publiés...</div>';
+  wrap.innerHTML = '<div class="empty">Chargement des nouveaux QCM...</div>';
   try{
     const res = await fetch('/api/qcm-publications', { headers:authHeaders({}) });
     const data = await res.json().catch(()=>({}));
-    if (!res.ok) throw new Error(data.message || 'QCM publiés indisponibles');
+    if (!res.ok) throw new Error(data.message || 'Nouveaux QCM indisponibles');
     publishedQcmCache = data.publications || [];
     renderPublishedQcm();
   }catch(err){
@@ -2363,7 +2363,7 @@ function renderPublishedQcm(){
     return true;
   });
   if (!items.length){
-    wrap.innerHTML = '<div class="empty">Aucun QCM publié dans ce filtre pour le moment.</div>';
+    wrap.innerHTML = '<div class="empty">Aucun nouveau QCM dans ce filtre pour le moment.</div>';
     return;
   }
   wrap.innerHTML = items.map(({set, idx})=>{
@@ -2376,7 +2376,7 @@ function renderPublishedQcm(){
         <span>${set.is_premium ? '🔒 Premium' : '✅ Gratuit'}</span>
         <span>Publié le ${escapeHtml(date)}</span>
       </div>
-      <h3>${escapeHtml(set.title || 'QCM publié')}</h3>
+      <h3>${escapeHtml(set.title || 'Nouveau QCM')}</h3>
       <p>${escapeHtml(set.category || 'Catégorie')} · ${escapeHtml(set.level || 'Niveau')} · ${count} QCM</p>
       <button class="btn ${locked ? 'btn-ghost' : 'btn-green'} btn-block" onclick="startPublishedQcm(${idx})">${action}</button>
     </div>`;
@@ -2399,7 +2399,7 @@ function startPublishedQcm(index){
   }
   const qs = (set.questions || []).map(mapPublishedQuestion).filter(q => q.q && q.o.every(Boolean));
   const limit = (!hasOpenAccess() && !set.is_premium) ? Math.min(10, qs.length) : qs.length;
-  startQuestionListQuiz(qs, { title:set.title || 'QCM publié', limit });
+  startQuestionListQuiz(qs, { title:set.title || 'Nouveau QCM', limit });
 }
 
 function openPublishedQcmFromAdmin(){
