@@ -423,6 +423,7 @@ function show(id){
   if (!target) return;
   $$('.screen').forEach(s=>s.classList.remove('active'));
   target.classList.add('active');
+  currentScreenId = id;
   window.scrollTo({top:0});
   $$('.nav-btn').forEach(b=>b.classList.toggle('on', b.dataset.target===id));
   const navIds = ['home','formations','publishedqcm','news','resources','passport','stats','subscription','account'];
@@ -657,8 +658,15 @@ function sessionSizeFor(total){
 }
 
 
+function quizReturnTarget(){
+  const active = currentScreenId || document.querySelector('.screen.active')?.id || 'home';
+  if (active && !['quiz','result','login'].includes(active)) return active;
+  return quizReturnScreen || 'home';
+}
+
 function startQuiz(opts){
   opts = opts || {};
+  const returnTo = opts.returnTo || quizReturnTarget();
   const required = premiumLockForQuiz(opts);
   if (required && !hasOpenAccess()){
     openPremium(required);
@@ -684,9 +692,10 @@ function startQuiz(opts){
   if (!pool.length){ toast('Aucun QCM disponible pour ce choix'); return; }
   const requested = opts.n === 'all' ? pool.length : Math.max(1, Number(opts.n || 10));
   const qs = shuffle(pool).slice(0, Math.min(requested, pool.length));
+  quizReturnScreen = returnTo;
   quiz = {
     qs, i:0, ok:0, ko:0, title:opts.title || 'Quiz', daily:opts.daily||false,
-    time: opts.time||0, left: opts.time||0, answered:false, wrongList:[]
+    time: opts.time||0, left: opts.time||0, answered:false, wrongList:[], returnTo
   };
   $('#quizTitleTag').textContent = quiz.title;
   show('quiz');
@@ -696,13 +705,15 @@ function startQuiz(opts){
 }
 
 function startQuestionListQuiz(qs, opts = {}){
+  const returnTo = opts.returnTo || quizReturnTarget();
   const clean = (Array.isArray(qs) ? qs : []).filter(q => q?.q && Array.isArray(q.o) && q.o.length === 4);
   if (!clean.length){ toast('Aucun QCM disponible pour cette publication'); return; }
   const limit = opts.limit ? Math.max(1, Math.min(Number(opts.limit), clean.length)) : clean.length;
   const selected = shuffle(clean).slice(0, limit);
+  quizReturnScreen = returnTo;
   quiz = {
     qs:selected, i:0, ok:0, ko:0, title:opts.title || 'QCM publié', daily:opts.daily || false,
-    time:opts.time || 0, left:opts.time || 0, answered:false, wrongList:[]
+    time:opts.time || 0, left:opts.time || 0, answered:false, wrongList:[], returnTo
   };
   $('#quizTitleTag').textContent = quiz.title;
   show('quiz');
@@ -787,10 +798,22 @@ function nextQuestion(){
   setTimeout(()=>{ quiz.i++; renderQuestion(); }, 240);
 }
 
+function safeReturnScreen(id){
+  return (id && !['quiz','result','login'].includes(id)) ? id : 'home';
+}
+
 function quitQuiz(){
+  const target = safeReturnScreen(quiz?.returnTo || quizReturnScreen || 'home');
   if (quiz && quiz.timer) clearInterval(quiz.timer);
   quiz = null;
-  show('home');
+  show(target);
+}
+
+function returnAfterQuiz(){
+  const target = safeReturnScreen(quiz?.returnTo || quizReturnScreen || 'home');
+  if (quiz && quiz.timer) clearInterval(quiz.timer);
+  quiz = null;
+  show(target);
 }
 
 function finishQuiz(timeout){
@@ -822,6 +845,7 @@ function finishQuiz(timeout){
   ring.style.strokeDashoffset = C;
   ring.style.stroke = pct>=50 ? '#0e9f6e' : '#e02424';
   $('#ringVal').textContent = pct + '%';
+  quizReturnScreen = safeReturnScreen(quiz.returnTo || quizReturnScreen || 'home');
   show('result');
   setTimeout(()=>{ ring.style.transition='stroke-dashoffset 1.2s cubic-bezier(.22,1,.36,1)'; ring.style.strokeDashoffset = C*(1-pct/100); }, 120);
   if (pct>=80) setTimeout(confetti, 500);
@@ -979,6 +1003,8 @@ let newsCache = [];
 let publishedQcmCache = [];
 let currentNewsFilter = 'Tout';
 let currentPublishedQcmFilter = 'all';
+let currentScreenId = 'home';
+let quizReturnScreen = 'home';
 let adminQuestionFilter = 'all';
 let adminTab = 'create';
 

@@ -228,3 +228,8 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout d’un écran public **QCM publiés** : chaque publication affiche son nom, sa date, sa catégorie, son niveau et un bouton pour commencer le quiz.
 - Les QCM ajoutés par l’admin et les brouillons IA publiés proposent un bouton pour ouvrir directement les QCM publiés côté candidat.
 - Ajout d’un logo IA dans le panel admin et d’une veille IA qui prépare des brouillons d’actualités à partir de sources officielles, sans publication automatique.
+
+## 2026-09-23 — Retour après quiz
+
+- Le bouton fermer pendant un quiz et le bouton retour après résultat renvoient maintenant vers l’écran d’origine.
+- Exemple : un QCM lancé depuis **Formations** revient à Formations, un QCM lancé depuis **QCM publiés** revient à QCM publiés, au lieu de revenir toujours à l’accueil.
