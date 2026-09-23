@@ -265,3 +265,8 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Nettoyage supplémentaire des textes visibles pour éviter les mentions techniques ou les consignes de conception.
 - Remplacement des formulations trop techniques par des textes simples côté candidat et côté administration.
 - Conservation des effets visuels premium sans ajouter de bloc explicatif inutile.
+
+## 2026-09-23 — Libellé Nouveaux QCM
+
+- Remplacement du titre **Quiz ajoutés par l’administration** par **Nouveaux QCM** dans l’écran des QCM publiés.
+- Remplacement du texte d’accueil **Nouveaux quiz** par **Nouveaux QCM** pour garder un vocabulaire cohérent.
