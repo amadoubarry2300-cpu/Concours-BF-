@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=ai-fresh-pdf-1">
+<link rel="stylesheet" href="css/styles.css?v=premium-motion-address-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -43,6 +43,23 @@
       <h2>Commence ta préparation</h2>
       <p>Un premier quiz gratuit, 2 minutes, sans inscription.</p>
       <button class="btn btn-white" onclick="startQuiz({n:10,time:120,title:'Quiz découverte',free:true})">🚀 Commencer</button>
+    </div>
+
+    <div class="motion-card" aria-label="Mini animation de préparation premium">
+      <div class="motion-preview" aria-hidden="true">
+        <span class="motion-orbit orbit-one"></span>
+        <span class="motion-orbit orbit-two"></span>
+        <div class="motion-screen">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="motion-book"></div>
+        <div class="motion-trophy">🏆</div>
+      </div>
+      <div class="motion-copy">
+        <span>Mini vidéo animée</span>
+        <h3>Une préparation plus vivante</h3>
+        <p>Des blocs plus fluides, des images en mouvement léger et une interface plus premium.</p>
+      </div>
     </div>
 
     <div class="premium-home" id="premiumHomeCard">
@@ -934,7 +951,11 @@
     </div>
     <div class="legal-page">
       <h1>Confidentialité</h1>
-      <p class="updated">Dernière mise à jour : 21 septembre 2026</p>
+      <p class="updated">Dernière mise à jour : 23 septembre 2026</p>
+      <div class="legal-card address-card">
+        <h3>Adresse de l'application</h3>
+        <p><b>Réussite Concours BF</b><br>Ouagadougou, Burkina Faso.</p>
+      </div>
       <div class="legal-card">
         <h3>Données collectées</h3>
         <p>Nous pouvons collecter le nom, le prénom, le numéro de téléphone, la progression, les résultats de quiz, les erreurs enregistrées et l'état d'abonnement.</p>
@@ -1057,9 +1078,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=ai-fresh-pdf-1"></script>
+<script src="js/questions.js?v=premium-motion-address-1"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=ai-fresh-pdf-1"></script>
+<script src="js/app.js?v=premium-motion-address-1"></script>
 </body>
 </html>

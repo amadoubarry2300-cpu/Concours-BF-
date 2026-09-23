@@ -247,3 +247,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Le prompt IA reçoit la date du jour et demande uniquement des brouillons issus de sources officielles à jour.
 - Ajout d’un champ **PDF source** dans **IA QCM** : l’admin peut joindre un PDF, et Gemini génère des QCM brouillons à partir du document.
 - Les QCM issus d’un PDF restent non publiés tant que l’admin ne les vérifie pas.
+
+## 2026-09-23 — Animations premium et adresse confidentialité
+
+- Ajout d’animations plus fluides sur les blocs, boutons, images et cartes principales pour donner une impression plus premium sans surcharger l’interface.
+- Ajout d’une mini animation visuelle sur l’accueil pour dynamiser les blocs d’image.
+- Ajout de l’adresse **Réussite Concours BF — Ouagadougou, Burkina Faso** dans la politique de confidentialité.
