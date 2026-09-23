@@ -956,6 +956,7 @@ let aiDraftCache = [];
 let resourceCache = [];
 let newsCache = [];
 let currentNewsFilter = 'Tout';
+let adminQuestionFilter = 'all';
 let adminTab = 'create';
 
 async function adminFetch(path, options = {}){
@@ -1052,12 +1053,13 @@ async function saveAdminQuestion(){
     const method = id ? 'PATCH' : 'POST';
     const url = id ? '/api/admin/questions/' + encodeURIComponent(id) : '/api/admin/questions';
     const data = await adminFetch(url, { method, body:JSON.stringify(payload) });
-    if (result) result.innerHTML = '<div class="pay-note success">QCM enregistré avec succès ✅</div>';
+    const destination = payload.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
+    if (result) result.innerHTML = `<div class="pay-note success">QCM enregistré dans <b>${destination}</b> ✅</div>`;
     resetAdminForm(false);
     await loadAdminQuestions();
     await loadSupabaseQuestions();
     renderFormations(currentFormFilter);
-    toast('QCM publié ✅');
+    toast('QCM publié dans ' + destination + ' ✅');
   }catch(err){
     if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
   }finally{
@@ -1076,33 +1078,82 @@ function resetAdminForm(clearMessage = true){
   if (clearMessage && $('#adminResult')) $('#adminResult').innerHTML='';
 }
 
+function qcmDestinationText(q){
+  return q?.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
+}
+
+function setAdminQuestionFilter(filter, el){
+  adminQuestionFilter = filter || 'all';
+  $$('#adminQuestionFilterRow .chip').forEach(c=>c.classList.remove('on'));
+  if (el) el.classList.add('on');
+  loadAdminQuestions();
+}
+
+function renderAdminQuestionCards(items){
+  return items.map(({q, idx})=>`
+    <div class="admin-q-item ${q.is_premium ? 'premium-zone' : 'free-zone'}">
+      <div class="admin-q-meta">
+        <span>${escapeHtml(q.category || 'Catégorie')}</span>
+        <span>${escapeHtml(q.level || '')}</span>
+        <span class="${q.is_active ? 'active' : ''}">${q.is_active ? 'Publié' : 'Masqué'}</span>
+        ${q.is_premium ? '<span class="premium">Premium abonnés</span>' : '<span class="free">Gratuit</span>'}
+      </div>
+      <h4>${escapeHtml(q.question_text || '')}</h4>
+      <p class="admin-destination-note">Destination : <b>${qcmDestinationText(q)}</b></p>
+      <div class="admin-q-actions">
+        <button class="edit" onclick="editAdminQuestion(${idx})">Modifier</button>
+        <button class="pause" onclick="toggleAdminQuestion(${idx})">${q.is_active ? 'Masquer' : 'Publier'}</button>
+        <button class="delete" onclick="deleteAdminQuestion(${idx})">Supprimer</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderAdminQuestionGroup(title, subtitle, items, tone){
+  if (!items.length) return '';
+  return `
+    <div class="admin-q-group ${tone || ''}">
+      <div class="admin-q-group-head"><h4>${title}</h4><span>${items.length} QCM</span></div>
+      <p>${subtitle}</p>
+      ${renderAdminQuestionCards(items)}
+    </div>`;
+}
+
 async function loadAdminQuestions(){
   const wrap = $('#adminQuestionList');
   if (!wrap) return;
   wrap.innerHTML = '<div class="empty">Chargement des publications...</div>';
   try{
     const search = encodeURIComponent($('#adminSearch')?.value || '');
-    const data = await adminFetch('/api/admin/questions?limit=50&search=' + search);
+    const data = await adminFetch('/api/admin/questions?limit=100&search=' + search);
     adminQuestionCache = data.questions || [];
+    const allItems = adminQuestionCache.map((q, idx)=>({q, idx}));
+    const freeItems = allItems.filter(item => !item.q.is_premium && item.q.is_active !== false);
+    const premiumItems = allItems.filter(item => item.q.is_premium && item.q.is_active !== false);
+    const hiddenItems = allItems.filter(item => item.q.is_active === false);
+    const summary = $('#adminQuestionSummary');
+    if (summary){
+      summary.innerHTML = `
+        <div><b>${freeItems.length}</b><span>Gratuits publiés</span></div>
+        <div><b>${premiumItems.length}</b><span>Premium publiés</span></div>
+        <div><b>${hiddenItems.length}</b><span>Masqués</span></div>`;
+    }
     if (!adminQuestionCache.length){
       wrap.innerHTML = '<div class="empty">Aucun QCM ajouté pour le moment.</div>';
       return;
     }
-    wrap.innerHTML = adminQuestionCache.map((q, idx)=>`
-      <div class="admin-q-item">
-        <div class="admin-q-meta">
-          <span>${escapeHtml(q.category || 'Catégorie')}</span>
-          <span>${escapeHtml(q.level || '')}</span>
-          <span class="${q.is_active ? 'active' : ''}">${q.is_active ? 'Publié' : 'Masqué'}</span>
-          ${q.is_premium ? '<span class="premium">Premium</span>' : '<span>Gratuit</span>'}
-        </div>
-        <h4>${escapeHtml(q.question_text || '')}</h4>
-        <div class="admin-q-actions">
-          <button class="edit" onclick="editAdminQuestion(${idx})">Modifier</button>
-          <button class="pause" onclick="toggleAdminQuestion(${idx})">${q.is_active ? 'Masquer' : 'Publier'}</button>
-          <button class="delete" onclick="deleteAdminQuestion(${idx})">Supprimer</button>
-        </div>
-      </div>`).join('');
+    let html = '';
+    if (adminQuestionFilter === 'free'){
+      html = renderAdminQuestionGroup('QCM gratuits', 'Ces questions sont visibles par tous les candidats.', freeItems, 'free');
+    }else if (adminQuestionFilter === 'premium'){
+      html = renderAdminQuestionGroup('QCM Premium', 'Ces questions sont réservées aux abonnés Premium.', premiumItems, 'premium');
+    }else if (adminQuestionFilter === 'hidden'){
+      html = renderAdminQuestionGroup('QCM masqués', 'Ces questions existent mais ne sont pas visibles par les candidats.', hiddenItems, 'hidden');
+    }else{
+      html = renderAdminQuestionGroup('QCM gratuits', 'Visible par tous les candidats.', freeItems, 'free')
+        + renderAdminQuestionGroup('QCM Premium', 'Visible uniquement après abonnement Premium.', premiumItems, 'premium')
+        + renderAdminQuestionGroup('QCM masqués', 'Non visibles tant qu’ils restent masqués.', hiddenItems, 'hidden');
+    }
+    wrap.innerHTML = html || '<div class="empty">Aucun QCM dans ce filtre.</div>';
   }catch(err){
     wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
   }
@@ -1209,15 +1260,16 @@ function renderAiDrafts(){
       <div class="admin-q-meta">
         <span>${escapeHtml(q.category || 'Catégorie')}</span>
         <span>${escapeHtml(q.level || '')}</span>
-        ${q.is_premium ? '<span class="premium">Premium</span>' : '<span>Gratuit</span>'}
+        ${q.is_premium ? '<span class="premium">Premium abonnés</span>' : '<span class="free">Gratuit</span>'}
         ${q._published ? '<span class="active">Publié</span>' : '<span>Brouillon IA</span>'}
       </div>
       <h4>${escapeHtml(q.question_text || '')}</h4>
+      <p class="admin-destination-note">Destination après validation : <b>${qcmDestinationText(q)}</b></p>
       <p class="admin-help"><b>A.</b> ${escapeHtml(q.option_a)} · <b>B.</b> ${escapeHtml(q.option_b)} · <b>C.</b> ${escapeHtml(q.option_c)} · <b>D.</b> ${escapeHtml(q.option_d)}</p>
       <p class="admin-help"><b>Correction :</b> ${escapeHtml(q.explanation || '')}</p>
       <div class="admin-q-actions">
         <button class="edit" onclick="editAiDraft(${idx})">Vérifier / Modifier</button>
-        <button class="pause" onclick="publishAiDraft(${idx})" ${q._published ? 'disabled' : ''}>Publier</button>
+        <button class="pause" onclick="publishAiDraft(${idx})" ${q._published ? 'disabled' : ''}>${q.is_premium ? 'Publier en Premium' : 'Publier en Gratuit'}</button>
         <button class="delete" onclick="removeAiDraft(${idx})">Retirer</button>
       </div>
     </div>`).join('');
@@ -1263,7 +1315,10 @@ async function publishAiDraft(index){
     await loadAdminQuestions();
     await loadSupabaseQuestions();
     renderFormations(currentFormFilter);
-    toast('Brouillon IA publié ✅');
+    const destination = qcmDestinationText(q);
+    const result = $('#aiResult');
+    if (result) result.innerHTML = `<div class="pay-note success">Brouillon publié dans <b>Mes QCM → ${destination}</b> ✅</div>`;
+    toast('Brouillon IA publié dans ' + destination + ' ✅');
   }catch(err){ toast(err.message); }
 }
 

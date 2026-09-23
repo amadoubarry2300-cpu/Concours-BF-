@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=ai-qcm-fix-1">
+<link rel="stylesheet" href="css/styles.css?v=qcm-zones-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -284,6 +284,16 @@
       <button class="chip" onclick="filterForm(this,'Culture & monde')">Culture</button>
       <button class="chip" onclick="filterForm(this,'Burkina Faso')">Burkina 🇧🇫</button>
     </div>
+    <div class="access-map">
+      <div class="access-box free">
+        <b>✅ Gratuit</b>
+        <span>Burkina Faso, Culture générale et Histoire-Géo : accessibles à tous.</span>
+      </div>
+      <div class="access-box premium">
+        <b>⭐ Premium</b>
+        <span>Maths, Français, SVT, Psychotechnique, Greffier/Droit et banque complète.</span>
+      </div>
+    </div>
     <div id="formWrap"></div>
     <div style="height:20px"></div>
   </section>
@@ -514,7 +524,7 @@
       <div id="adminCreatePane" class="admin-pane">
         <div class="legal-card admin-card">
           <h3 id="adminFormTitle">Nouveau QCM</h3>
-          <p class="admin-help">Remplis les champs puis publie. La question apparaîtra automatiquement dans l’application selon son statut gratuit ou Premium.</p>
+          <p class="admin-help">Choisis clairement la destination : <b>Gratuit</b> pour tous les candidats, ou <b>Premium</b> pour les abonnés seulement.</p>
           <input type="hidden" id="adminQuestionId">
 
           <label class="field-label" for="adminCategory">Catégorie</label>
@@ -563,7 +573,7 @@
           <input class="input" id="adminSource" placeholder="Ex : Manuel, arrêté, cours, source officielle...">
 
           <div class="admin-switch-row">
-            <label><input type="checkbox" id="adminPremium"> Contenu Premium</label>
+            <label><input type="checkbox" id="adminPremium"> Publier dans Premium <small>(sinon Gratuit)</small></label>
             <label><input type="checkbox" id="adminActive" checked> Publié</label>
           </div>
 
@@ -575,8 +585,19 @@
 
       <div id="adminListPane" class="admin-pane" style="display:none">
         <div class="legal-card admin-card">
-          <h3>Publications ajoutées</h3>
-          <p class="admin-help">Recherche, modifie ou désactive les QCM que tu ajoutes depuis cet espace.</p>
+          <h3>Mes QCM publiés</h3>
+          <p class="admin-help">Les QCM sont séparés en deux zones : <b>Gratuit</b> pour tous les candidats et <b>Premium</b> pour les abonnés. Tu peux filtrer pour éviter toute confusion.</p>
+          <div class="admin-destination-map">
+            <div class="admin-zone-card free"><b>✅ Gratuit</b><span>Visible par tous</span></div>
+            <div class="admin-zone-card premium"><b>⭐ Premium</b><span>Visible après abonnement</span></div>
+          </div>
+          <div class="admin-filter-row" id="adminQuestionFilterRow">
+            <button class="chip on" onclick="setAdminQuestionFilter('all', this)">Tout</button>
+            <button class="chip" onclick="setAdminQuestionFilter('free', this)">Gratuit</button>
+            <button class="chip" onclick="setAdminQuestionFilter('premium', this)">Premium</button>
+            <button class="chip" onclick="setAdminQuestionFilter('hidden', this)">Masqué</button>
+          </div>
+          <div id="adminQuestionSummary" class="admin-qcm-summary"></div>
           <div class="admin-search-row">
             <input class="input" id="adminSearch" placeholder="Rechercher une question...">
             <button class="btn btn-green" onclick="loadAdminQuestions()">Rechercher</button>
@@ -742,7 +763,7 @@
             <div>
               <label class="field-label">Options</label>
               <div class="admin-switch-row" style="margin-top:0">
-                <label><input type="checkbox" id="aiPremium"> Premium</label>
+                <label><input type="checkbox" id="aiPremium"> Générer pour Premium <small>(sinon Gratuit)</small></label>
               </div>
             </div>
           </div>
@@ -952,9 +973,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=ai-qcm-fix-1"></script>
+<script src="js/questions.js?v=qcm-zones-1"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=ai-qcm-fix-1"></script>
+<script src="js/app.js?v=qcm-zones-1"></script>
 </body>
 </html>

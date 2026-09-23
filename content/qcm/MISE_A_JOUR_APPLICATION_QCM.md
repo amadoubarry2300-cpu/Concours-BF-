@@ -212,3 +212,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - L'intégration IA détecte automatiquement les modèles Gemini disponibles pour la clé API.
 - Les anciens noms de modèles indisponibles ne bloquent plus la génération.
 - Le message d'erreur affiché à l'admin est maintenant clair et non technique.
+
+## 2026-09-23 — Séparation claire Gratuit / Premium dans l’admin
+
+- L’onglet **Mes QCM** sépare maintenant les QCM gratuits, Premium et masqués.
+- Ajout de filtres rapides : Tout, Gratuit, Premium, Masqué.
+- Après publication d’un brouillon IA, l’admin voit clairement la destination : **Mes QCM → Gratuit** ou **Mes QCM → Premium**.
+- L’écran Formations affiche aussi un rappel simple des zones gratuites et Premium.
