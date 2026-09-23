@@ -11,6 +11,25 @@ const PAYMENT_CONFIG = window.REUSSITE_CONCOURS_BF_PAYMENT_CONFIG || {
   demoMode: false
 };
 
+const SUBSCRIPTION_PLANS = {
+  premium_monthly: {
+    id:'premium_monthly', label:'Mensuel', durationLabel:'mois', actionLabel:'S’abonner / mois', amount:1500, regularAmount:1500, savings:0, days:30,
+    description:'Accès Premium pendant 30 jours, renouvelable chaque mois.'
+  },
+  premium_annual: {
+    id:'premium_annual', label:'Annuel', durationLabel:'an', actionLabel:'S’abonner / an', amount:10000, regularAmount:18000, savings:8000, days:365,
+    description:'⭐ Abonnement annuel : 12 mois d’accès Premium avec 8 000 FCFA de réduction.'
+  }
+};
+
+function subscriptionPlan(id){
+  return SUBSCRIPTION_PLANS[id] || SUBSCRIPTION_PLANS.premium_monthly;
+}
+
+function selectedSubscriptionPlan(){
+  return subscriptionPlan(state.selectedPlan || PAYMENT_CONFIG.plan || 'premium_monthly');
+}
+
 const SUPABASE_CONFIG = window.REUSSITE_CONCOURS_BF_SUPABASE_CONFIG || {
   url: 'https://scnhrcjhxqzetkrhhong.supabase.co',
   publishableKey: 'sb_publishable_LluqoYWbpvDSzoFhhZ9lcQ_8dX_UEUT',
@@ -62,13 +81,14 @@ let state = {
   subscription: store.get('subscription', {status:'free', expiresAt:null}),
   pendingPayment: store.get('pendingPayment', null),
   selectedProvider: store.get('selectedProvider', 'ORANGE_MONEY'),
+  selectedPlan: store.get('selectedPlan', PAYMENT_CONFIG.plan || 'premium_monthly'),
   profileAvatars: store.get('profileAvatars', {}),
   authToken: store.get('authToken', null),
   authExpiresAt: store.get('authExpiresAt', null)
 };
 
 function save(){
-  for (const k of ['xp','quizDone','correct','answered','errors','catStats','streak','lastDay','dailyDone','bestScore','phoneSaved','user','subscription','pendingPayment','selectedProvider','profileAvatars','authToken','authExpiresAt'])
+  for (const k of ['xp','quizDone','correct','answered','errors','catStats','streak','lastDay','dailyDone','bestScore','phoneSaved','user','subscription','pendingPayment','selectedProvider','selectedPlan','profileAvatars','authToken','authExpiresAt'])
     store.set(k, state[k]);
 }
 
@@ -541,7 +561,7 @@ function renderAccount(){
         <img class="premium-mini-img" src="img/success.jpg" alt="Premium Réussite Concours BF">
         <div class="premium-copy">
           <div class="premium-kicker">Réussite Concours BF Premium</div>
-          <h3>Débloque tout pour ${money(PAYMENT_CONFIG.amount)}/mois</h3>
+          <h3>Débloque tout dès 1 500 FCFA/mois</h3>
           <p>Examens blancs, erreurs, statistiques détaillées et matières avancées.</p>
         </div>
         <button class="mini-btn" onclick="show('subscription')">Voir</button>`;
@@ -1904,15 +1924,32 @@ function selectProvider(provider){
   $$('#providerGrid .provider-option').forEach(btn=>btn.classList.toggle('on', btn.dataset.provider === provider));
 }
 
+function selectPlan(planId){
+  state.selectedPlan = subscriptionPlan(planId).id;
+  runtimePaymentMessage = '';
+  save();
+  renderSubscription();
+}
+
+function planPriceHtml(plan){
+  if (plan.id === 'premium_annual'){
+    return `<del>${money(plan.regularAmount)}</del> ${money(plan.amount)} <span>/ an</span>`;
+  }
+  return `${money(plan.amount)} <span>/ mois</span>`;
+}
+
 function renderSubscription(){
   renderAccount();
+  const plan = selectedSubscriptionPlan();
   selectProvider(state.selectedProvider || 'ORANGE_MONEY');
+  $$('#planChoiceGrid .plan-choice').forEach(btn=>btn.classList.toggle('on', btn.dataset.plan === plan.id));
 
   const payBox = $('#subscription .pay-box');
   const integrationNote = $('#subscription .integration-note');
-  const planTitle = $('#subscription .plan-card h2');
-  const planText = $('#subscription .plan-card p');
+  const planTitle = $('#selectedPlanPrice') || $('#subscription .plan-card h2');
+  const planText = $('#selectedPlanText') || $('#subscription .plan-card p');
   const planBadge = $('#subscription .plan-badge');
+  const instruction = $('#paymentInstruction');
   if (ACCESS_OPEN_UNTIL_PAYMENT){
     if (planBadge) planBadge.textContent = '✅ Accès ouvert';
     if (planTitle) planTitle.innerHTML = '0 FCFA <span>/ en attendant</span>';
@@ -1931,9 +1968,10 @@ function renderSubscription(){
   } else {
     if (payBox) payBox.style.display = '';
     if (integrationNote) integrationNote.style.display = '';
-    if (planBadge) planBadge.textContent = '⭐ Premium';
-    if (planTitle) planTitle.innerHTML = '1 500 FCFA <span>/ mois</span>';
-    if (planText) planText.textContent = 'Pour préparer sérieusement tes examens et concours, sans limite.';
+    if (planBadge) planBadge.textContent = plan.id === 'premium_annual' ? '⭐ Premium annuel' : '⭐ Premium mensuel';
+    if (planTitle) planTitle.innerHTML = planPriceHtml(plan);
+    if (planText) planText.textContent = plan.description;
+    if (instruction) instruction.innerHTML = `Abonnement sélectionné : <b>${plan.label}</b> — ${money(plan.amount)} / ${plan.durationLabel}. Choisis ton réseau puis valide le paiement.`;
   }
 
   const subPhone = $('#subPhone');
@@ -1949,7 +1987,8 @@ function renderSubscription(){
       status.innerHTML = `✅ Premium actif — expire le <b>${formatDate(state.subscription.expiresAt)}</b> (${premiumDaysLeft()} jour${premiumDaysLeft()>1?'s':''} restant${premiumDaysLeft()>1?'s':''})`;
     } else if (state.pendingPayment){
       status.className = 'sub-status pending';
-      status.innerHTML = `⏳ Paiement en attente — référence <b>${state.pendingPayment.ref}</b>`;
+      const pendingPlan = subscriptionPlan(state.pendingPayment.plan || state.selectedPlan);
+      status.innerHTML = `⏳ Paiement ${pendingPlan.label} en attente — référence <b>${state.pendingPayment.ref}</b>`;
     } else if (paywallFeature){
       status.className = 'sub-status locked';
       status.innerHTML = `🔒 <b>${paywallFeature}</b> nécessite Premium.`;
@@ -1960,7 +1999,7 @@ function renderSubscription(){
   }
 
   const payBtn = $('#payBtn');
-  if (payBtn) payBtn.textContent = isAdmin() ? 'Accès complet actif' : (isPremium() ? 'Renouveler 1 500 FCFA' : 'Payer 1 500 FCFA');
+  if (payBtn) payBtn.textContent = isAdmin() ? 'Accès complet actif' : `${isPremium() ? 'Renouveler' : plan.actionLabel} — ${money(plan.amount)}`;
   const demoBtn = $('#demoPayBtn');
   if (demoBtn) demoBtn.style.display = (PAYMENT_CONFIG.demoMode && !isPremium()) ? 'flex' : 'none';
 
@@ -1968,10 +2007,8 @@ function renderSubscription(){
   if (result){
     if (runtimePaymentMessage){
       result.innerHTML = runtimePaymentMessage;
-    } else if (!PAYMENT_CONFIG.backendBaseUrl){
-      result.innerHTML = `<div class="pay-note">Choisis ton réseau, entre ton numéro Mobile Money puis appuie sur “Payer 1 500 FCFA”.</div>`;
     } else {
-      result.innerHTML = '<div class="pay-note">Choisis ton réseau, entre ton numéro Mobile Money puis appuie sur “Payer 1 500 FCFA”.</div>'; 
+      result.innerHTML = `<div class="pay-note">Choisis <b>${plan.label}</b>, ton réseau Mobile Money, entre ton numéro puis appuie sur “${plan.actionLabel}”.</div>`;
     }
   }
 }
@@ -1998,11 +2035,12 @@ async function startSubscriptionPayment(){
   state.user.phone = phone;
   state.phoneSaved = true;
 
+  const plan = selectedSubscriptionPlan();
   const txRef = makeTxRef();
   const payload = {
-    amount: PAYMENT_CONFIG.amount,
+    amount: plan.amount,
     currency: PAYMENT_CONFIG.currency,
-    plan: PAYMENT_CONFIG.plan,
+    plan: plan.id,
     provider: state.selectedProvider,
     transactionId: txRef,
     customer: {phone: fullPhone(phone), email: state.user.email || ''},
@@ -2025,8 +2063,9 @@ async function startSubscriptionPayment(){
       ref: data.transactionId || txRef,
       paymentId: data.paymentId || null,
       sessionId: data.sessionId || null,
-      amount: PAYMENT_CONFIG.amount,
+      amount: plan.amount,
       currency: PAYMENT_CONFIG.currency,
+      plan: plan.id,
       provider: state.selectedProvider,
       phone,
       status: 'pending',
@@ -2040,7 +2079,7 @@ async function startSubscriptionPayment(){
     }
     runtimePaymentMessage = data.mode === 'checkout'
       ? `<div class="pay-note warn">La page de paiement n’a pas pu s’ouvrir. Réessaie le paiement dans quelques instants. Réf. <b>${state.pendingPayment.ref}</b></div>`
-      : `<div class="pay-note success">${data.message || 'Paiement lancé.'}<br>Valide sur ton téléphone puis clique sur “Vérifier mon paiement”. Réf. <b>${state.pendingPayment.ref}</b></div>`;
+      : `<div class="pay-note success">${data.message || 'Paiement lancé.'}<br>Abonnement : <b>${plan.label}</b> (${money(plan.amount)}). Valide sur ton téléphone puis clique sur “Vérifier mon paiement”. Réf. <b>${state.pendingPayment.ref}</b></div>`;
     renderSubscription();
   }catch(err){
     runtimePaymentMessage = '<div class="pay-note error">Paiement indisponible pour le moment. Vérifie le numéro puis réessaie.</div>'; 
@@ -2067,7 +2106,7 @@ async function checkPaymentStatus(){
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Statut indisponible');
     if (data.active){
-      state.subscription = {status:'premium', expiresAt:data.expiresAt, txRef:data.txRef, provider:data.provider || state.selectedProvider};
+      state.subscription = {status:'premium', expiresAt:data.expiresAt, txRef:data.txRef, provider:data.provider || state.selectedProvider, plan:data.plan || state.pendingPayment?.plan || state.selectedPlan};
       state.pendingPayment = null;
       save();
       state.sessionGreeting = { text:`Premium activé pour ${displayUserName()}`, sub:`Renouvellement à prévoir le ${formatDate(state.subscription.expiresAt)}.` };
@@ -2096,8 +2135,10 @@ async function simulatePaymentSuccess(){
     return;
   }
   const tx = state.pendingPayment?.ref || ('TEST-' + Date.now());
-  activatePremium(30, tx, state.selectedProvider);
-  runtimePaymentMessage = '<div class="pay-note success">Mode test : Premium activé pour 30 jours ✅</div>';
+  const plan = selectedSubscriptionPlan();
+  activatePremium(plan.days, tx, state.selectedProvider);
+  state.subscription.plan = plan.id;
+  runtimePaymentMessage = `<div class="pay-note success">Mode test : Premium activé pour ${plan.days} jours ✅</div>`;
   paywallFeature = null;
   renderSubscription();
   renderAccount();

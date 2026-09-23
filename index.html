@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=qcm-return-1">
+<link rel="stylesheet" href="css/styles.css?v=subscription-plans-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -856,11 +856,40 @@
       <h2 style="font-size:1.05rem;font-weight:900">Accès aux QCM</h2>
     </div>
 
-    <div class="plan-card">
-      <div class="plan-badge">✅ Accès ouvert</div>
-      <h2>0 FCFA <span>/ en attendant</span></h2>
-      <p>Les 5000 QCM corrigés sont accessibles pendant que le paiement reste en pause.</p>
+    <div class="plan-card subscription-hero">
+      <div class="plan-badge">⭐ Premium</div>
+      <h2 id="selectedPlanPrice">1 500 FCFA <span>/ mois</span></h2>
+      <p id="selectedPlanText">Choisis l'abonnement qui te convient et débloque toutes les formations.</p>
       <div class="sub-status" id="subStatus"></div>
+    </div>
+
+    <div class="section subscription-plans">
+      <div class="section-head"><h2>Choisis ton abonnement</h2></div>
+      <div class="plan-choice-grid" id="planChoiceGrid">
+        <button class="plan-choice on" data-plan="premium_monthly" onclick="selectPlan('premium_monthly')">
+          <span class="plan-choice-kicker">Mensuel</span>
+          <b>1 500 FCFA</b>
+          <small>/ mois</small>
+          <em>Idéal pour commencer</em>
+          <ul>
+            <li>✅ Accès 30 jours</li>
+            <li>✅ Toutes les formations</li>
+            <li>✅ QCM & exercices</li>
+          </ul>
+        </button>
+        <button class="plan-choice annual" data-plan="premium_annual" onclick="selectPlan('premium_annual')">
+          <span class="plan-choice-kicker">⭐ Abonnement annuel</span>
+          <b><del>18 000 FCFA</del> 10 000 FCFA</b>
+          <small>/ an</small>
+          <em>🔥 Économisez 8 000 FCFA</em>
+          <ul>
+            <li>✅ Accès pendant 12 mois</li>
+            <li>✅ Toutes les formations</li>
+            <li>✅ QCM & exercices</li>
+            <li>✅ Examens blancs</li>
+          </ul>
+        </button>
+      </div>
     </div>
 
     <div class="section premium-benefits">
@@ -875,7 +904,7 @@
 
     <div class="pay-box">
       <h3>Paiement Mobile Money</h3>
-      <p class="sub">Choisis ton réseau puis valide le paiement SasPay de 1 500 FCFA.</p>
+      <p class="sub" id="paymentInstruction">Choisis ton réseau puis valide le paiement Mobile Money selon l'abonnement choisi.</p>
       <div class="provider-grid" id="providerGrid">
         <button class="provider-option on" data-provider="ORANGE_MONEY" onclick="selectProvider('ORANGE_MONEY')"><img src="img/orange-money.png" alt="Orange Money Burkina Faso"><b>Orange Money</b><small>Burkina Faso</small></button>
         <button class="provider-option" data-provider="MOOV_MONEY" onclick="selectProvider('MOOV_MONEY')"><img src="img/moov-money.png" alt="Moov Money Burkina Faso"><b>Moov Money</b><small>Burkina Faso</small></button>
@@ -885,7 +914,7 @@
         <span class="cc">🇧🇫 +226</span>
         <input type="tel" id="subPhone" placeholder="70 00 00 00" maxlength="11" inputmode="numeric">
       </div>
-      <button class="btn btn-green btn-block" id="payBtn" onclick="startSubscriptionPayment()">Payer 1 500 FCFA</button>
+      <button class="btn btn-green btn-block" id="payBtn" onclick="startSubscriptionPayment()">S’abonner / mois — 1 500 FCFA</button>
       <button class="btn btn-ghost btn-block" id="checkPayBtn" onclick="checkPaymentStatus()" style="margin-top:10px">Vérifier mon paiement</button>
       <div class="payment-result" id="paymentResult"></div>
     </div>
@@ -1024,9 +1053,9 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=qcm-return-1"></script>
+<script src="js/questions.js?v=subscription-plans-1"></script>
 <!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
 <!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=qcm-return-1"></script>
+<script src="js/app.js?v=subscription-plans-1"></script>
 </body>
 </html>

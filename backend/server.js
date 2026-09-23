@@ -13,7 +13,11 @@ const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}
 const CINETPAY_APIKEY = process.env.CINETPAY_APIKEY;
 const CINETPAY_SITE_ID = process.env.CINETPAY_SITE_ID;
 const CINETPAY_CURRENCY = process.env.CINETPAY_CURRENCY || 'XOF';
-const PLAN_AMOUNT = 1500;
+const SUBSCRIPTION_PLANS = {
+  premium_monthly: { id:'premium_monthly', label:'Mensuel', amount:1500, days:30, description:'Réussite Concours BF Premium - abonnement mensuel' },
+  premium_annual: { id:'premium_annual', label:'Annuel', amount:10000, days:365, description:'Réussite Concours BF Premium - abonnement annuel' }
+};
+const PLAN_AMOUNT = SUBSCRIPTION_PLANS.premium_monthly.amount;
 const SASPAY_API_KEY = process.env.SASPAY_API_KEY || '';
 const SASPAY_WEBHOOK_SECRET = process.env.SASPAY_WEBHOOK_SECRET || '';
 const SASPAY_BASE_URL = (process.env.SASPAY_BASE_URL || 'https://api.saspay.me/api/v1').replace(/\/$/, '');
@@ -453,6 +457,29 @@ function addDays(date, days){
   return d;
 }
 
+function subscriptionPlan(planId){
+  return SUBSCRIPTION_PLANS[planId] || SUBSCRIPTION_PLANS.premium_monthly;
+}
+
+function normalizePlanId(value){
+  return subscriptionPlan(String(value || 'premium_monthly')).id;
+}
+
+function planFromAmount(amount){
+  const n = Number(amount || 0);
+  return Object.values(SUBSCRIPTION_PLANS).find(plan => Number(plan.amount) === n) || SUBSCRIPTION_PLANS.premium_monthly;
+}
+
+function paymentPlanFromRecord(record){
+  const raw = record?.raw || {};
+  return subscriptionPlan(raw.plan || raw.subscription_plan || raw?.metadata?.plan || raw?.saspay?.metadata?.plan || raw?.saspay_session?.metadata?.plan || planFromAmount(record?.amount).id);
+}
+
+function paymentDescription(plan){
+  const p = subscriptionPlan(plan?.id || plan);
+  return `${p.description} (${p.days} jours)`;
+}
+
 function hashPin(pin){
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(String(pin), salt, 32).toString('hex');
@@ -508,22 +535,26 @@ async function saveProgress(phone, progress){
   return Array.isArray(rows) ? rows[0] || null : null;
 }
 
-async function activateSubscription({ phone, txRef, provider, email }){
+async function activateSubscription({ phone, txRef, provider, email, plan:planId, days }){
   const normalized = normalizePhone(phone);
   if (!normalized) throw new Error('Numéro client invalide');
 
+  const plan = subscriptionPlan(planId);
+  const durationDays = Math.max(1, Number(days || plan.days || 30));
   const current = subscriptions.get(normalized);
   const sameTxAlreadyInMemory = current?.txRef && txRef && current.txRef === txRef;
   const base = current && new Date(current.expiresAt).getTime() > Date.now()
     ? new Date(current.expiresAt)
     : new Date();
-  const expiresAt = addDays(base, 30).toISOString();
+  const expiresAt = addDays(base, durationDays).toISOString();
   const sub = {
     phone: normalized,
     status: 'premium',
     expiresAt,
     txRef,
     provider: provider || 'CINETPAY',
+    plan: plan.id,
+    days: durationDays,
     updatedAt: new Date().toISOString()
   };
   subscriptions.set(normalized, sub);
@@ -1133,14 +1164,17 @@ function paymentRawWithSasPay(raw, data){
   return { ...(raw || {}), saspay_id: payload?.id || raw?.saspay_id, saspay: payload || raw?.saspay, saspay_response: data || raw?.saspay_response };
 }
 
-async function createPaymentRecord({ tx, phone, provider, status='INITIATED', raw }){
-  payments.set(tx, { tx, phone, provider, amount: PLAN_AMOUNT, currency:'XOF', status, raw, createdAt:new Date().toISOString() });
+async function createPaymentRecord({ tx, phone, provider, status='INITIATED', raw, plan:planId, amount }){
+  const plan = subscriptionPlan(planId || raw?.plan);
+  const finalAmount = Number(amount || plan.amount);
+  const finalRaw = { ...(raw || {}), plan:plan.id, amount:finalAmount };
+  payments.set(tx, { tx, phone, provider, plan:plan.id, amount: finalAmount, currency:'XOF', status, raw:finalRaw, createdAt:new Date().toISOString() });
   if (!supabaseReady()) return;
   const profile = await getProfile(phone);
   await supabaseRequest('payments?on_conflict=tx_ref', {
     method:'POST',
     prefer:'resolution=merge-duplicates,return=minimal',
-    body:[{ profile_id:profile?.id || null, phone, tx_ref:tx, provider, amount:PLAN_AMOUNT, currency:'XOF', status, raw:raw || null }]
+    body:[{ profile_id:profile?.id || null, phone, tx_ref:tx, provider, amount:finalAmount, currency:'XOF', status, raw:finalRaw }]
   });
 }
 
@@ -1172,20 +1206,22 @@ async function findPaymentBySasPayId(paymentId){
   return Array.isArray(rows) ? rows.find(r => r?.raw?.saspay_id === paymentId || r?.raw?.saspay?.id === paymentId || r?.raw?.saspay_session?.transaction?.id === paymentId) || null : null;
 }
 
-function paymentIsSuccessful(data){
+function paymentIsSuccessful(data, planOrId){
+  const plan = subscriptionPlan(planOrId?.id || planOrId);
   const payload = saspayPayload(data);
   const status = String(payload?.status || '').toUpperCase();
   const amount = Number(payload?.requested_amount || payload?.amount || payload?.net_amount || 0);
   const currency = String(payload?.currency || '').toUpperCase();
-  return ['SUCCESS', 'PAID'].includes(status) && amount === PLAN_AMOUNT && currency === 'XOF';
+  return ['SUCCESS', 'PAID'].includes(status) && amount === Number(plan.amount) && currency === 'XOF';
 }
 
-function checkoutSessionPaid(session){
+function checkoutSessionPaid(session, planOrId){
+  const plan = subscriptionPlan(planOrId?.id || planOrId);
   const payload = saspayPayload(session);
   const status = String(payload?.status || '').toUpperCase();
   const amount = Number(payload?.amount || 0);
   const currency = String(payload?.currency || '').toUpperCase();
-  return (status === 'PAID' || Boolean(payload?.paid_at)) && amount === PLAN_AMOUNT && currency === 'XOF';
+  return (status === 'PAID' || Boolean(payload?.paid_at)) && amount === Number(plan.amount) && currency === 'XOF';
 }
 
 function isMissingAvatarColumnError(err){
@@ -1416,24 +1452,25 @@ app.post('/api/leads/offer', async (req, res, next) => {
 app.post('/api/payments/cinetpay/init', async (req, res, next) => {
   try{
     requireCinetPayConfig();
-    const { amount, currency, transactionId, provider, customer, returnUrl } = req.body || {};
+    const { amount, currency, transactionId, provider, customer, returnUrl, plan:planId } = req.body || {};
     const phone = normalizePhone(customer?.phone);
+    const plan = subscriptionPlan(planId);
 
-    if (Number(amount) !== PLAN_AMOUNT) return res.status(400).json({ message: 'Montant invalide' });
+    if (Number(amount) !== Number(plan.amount)) return res.status(400).json({ message: 'Montant invalide' });
     if ((currency || CINETPAY_CURRENCY) !== 'XOF') return res.status(400).json({ message: 'Devise invalide' });
     if (!phone) return res.status(400).json({ message: 'Numéro client invalide' });
 
     const tx = String(transactionId || `FP-${Date.now()}`);
-    const metadata = JSON.stringify({ phone, plan: 'premium_monthly', provider: provider || 'MOBILE_MONEY' });
+    const metadata = JSON.stringify({ phone, plan: plan.id, provider: provider || 'MOBILE_MONEY' });
 
-    payments.set(tx, { tx, phone, amount: PLAN_AMOUNT, currency: 'XOF', status: 'INITIATED', provider: provider || 'MOBILE_MONEY', createdAt: new Date().toISOString() });
+    payments.set(tx, { tx, phone, plan:plan.id, amount: plan.amount, currency: 'XOF', status: 'INITIATED', provider: provider || 'MOBILE_MONEY', createdAt: new Date().toISOString(), raw:{ plan:plan.id, amount:plan.amount } });
 
     if (supabaseReady()){
       const profile = await getProfile(phone);
       await supabaseRequest('payments', {
         method:'POST',
         prefer:'return=minimal',
-        body:[{ profile_id:profile?.id || null, phone, tx_ref:tx, provider:provider || 'CINETPAY', amount:PLAN_AMOUNT, currency:'XOF', status:'INITIATED' }]
+        body:[{ profile_id:profile?.id || null, phone, tx_ref:tx, provider:provider || 'CINETPAY', amount:plan.amount, currency:'XOF', status:'INITIATED', raw:{ plan:plan.id, amount:plan.amount } }]
       });
     }
 
@@ -1441,9 +1478,9 @@ app.post('/api/payments/cinetpay/init', async (req, res, next) => {
       apikey: CINETPAY_APIKEY,
       site_id: CINETPAY_SITE_ID,
       transaction_id: tx,
-      amount: PLAN_AMOUNT,
+      amount: plan.amount,
       currency: 'XOF',
-      description: 'Réussite Concours BF Premium - abonnement 30 jours',
+      description: paymentDescription(plan),
       return_url: returnUrl || `${APP_ORIGIN}/#subscription`,
       notify_url: `${PUBLIC_BASE_URL}/api/payments/cinetpay/webhook`,
       channels: 'MOBILE_MONEY',
@@ -1480,9 +1517,10 @@ app.post('/api/payments/cinetpay/webhook', async (req, res, next) => {
     const verified = await cp.json().catch(() => ({}));
     const data = verified?.data || {};
 
-    const accepted = verified?.code === '00' && String(data.status).toUpperCase() === 'ACCEPTED' && Number(data.amount) === PLAN_AMOUNT;
     const existing = payments.get(tx);
-    const meta = (() => { try { return JSON.parse(data.metadata || existing?.metadata || '{}'); } catch { return {}; } })();
+    const meta = (() => { try { return JSON.parse(data.metadata || existing?.metadata || existing?.raw?.metadata || '{}'); } catch { return {}; } })();
+    const plan = subscriptionPlan(meta.plan || existing?.plan || existing?.raw?.plan || planFromAmount(data.amount).id);
+    const accepted = verified?.code === '00' && String(data.status).toUpperCase() === 'ACCEPTED' && Number(data.amount) === Number(plan.amount);
     const phone = normalizePhone(meta.phone || existing?.phone || data.customer_phone_number);
 
     if (accepted && phone){
@@ -1490,7 +1528,7 @@ app.post('/api/payments/cinetpay/webhook', async (req, res, next) => {
       if (supabaseReady()){
         await supabaseRequest(`payments?tx_ref=eq.${encodeURIComponent(tx)}`, { method:'PATCH', prefer:'return=minimal', body:{ status:'ACCEPTED', raw:data, verified_at:new Date().toISOString() } });
       }
-      await activateSubscription({ phone, txRef: tx, provider: 'CINETPAY', email:data.customer_email });
+      await activateSubscription({ phone, txRef: tx, provider: 'CINETPAY', email:data.customer_email, plan:plan.id, days:plan.days });
       return res.send('OK');
     }
 
@@ -1502,28 +1540,29 @@ app.post('/api/payments/cinetpay/webhook', async (req, res, next) => {
 app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => {
   try{
     requireSasPayConfig();
-    const { amount, currency, transactionId, provider, customer, returnUrl } = req.body || {};
+    const { amount, currency, transactionId, provider, customer, returnUrl, plan:planId } = req.body || {};
     const phone = normalizePhone(customer?.phone || req.phone);
     const selectedProvider = provider || 'ORANGE_MONEY';
     const network = saspayNetwork(selectedProvider);
+    const plan = subscriptionPlan(planId);
 
-    if (Number(amount) !== PLAN_AMOUNT) return res.status(400).json({ message:'Montant invalide' });
+    if (Number(amount) !== Number(plan.amount)) return res.status(400).json({ message:'Montant invalide' });
     if ((currency || SASPAY_CURRENCY) !== 'XOF') return res.status(400).json({ message:'Devise invalide' });
     if (!phone || phone !== req.phone) return res.status(400).json({ message:'Numéro client invalide' });
 
     const tx = String(transactionId || `RCBF-${Date.now()}`);
     const profile = req.profile || await getProfile(phone);
     const customerEmail = normalizeEmail(customer?.email || profile?.email) || customerEmailForPhone(phone);
-    await createPaymentRecord({ tx, phone, provider:'SASPAY', status:'INITIATED', raw:{ local_tx_ref:tx, selected_provider:selectedProvider, network, customer_email:customerEmail } });
+    await createPaymentRecord({ tx, phone, provider:'SASPAY', status:'INITIATED', plan:plan.id, amount:plan.amount, raw:{ local_tx_ref:tx, selected_provider:selectedProvider, network, customer_email:customerEmail, plan:plan.id } });
 
     const firstName = profile?.first_name || profile?.display_name?.split(' ')?.[0] || 'Client';
     const lastName = profile?.last_name || 'Réussite Concours BF';
     const returnTo = returnUrl || `${APP_ORIGIN}/#subscription`;
     const payload = {
-      amount: `${PLAN_AMOUNT}.00`,
+      amount: `${plan.amount}.00`,
       currency: 'XOF',
       country: SASPAY_COUNTRY,
-      description: 'Réussite Concours BF Premium - abonnement 30 jours',
+      description: paymentDescription(plan),
       customer: {
         email: customerEmail,
         first_name: firstName,
@@ -1531,14 +1570,14 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
         phone: publicPhone(phone)
       },
       network,
-      metadata: { tx_ref: tx, phone, plan: 'premium_monthly', provider: selectedProvider }
+      metadata: { tx_ref: tx, phone, plan: plan.id, provider: selectedProvider }
     };
 
     try{
       const data = await saspayRequest('/payments/softpay/', { method:'POST', body:payload, idempotencyKey:tx });
       const payment = saspayPayload(data);
       const paymentUrl = saspayCheckoutUrl(data);
-      const raw = paymentRawWithSasPay({ local_tx_ref:tx, selected_provider:selectedProvider, network, customer_email:customerEmail }, data);
+      const raw = paymentRawWithSasPay({ local_tx_ref:tx, selected_provider:selectedProvider, network, customer_email:customerEmail, plan:plan.id, amount:plan.amount }, data);
       await updatePaymentRecord(tx, { status:saspayStatus(data), raw });
       return res.json({
         ok:true,
@@ -1554,15 +1593,15 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
       // Le client choisit alors lui-même son réseau et saisit son numéro sur une page SasPay.
       if (err.status !== 422) throw err;
       const sessionPayload = {
-        amount: `${PLAN_AMOUNT}.00`,
+        amount: `${plan.amount}.00`,
         currency: 'XOF',
-        description: 'Réussite Concours BF Premium - abonnement 30 jours',
+        description: paymentDescription(plan),
         country: SASPAY_COUNTRY,
         customer_email: customerEmail,
         customer_name: `${firstName} ${lastName}`.trim(),
         customer_phone: publicPhone(phone),
         return_url: returnTo,
-        metadata: { tx_ref: tx, phone, plan: 'premium_monthly', provider: selectedProvider, softpay_error: err.message }
+        metadata: { tx_ref: tx, phone, plan: plan.id, provider: selectedProvider, softpay_error: err.message }
       };
       const sessionResponse = await saspayRequest('/checkout-sessions/', { method:'POST', body:sessionPayload });
       const session = saspayPayload(sessionResponse);
@@ -1572,6 +1611,8 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
         selected_provider:selectedProvider,
         network,
         customer_email:customerEmail,
+        plan:plan.id,
+        amount:plan.amount,
         saspay_session_id:saspayId(sessionResponse),
         saspay_session:session,
         saspay_session_response:sessionResponse,
@@ -1603,14 +1644,15 @@ app.get('/api/payments/saspay/status', requireSession, async (req, res, next) =>
     if (!record || normalizePhone(record.phone) !== req.phone) return res.status(404).json({ message:'Paiement introuvable' });
     const paymentId = String(req.query.paymentId || record?.raw?.saspay_id || record?.raw?.saspay?.id || record?.raw?.saspay_session?.transaction?.id || '').trim();
     const sessionId = String(req.query.sessionId || record?.raw?.saspay_session_id || record?.raw?.saspay_session?.id || '').trim();
+    const plan = paymentPlanFromRecord(record);
 
     if (paymentId){
       const verified = await saspayRequest(`/payments/${encodeURIComponent(paymentId)}/verify/`);
       const raw = paymentRawWithSasPay(record.raw, verified);
-      if (paymentIsSuccessful(verified)){
+      if (paymentIsSuccessful(verified, plan)){
         await updatePaymentRecord(tx, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
-        const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY', email:record?.raw?.customer_email || req.profile?.email });
-        return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY' });
+        const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY', email:record?.raw?.customer_email || req.profile?.email, plan:plan.id, days:plan.days });
+        return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY', plan:plan.id });
       }
       await updatePaymentRecord(tx, { status:saspayStatus(verified), raw, verified_at:new Date().toISOString() });
       return res.json({ ok:true, active:false, paymentStatus:saspayStatus(verified), message:'Paiement non confirmé pour le moment.' });
@@ -1621,10 +1663,10 @@ app.get('/api/payments/saspay/status', requireSession, async (req, res, next) =>
       const session = saspayPayload(sessionResponse);
       const raw = { ...(record.raw || {}), saspay_session_id:sessionId, saspay_session:session, saspay_session_response:sessionResponse };
       const transaction = session?.transaction;
-      if (checkoutSessionPaid(session) || paymentIsSuccessful(transaction)){
+      if (checkoutSessionPaid(session, plan) || paymentIsSuccessful(transaction, plan)){
         await updatePaymentRecord(tx, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
-        const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY', email:record?.raw?.customer_email || req.profile?.email });
-        return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY' });
+        const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY', email:record?.raw?.customer_email || req.profile?.email, plan:plan.id, days:plan.days });
+        return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY', plan:plan.id });
       }
       await updatePaymentRecord(tx, { status:saspayStatus(session), raw, verified_at:new Date().toISOString() });
       return res.json({ ok:true, active:false, paymentStatus:saspayStatus(session), message:'Paiement non confirmé pour le moment.' });
@@ -1645,11 +1687,12 @@ app.post('/api/payments/saspay/webhook', async (req, res, next) => {
     if (!record) return res.status(202).send('unknown payment');
 
     if (event === 'transaction.success' || String(data.status).toUpperCase() === 'SUCCESS'){
+      const plan = paymentPlanFromRecord(record);
       const verified = await saspayRequest(`/payments/${encodeURIComponent(paymentId)}/verify/`);
       const raw = paymentRawWithSasPay(record.raw, verified);
-      if (paymentIsSuccessful(verified)){
+      if (paymentIsSuccessful(verified, plan)){
         await updatePaymentRecord(record.tx || record.tx_ref, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
-        await activateSubscription({ phone:record.phone, txRef:record.tx || record.tx_ref, provider:'SASPAY', email:record?.raw?.customer_email });
+        await activateSubscription({ phone:record.phone, txRef:record.tx || record.tx_ref, provider:'SASPAY', email:record?.raw?.customer_email, plan:plan.id, days:plan.days });
         return res.send('OK');
       }
     }

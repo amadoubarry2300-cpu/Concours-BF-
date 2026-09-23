@@ -233,3 +233,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 
 - Le bouton fermer pendant un quiz et le bouton retour après résultat renvoient maintenant vers l’écran d’origine.
 - Exemple : un QCM lancé depuis **Formations** revient à Formations, un QCM lancé depuis **QCM publiés** revient à QCM publiés, au lieu de revenir toujours à l’accueil.
+
+## 2026-09-23 — Abonnements mensuel et annuel
+
+- Ajout de deux offres Premium : **mensuel 1 500 FCFA** et **annuel 10 000 FCFA**.
+- L’offre annuelle affiche l’ancien total **18 000 FCFA**, la réduction **8 000 FCFA**, l’accès 12 mois, toutes les formations, QCM/exercices et examens blancs.
+- La page paiement est mieux organisée : choix de l’abonnement, réseaux Mobile Money plus compacts côte à côte, bouton dynamique **S’abonner / mois** ou **S’abonner / an**.
+- Le backend SasPay accepte maintenant le montant et la durée correspondant à l’offre choisie.
