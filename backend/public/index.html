@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=yahoo-new-qcm-1">
+<link rel="stylesheet" href="css/styles.css?v=candidate-wording-clean-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -93,7 +93,7 @@
           <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20, 40, 100 ou 5000 questions</p>
         </button>
         <button class="action-card" onclick="show('publishedqcm')">
-          <img class="action-photo" src="img/teacher-class.jpg" alt="Nouveaux QCM"><h3>Nouveaux QCM</h3><p>QCM récents classés par nom et date</p>
+          <img class="action-photo" src="img/teacher-class.jpg" alt="Nouveaux QCM"><h3>Nouveaux QCM</h3><p>QCM récents pour s’entraîner</p>
         </button>
         <button class="action-card premium-locked" onclick="show('stats')">
           <span class="lock-tag">Ouvert</span>
@@ -103,7 +103,7 @@
           <img class="action-photo" src="img/teacher-class.jpg" alt="Formations"><h3>Formations</h3><p>Toutes les matières disponibles</p>
         </button>
         <button class="action-card" onclick="show('resources')">
-          <img class="action-photo" src="img/study.jpg" alt="Documents et fichiers"><h3>Documents & fichiers</h3><p>PDF, Word et images publiés</p>
+          <img class="action-photo" src="img/study.jpg" alt="Documents et fichiers"><h3>Documents & fichiers</h3><p>PDF, Word et images pour réviser</p>
         </button>
         <button class="action-card" onclick="show('news')">
           <img class="action-photo" src="img/classroom-bf-wide.jpg" alt="Actualités concours"><h3>Actualités concours</h3><p>Recrutements, communiqués et dates utiles</p>
@@ -317,7 +317,7 @@
     <div class="section" style="padding-top:10px">
       <div class="published-qcm-intro">
         <h2>Nouveaux QCM</h2>
-        <p>Chaque publication porte un nom et une date. Les QCM gratuits démarrent avec 10 questions pour débuter, les contenus Premium restent réservés aux abonnés.</p>
+
       </div>
       <div class="chip-row" id="publishedQcmFilterRow">
         <button class="chip on" onclick="filterPublishedQcm(this,'all')">Tout</button>
@@ -340,7 +340,7 @@
         <div>
           <span>Recrutements & communiqués</span>
           <h2>Informations utiles aux candidats</h2>
-          <p>Retrouve les annonces publiées par l’administration : concours ouverts, communiqués, résultats et dates limites.</p>
+          <p>Retrouve les informations utiles : concours ouverts, communiqués, résultats et dates limites.</p>
         </div>
       </div>
       <div class="chip-row news-filter-row">
@@ -362,8 +362,8 @@
     </div>
     <div class="section" style="padding-top:10px">
       <div class="resource-intro-card">
-        <h2>Ressources publiées</h2>
-        <p>Retrouve ici les PDF, documents Word et images partagés par l’administration.</p>
+        <h2>Documents utiles</h2>
+        <p>PDF, documents Word et images pour t’aider à réviser. Les contenus Premium sont accessibles aux abonnés.</p>
       </div>
       <div id="resourceList" class="resource-list">
         <div class="empty">Chargement des documents...</div>
@@ -673,7 +673,7 @@
           <div class="payment-result" id="adminResourceResult"></div>
 
           <hr class="soft-separator">
-          <h3>Documents publiés</h3>
+          <h3>Mes documents</h3>
           <div id="adminResourceList" class="admin-list"></div>
         </div>
       </div>
@@ -787,7 +787,7 @@
           <label class="field-label" for="aiTheme">Sujet souhaité</label>
           <textarea class="input admin-textarea" id="aiTheme" placeholder="Ex : institutions du Burkina Faso, pour concours directs, avec corrections détaillées"></textarea>
 
-          <label class="field-label" for="aiPublicationName">Nom du QCM publié</label>
+          <label class="field-label" for="aiPublicationName">Nom du nouveau QCM</label>
           <input class="input" id="aiPublicationName" placeholder="Ex : Culture générale Burkina Faso — Actualités 2026">
 
           <label class="field-label" for="aiPdfSource">PDF source <span>(facultatif)</span></label>
@@ -1061,7 +1061,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=yahoo-new-qcm-1"></script>
-<script src="js/app.js?v=yahoo-new-qcm-1"></script>
+<script src="js/questions.js?v=candidate-wording-clean-1"></script>
+<script src="js/app.js?v=candidate-wording-clean-1"></script>
 </body>
 </html>

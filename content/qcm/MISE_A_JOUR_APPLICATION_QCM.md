@@ -279,3 +279,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 
 - Renommage complet des libellés visibles **QCM publiés** en **Nouveaux QCM** sur l’accueil, l’en-tête de l’écran, les boutons et les messages de chargement.
 - L’e-mail de contact Yahoo reste affiché dans le pied de page, les mentions et la page contact.
+
+## 2026-09-23 — Nettoyage espace candidat
+
+- Suppression des phrases inutiles sur l’écran **Nouveaux QCM** : plus de mention “classés par nom et date” ni “Chaque publication porte un nom et une date”.
+- Nettoyage du bloc **Documents & fichiers** : remplacement de “PDF, Word et images publiés” par une formulation orientée révision.
+- Nettoyage des textes candidats qui mentionnaient inutilement “publié par l’administration” ou “document publié”.

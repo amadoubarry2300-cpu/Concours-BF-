@@ -724,12 +724,12 @@ function startQuiz(opts){
 function startQuestionListQuiz(qs, opts = {}){
   const returnTo = opts.returnTo || quizReturnTarget();
   const clean = (Array.isArray(qs) ? qs : []).filter(q => q?.q && Array.isArray(q.o) && q.o.length === 4);
-  if (!clean.length){ toast('Aucun QCM disponible pour cette publication'); return; }
+  if (!clean.length){ toast('Aucun QCM disponible pour ce contenu'); return; }
   const limit = opts.limit ? Math.max(1, Math.min(Number(opts.limit), clean.length)) : clean.length;
   const selected = shuffle(clean).slice(0, limit);
   quizReturnScreen = returnTo;
   quiz = {
-    qs:selected, i:0, ok:0, ko:0, title:opts.title || 'QCM publié', daily:opts.daily || false,
+    qs:selected, i:0, ok:0, ko:0, title:opts.title || 'Nouveau QCM', daily:opts.daily || false,
     time:opts.time || 0, left:opts.time || 0, answered:false, wrongList:[], returnTo
   };
   $('#quizTitleTag').textContent = quiz.title;
@@ -1095,7 +1095,7 @@ async function renderAdminPanel(force){
 }
 
 function defaultQcmPublicationName(){
-  return 'QCM publié le ' + formatDate(new Date().toISOString());
+  return 'Nouveau QCM du ' + formatDate(new Date().toISOString());
 }
 
 function adminFormPayload(){
@@ -1129,7 +1129,7 @@ async function saveAdminQuestion(){
     await loadAdminQuestions();
     await loadSupabaseQuestions();
     renderFormations(currentFormFilter);
-    toast('QCM publié dans ' + destination + ' ✅');
+    toast('QCM ajouté dans ' + destination + ' ✅');
   }catch(err){
     if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
   }finally{
@@ -1169,7 +1169,7 @@ function renderAdminQuestionCards(items){
         ${q.is_premium ? '<span class="premium">Premium abonnés</span>' : '<span class="free">Gratuit</span>'}
       </div>
       <h4>${escapeHtml(q.question_text || '')}</h4>
-      <p class="admin-destination-note">Nom du QCM : <b>${escapeHtml(q.source || 'QCM publié')}</b> · Date : <b>${escapeHtml(formatDate(q.created_at))}</b></p>
+      <p class="admin-destination-note">Nom du QCM : <b>${escapeHtml(q.source || 'Nouveau QCM')}</b> · Date : <b>${escapeHtml(formatDate(q.created_at))}</b></p>
       <p class="admin-destination-note">Destination : <b>${qcmDestinationText(q)}</b></p>
       <div class="admin-q-actions">
         <button class="edit" onclick="openPublishedQcmFromAdmin()">Ouvrir le quiz</button>
@@ -1193,7 +1193,7 @@ function renderAdminQuestionGroup(title, subtitle, items, tone){
 async function loadAdminQuestions(){
   const wrap = $('#adminQuestionList');
   if (!wrap) return;
-  wrap.innerHTML = '<div class="empty">Chargement des publications...</div>';
+  wrap.innerHTML = '<div class="empty">Chargement des contenus...</div>';
   try{
     const search = encodeURIComponent($('#adminSearch')?.value || '');
     const data = await adminFetch('/api/admin/questions?limit=100&search=' + search);
@@ -1205,8 +1205,8 @@ async function loadAdminQuestions(){
     const summary = $('#adminQuestionSummary');
     if (summary){
       summary.innerHTML = `
-        <div><b>${freeItems.length}</b><span>Gratuits publiés</span></div>
-        <div><b>${premiumItems.length}</b><span>Premium publiés</span></div>
+        <div><b>${freeItems.length}</b><span>Gratuits actifs</span></div>
+        <div><b>${premiumItems.length}</b><span>Premium actifs</span></div>
         <div><b>${hiddenItems.length}</b><span>Masqués</span></div>`;
     }
     if (!adminQuestionCache.length){
@@ -1260,7 +1260,7 @@ async function toggleAdminQuestion(index){
     await loadAdminQuestions();
     await loadSupabaseQuestions();
     renderFormations(currentFormFilter);
-    toast(!q.is_active ? 'QCM publié' : 'QCM masqué');
+    toast(!q.is_active ? 'QCM visible' : 'QCM masqué');
   }catch(err){ toast(err.message); }
 }
 
@@ -1410,7 +1410,7 @@ async function publishAiDraft(index){
     renderFormations(currentFormFilter);
     const destination = qcmDestinationText(q);
     const result = $('#aiResult');
-    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>Mes QCM → ${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">QCM ajouté dans <b>Mes QCM → ${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
     toast('QCM IA publié dans ' + destination + ' ✅');
   }catch(err){ toast(err.message); }
 }
@@ -1550,7 +1550,7 @@ function renderNewsList(){
   if (!wrap) return;
   const items = (newsCache || []).filter(n => currentNewsFilter === 'Tout' || n.type === currentNewsFilter);
   if (!items.length){
-    wrap.innerHTML = '<div class="empty"><div class="big">📰</div>Aucune actualité publiée pour le moment.</div>';
+    wrap.innerHTML = '<div class="empty"><div class="big">📰</div>Aucune actualité disponible pour le moment.</div>';
     return;
   }
   wrap.innerHTML = items.map(n => {
@@ -1663,7 +1663,7 @@ async function loadAdminNews(){
     const data = await adminFetch('/api/admin/news');
     adminNewsCache = data.news || [];
     if (!adminNewsCache.length){
-      wrap.innerHTML = '<div class="empty">Aucune actualité publiée pour le moment.</div>';
+      wrap.innerHTML = '<div class="empty">Aucune actualité disponible pour le moment.</div>';
       return;
     }
     wrap.innerHTML = adminNewsCache.map((n, idx)=>`
@@ -1754,7 +1754,7 @@ async function loadResources(){
     if (!res.ok) throw new Error(data.message || 'Documents indisponibles');
     resourceCache = data.resources || [];
     if (!resourceCache.length){
-      wrap.innerHTML = '<div class="empty">Aucun document publié pour le moment.</div>';
+      wrap.innerHTML = '<div class="empty">Aucun document disponible pour le moment.</div>';
       return;
     }
     wrap.innerHTML = resourceCache.map(r => `
@@ -1762,7 +1762,7 @@ async function loadResources(){
         <div class="resource-icon">${resourceIcon(r.kind)}</div>
         <div>
           <h3>${escapeHtml(r.title)}</h3>
-          <p>${escapeHtml(r.description || 'Document de révision publié par l’administration.')}</p>
+          <p>${escapeHtml(r.description || 'Document de révision pour t’aider à progresser.')}</p>
           <div class="resource-meta">
             <span>${escapeHtml(r.category || 'Documents')}</span>
             <span>${formatBytes(r.size)}</span>
@@ -1850,7 +1850,7 @@ async function loadAdminResources(){
     const data = await adminFetch('/api/admin/resources');
     adminResourceCache = data.resources || [];
     if (!adminResourceCache.length){
-      wrap.innerHTML = '<div class="empty">Aucun document publié pour le moment.</div>';
+      wrap.innerHTML = '<div class="empty">Aucun document disponible pour le moment.</div>';
       return;
     }
     wrap.innerHTML = adminResourceCache.map((r, idx)=>`
@@ -2374,7 +2374,7 @@ function renderPublishedQcm(){
     return `<div class="published-qcm-card ${set.is_premium ? 'premium' : 'free'} ${locked ? 'locked' : ''}">
       <div class="published-qcm-top">
         <span>${set.is_premium ? '🔒 Premium' : '✅ Gratuit'}</span>
-        <span>Publié le ${escapeHtml(date)}</span>
+        <span>📅 ${escapeHtml(date)}</span>
       </div>
       <h3>${escapeHtml(set.title || 'Nouveau QCM')}</h3>
       <p>${escapeHtml(set.category || 'Catégorie')} · ${escapeHtml(set.level || 'Niveau')} · ${count} QCM</p>
