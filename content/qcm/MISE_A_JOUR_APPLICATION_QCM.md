@@ -259,3 +259,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Suppression du bloc d’accueil qui affichait une consigne interne de type “mini vidéo animée”.
 - Conservation des animations premium directement sur les cartes, images et boutons, sans texte technique visible pour les candidats.
 - Vérification des textes visibles pour éviter d’afficher les demandes de conception dans l’application.
+
+## 2026-09-23 — Interface candidat nettoyée
+
+- Nettoyage supplémentaire des textes visibles pour éviter les mentions techniques ou les consignes de conception.
+- Remplacement des formulations trop techniques par des textes simples côté candidat et côté administration.
+- Conservation des effets visuels premium sans ajouter de bloc explicatif inutile.

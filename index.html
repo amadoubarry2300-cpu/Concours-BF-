@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=clean-ui-copy-1">
+<link rel="stylesheet" href="css/styles.css?v=clean-interface-2">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -749,12 +749,12 @@
             <img src="img/ai-qcm-logo.svg" alt="Logo IA QCM">
             <div>
               <h3>Générer des QCM avec l’IA</h3>
-              <p class="admin-help">L’IA prépare des brouillons. Vérifie toujours les réponses et corrections avant de publier.</p>
+              <p class="admin-help">Prépare des propositions de QCM à relire avant publication.</p>
             </div>
           </div>
           <div class="admin-stats" id="adminAiStatus">
-            <div><b>—</b><span>IA Gemini</span></div>
-            <div><b>Brouillon</b><span>Mode sûr</span></div>
+            <div><b>—</b><span>IA QCM</span></div>
+            <div><b>Relecture</b><span>Mode sûr</span></div>
             <div><b>Admin</b><span>Validation</span></div>
           </div>
 
@@ -784,7 +784,7 @@
             </div>
           </div>
 
-          <label class="field-label" for="aiTheme">Thème ou consigne</label>
+          <label class="field-label" for="aiTheme">Sujet souhaité</label>
           <textarea class="input admin-textarea" id="aiTheme" placeholder="Ex : institutions du Burkina Faso, pour concours directs, avec corrections détaillées"></textarea>
 
           <label class="field-label" for="aiPublicationName">Nom du QCM publié</label>
@@ -792,7 +792,7 @@
 
           <label class="field-label" for="aiPdfSource">PDF source <span>(facultatif)</span></label>
           <input class="input" type="file" id="aiPdfSource" accept="application/pdf,.pdf">
-          <p class="admin-help">Si tu ajoutes un PDF, l’IA génère les QCM à partir de ce document seulement. Les QCM restent des brouillons à vérifier.</p>
+          <p class="admin-help">Ajoute un PDF si tu veux préparer des QCM à partir d’un document précis. Les questions seront à relire avant publication.</p>
 
           <div class="admin-options-grid">
             <div>
@@ -811,7 +811,7 @@
             </div>
           </div>
 
-          <button class="btn btn-green btn-block" id="aiGenerateBtn" onclick="generateAiQcm()">Générer des brouillons</button>
+          <button class="btn btn-green btn-block" id="aiGenerateBtn" onclick="generateAiQcm()">Préparer les QCM</button>
           <div class="payment-result" id="aiResult"></div>
           <div id="aiDraftList" class="admin-list"></div>
 
@@ -832,21 +832,21 @@
 
       <div id="adminNotificationsPane" class="admin-pane" style="display:none">
         <div class="legal-card admin-card">
-          <h3>Tester les notifications</h3>
-          <p class="admin-help">Après configuration des notifications e-mail/SMS, utilise ce test pour vérifier que les messages partent.</p>
+          <h3>Vérification des notifications</h3>
+          <p class="admin-help">Vérifie facilement l’envoi des messages de confirmation aux candidats.</p>
           <div class="admin-stats" id="adminNotificationStatus">
             <div><b>—</b><span>E-mail</span></div>
             <div><b>—</b><span>SMS</span></div>
             <div><b>Test</b><span>Admin</span></div>
           </div>
-          <label class="field-label" for="adminTestEmail">Adresse e-mail de test</label>
+          <label class="field-label" for="adminTestEmail">Adresse e-mail</label>
           <input class="input" type="email" id="adminTestEmail" placeholder="exemple@gmail.com">
-          <label class="field-label" for="adminTestPhone">Téléphone SMS de test</label>
+          <label class="field-label" for="adminTestPhone">Téléphone SMS</label>
           <div class="phone-row auth-phone-row">
             <span class="cc">🇧🇫 +226</span>
             <input type="tel" id="adminTestPhone" placeholder="70 00 00 00" maxlength="11" inputmode="numeric">
           </div>
-          <button class="btn btn-green btn-block" id="adminTestNotificationBtn" onclick="sendAdminNotificationTest()">Envoyer un test</button>
+          <button class="btn btn-green btn-block" id="adminTestNotificationBtn" onclick="sendAdminNotificationTest()">Envoyer un message</button>
           <div class="payment-result" id="adminNotificationResult"></div>
         </div>
       </div>
@@ -953,7 +953,7 @@
       </div>
       <div class="legal-card">
         <h3>Sécurité</h3>
-        <p>En production, les informations sensibles seront stockées dans une base sécurisée et les clés API resteront côté serveur.</p>
+        <p>Nous protégeons les informations sensibles et limitons leur accès aux besoins du service.</p>
       </div>
     </div>
   </section>
@@ -1061,9 +1061,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=clean-ui-copy-1"></script>
-<!-- En production, créer js/payment-config.js depuis js/payment-config.example.js et le charger ici avant app.js. -->
-<!-- <script src="js/payment-config.js"></script> -->
-<script src="js/app.js?v=clean-ui-copy-1"></script>
+<script src="js/questions.js?v=clean-interface-2"></script>
+<script src="js/app.js?v=clean-interface-2"></script>
 </body>
 </html>

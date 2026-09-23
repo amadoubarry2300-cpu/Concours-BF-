@@ -853,7 +853,7 @@ function normalizeAiQuestion(item, defaults = {}){
     options,
     correct_answer:correct,
     explanation:item?.explanation || item?.correction || item?.reason,
-    source:item?.source || 'Généré par IA - à vérifier',
+    source:item?.source || 'Créé avec l’aide de l’IA',
     is_premium:defaults.is_premium,
     is_active:false
   });
@@ -875,11 +875,11 @@ function aiQcmPrompt({ count, category, level, theme, fromPdf = false }){
   const sourceLine = fromPdf
     ? `Lis le PDF joint et génère exactement ${count} QCM en français à partir de son contenu. Si une information n'est pas clairement présente dans le PDF, ne l'invente pas.`
     : `Génère exactement ${count} QCM en français.`;
-  return `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\n${sourceLine}\nCatégorie: ${category}. Niveau: ${level}. Thème: ${theme}.\nContraintes importantes:\n- chaque QCM doit être factuel, clair, non ambigu, adapté au Burkina Faso si pertinent;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse;\n- correction détaillée et pédagogique;\n- éviter les affirmations incertaines ou inventées;\n- si le thème concerne un fait officiel récent, rester général et mentionner qu'il faut vérifier la source officielle;\n- les QCM générés sont des brouillons à vérifier par l'administrateur.\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Généré par IA - à vérifier"}]}`;
+  return `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\n${sourceLine}\nCatégorie: ${category}. Niveau: ${level}. Thème: ${theme}.\nContraintes importantes:\n- chaque QCM doit être factuel, clair, non ambigu, adapté au Burkina Faso si pertinent;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse;\n- correction détaillée et pédagogique;\n- éviter les affirmations incertaines ou inventées;\n- si le thème concerne un fait officiel récent, rester général et mentionner qu'il faut vérifier la source officielle;\n- les QCM générés doivent être relus par l'administrateur avant publication.\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Créé avec l’aide de l’IA"}]}`;
 }
 
 async function callGeminiGenerateParts(parts){
-  if (!GEMINI_API_KEY) throw Object.assign(new Error('IA non configurée'), { status:503 });
+  if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   let lastError = null;
   const models = await geminiModelsToTry();
   for (const model of models){
@@ -912,7 +912,7 @@ async function callGeminiGenerateParts(parts){
   console.warn('Gemini generation failed:', lastError);
   const friendly = /quota|rate|429/i.test(lastError || '')
     ? 'Quota gratuit IA atteint pour le moment. Réessaie plus tard.'
-    : 'IA indisponible pour le moment. Vérifie la clé Gemini dans Vercel ou réessaie.';
+    : 'IA indisponible pour le moment. Réessaie un peu plus tard.';
   const err = new Error(friendly);
   err.status = /quota|rate|429/i.test(lastError || '') ? 429 : 502;
   throw err;
@@ -1089,7 +1089,7 @@ function fallbackOfficialDrafts(candidates, limit){
     deadline:'',
     status:/ouvert|inscription|ouverture/i.test(item.title) ? 'Ouvert' : 'Info',
     summary:cleanText(item.snippet || item.title, 500),
-    content:cleanText(`${item.snippet || item.title}\n\nSource officielle à vérifier avant publication.`, 4000),
+    content:cleanText(`${item.snippet || item.title}\n\nSource officielle à relire avant publication.`, 4000),
     sourceUrl:item.url,
     sourceName:item.sourceName || 'Source officielle'
   })).filter(item => item.title && item.sourceUrl);
@@ -1130,7 +1130,7 @@ async function buildOfficialNewsDrafts(limit = 6){
   let items = [];
   if (GEMINI_API_KEY){
     try{
-      const prompt = `Tu es assistant de veille pour Réussite Concours BF. Date du jour: ${todayIso}. À partir de cette liste issue de sources officielles, propose au maximum ${limit} brouillons d'actualités concours À JOUR UNIQUEMENT. Règles strictes: ne propose aucun communiqué de 2025, 2024 ou année antérieure; ne propose aucune inscription/date limite déjà clôturée avant ${todayIso}; privilégie session ${currentYear}, résultats récents ${currentYear}, ouvertures en cours ou échéances futures; n'invente rien hors des extraits. Si une date limite n'est pas claire, laisse deadline vide et mets status "Info". Réponds uniquement en JSON valide: {"items":[{"title":"...","type":"Concours|Recrutement|Communiqué|Résultat|Calendrier","organization":"...","deadline":"YYYY-MM-DD ou vide","status":"Ouvert|Bientôt|Info|Clôturé","summary":"...","content":"...","sourceUrl":"...","sourceName":"..."}]}\n\nSources filtrées actuelles:\n${JSON.stringify(unique.slice(0, 30), null, 2)}`;
+      const prompt = `Tu es assistant de veille pour Réussite Concours BF. Date du jour: ${todayIso}. À partir de cette liste issue de sources officielles, propose au maximum ${limit} propositions d'actualités concours À JOUR UNIQUEMENT. Règles strictes: ne propose aucun communiqué de 2025, 2024 ou année antérieure; ne propose aucune inscription/date limite déjà clôturée avant ${todayIso}; privilégie session ${currentYear}, résultats récents ${currentYear}, ouvertures en cours ou échéances futures; n'invente rien hors des extraits. Si une date limite n'est pas claire, laisse deadline vide et mets status "Info". Réponds uniquement en JSON valide: {"items":[{"title":"...","type":"Concours|Recrutement|Communiqué|Résultat|Calendrier","organization":"...","deadline":"YYYY-MM-DD ou vide","status":"Ouvert|Bientôt|Info|Clôturé","summary":"...","content":"...","sourceUrl":"...","sourceName":"..."}]}\n\nSources filtrées actuelles:\n${JSON.stringify(unique.slice(0, 30), null, 2)}`;
       const ai = await callGeminiGenerate(prompt);
       const parsed = extractJsonFromAi(ai.text);
       const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.items) ? parsed.items : []);
@@ -1152,7 +1152,7 @@ async function buildOfficialNewsDrafts(limit = 6){
 
 function requireCinetPayConfig(){
   if (!CINETPAY_APIKEY || !CINETPAY_SITE_ID){
-    const err = new Error('CinetPay non configuré: ajoutez CINETPAY_APIKEY et CINETPAY_SITE_ID dans Vercel');
+    const err = new Error('Paiement indisponible pour le moment.');
     err.status = 500;
     throw err;
   }
@@ -1161,7 +1161,7 @@ function requireCinetPayConfig(){
 
 function requireSasPayConfig(){
   if (!SASPAY_API_KEY){
-    const err = new Error('SasPay non configuré: ajoutez SASPAY_API_KEY dans Vercel');
+    const err = new Error('Paiement Mobile Money indisponible pour le moment.');
     err.status = 503;
     throw err;
   }
@@ -1416,7 +1416,7 @@ app.get('/api/config', (_req, res) => {
 
 app.post('/api/auth/register', async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Supabase service_role non configuré dans Vercel' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Stockage indisponible pour le moment.' });
     const phone = normalizePhone(req.body?.phone);
     const firstName = String(req.body?.firstName || '').trim();
     const lastName = String(req.body?.lastName || '').trim();
@@ -1473,7 +1473,7 @@ app.post('/api/auth/register', async (req, res, next) => {
 
 app.post('/api/auth/login', async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Supabase service_role non configuré dans Vercel' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Stockage indisponible pour le moment.' });
     const phone = normalizePhone(req.body?.phone);
     const pin = String(req.body?.pin || '').replace(/\D/g, '');
     if (!phone) return res.status(400).json({ message:'Numéro invalide' });
@@ -1512,7 +1512,7 @@ app.post('/api/auth/login', async (req, res, next) => {
 
 app.post('/api/progress/save', requireSession, async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Supabase service_role non configuré dans Vercel' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Stockage indisponible pour le moment.' });
     const progress = await saveProgress(req.phone, req.body?.progress || {});
     res.json({ ok:true, progress });
   }catch(err){ next(err); }
@@ -1828,7 +1828,7 @@ app.get('/api/admin/ai/status', requireAdmin, async (_req, res) => {
 
 app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
   try{
-    if (!GEMINI_API_KEY) return res.status(503).json({ message:'IA non configurée. Ajoute GEMINI_API_KEY dans Vercel puis redéploie.' });
+    if (!GEMINI_API_KEY) return res.status(503).json({ message:'Service IA indisponible pour le moment. Réessaie plus tard.' });
     const category = cleanText(req.body?.category || 'Culture générale', 80);
     const level = cleanText(req.body?.level || 'Concours', 40);
     const theme = cleanText(req.body?.theme || category, 200);
@@ -1844,7 +1844,7 @@ app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
 
 app.post('/api/admin/ai/qcm-pdf', requireAdmin, express.raw({ type:() => true, limit:'8mb' }), async (req, res, next) => {
   try{
-    if (!GEMINI_API_KEY) return res.status(503).json({ message:'IA non configurée. Ajoute GEMINI_API_KEY dans Vercel puis redéploie.' });
+    if (!GEMINI_API_KEY) return res.status(503).json({ message:'Service IA indisponible pour le moment. Réessaie plus tard.' });
     const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
     const fileName = safeFileName(headerText(req, 'x-file-name', 180) || 'source.pdf');
     const mimeType = String(req.headers['content-type'] || 'application/pdf').split(';')[0].trim() || 'application/pdf';
@@ -1878,9 +1878,9 @@ app.post('/api/admin/ai/news-scan', requireAdmin, async (req, res, next) => {
       const text = result.items.map((item, i) => `${i + 1}. ${item.title}\n${item.summary}\nSource: ${item.sourceUrl}`).join('\n\n');
       notificationSent = await sendEmailNotification({
         to:req.profile.email,
-        subject:`${result.items.length} nouvelle(s) concours à vérifier`,
-        text:`Réussite Concours BF a détecté des actualités officielles à vérifier:\n\n${text}`,
-        html:`<p>Réussite Concours BF a détecté des actualités officielles à vérifier :</p><ol>${result.items.map(item => `<li><b>${htmlEscape(item.title)}</b><br>${htmlEscape(item.summary)}<br><a href="${htmlEscape(item.sourceUrl)}">Source officielle</a></li>`).join('')}</ol>`
+        subject:`${result.items.length} nouvelle(s) concours à relire`,
+        text:`Réussite Concours BF a détecté des actualités officielles à relire:\n\n${text}`,
+        html:`<p>Réussite Concours BF a détecté des actualités officielles à relire :</p><ol>${result.items.map(item => `<li><b>${htmlEscape(item.title)}</b><br>${htmlEscape(item.summary)}<br><a href="${htmlEscape(item.sourceUrl)}">Source officielle</a></li>`).join('')}</ol>`
       }).catch(err => { console.warn('Notification veille IA:', err.message); return false; });
     }
     res.json({ ok:true, sources:officialNewsSources(), found:result.candidates.length, items:result.items, notificationSent, today:result.today, currentYear:result.currentYear, freshness:'current_only' });
@@ -2179,8 +2179,8 @@ app.post('/api/admin/notifications/test', requireAdmin, async (req, res) => {
       results.email.sent = await sendEmailNotification({
         to:email,
         subject:'Test Réussite Concours BF',
-        text:'Ceci est un message de test. Les notifications e-mail de Réussite Concours BF fonctionnent.',
-        html:'<p>Ceci est un message de test.</p><p>Les notifications e-mail de <b>Réussite Concours BF</b> fonctionnent.</p>'
+        text:'Message de vérification : les notifications e-mail de Réussite Concours BF fonctionnent.',
+        html:'<p>Message de vérification.</p><p>Les notifications e-mail de <b>Réussite Concours BF</b> fonctionnent.</p>'
       });
     }catch(err){
       results.email.error = 'Envoi e-mail impossible';
@@ -2193,11 +2193,11 @@ app.post('/api/admin/notifications/test', requireAdmin, async (req, res) => {
     try{
       results.sms.sent = await sendSmsNotification({
         to:phone,
-        message:'Test Réussite Concours BF: les notifications SMS fonctionnent.'
+        message:'Réussite Concours BF : les notifications SMS fonctionnent.'
       });
     }catch(err){
       results.sms.error = 'Envoi SMS impossible';
-      console.warn('Test SMS admin:', err.message);
+      console.warn('Vérification SMS admin:', err.message);
     }
   }
 
@@ -2336,7 +2336,7 @@ app.get('/api/questions', async (req, res, next) => {
       });
     }
 
-    if (!supabaseReady()) return res.status(503).json({ message:'Supabase service_role non configuré dans Vercel' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Stockage indisponible pour le moment.' });
     const premiumFilter = premiumAllowed ? '' : '&is_premium=eq.false';
     const rows = await supabaseRequest(`questions?is_active=eq.true${premiumFilter}&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.asc`);
     res.json({ ok:true, source:'supabase', premiumIncluded:premiumAllowed, questions:Array.isArray(rows) ? rows.map(safeQuestion) : [] });

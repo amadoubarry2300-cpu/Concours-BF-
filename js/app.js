@@ -1,13 +1,10 @@
 /* ============ Réussite Concours BF — logique de l'application ============ */
 
-/* ---------- configuration paiement ---------- */
 const PAYMENT_CONFIG = window.REUSSITE_CONCOURS_BF_PAYMENT_CONFIG || {
   amount: 1500,
   currency: 'XOF',
   plan: 'premium_monthly',
   backendBaseUrl: '',
-  // Laisse true pour tester le verrouillage premium dans l'aperçu local.
-  // Le mode démonstration est désactivé en production.
   demoMode: false
 };
 
@@ -317,7 +314,7 @@ async function apiPost(path, body){
 }
 
 function shouldUseLocalFallback(err){
-  return err?.status === 404 || err?.status === 503 || err?.name === 'TypeError' || /Failed to fetch|NetworkError|Supabase service_role/i.test(err?.message || '');
+  return err?.status === 404 || err?.status === 503 || err?.name === 'TypeError' || /Failed to fetch|NetworkError|Stockage indisponible/i.test(err?.message || '');
 }
 
 function applyRemoteSession(data, fallbackPhone){
@@ -1287,8 +1284,8 @@ async function loadAiStatus(){
   try{
     const data = await adminFetch('/api/admin/ai/status');
     wrap.innerHTML = `
-      <div><b>${data.configured ? 'Prête' : 'À configurer'}</b><span>IA Gemini</span></div>
-      <div><b>Brouillon</b><span>Non publié</span></div>
+      <div><b>${data.configured ? 'Prête' : 'Non active'}</b><span>IA QCM</span></div>
+      <div><b>Relecture</b><span>Non publié</span></div>
       <div><b>Admin</b><span>Validation</span></div>`;
   }catch(err){
     wrap.innerHTML = `<div><b>Erreur</b><span>${escapeHtml(err.message)}</span></div>`;
@@ -1302,8 +1299,8 @@ async function generateAiQcm(){
   const pdfFile = $('#aiPdfSource')?.files?.[0] || null;
   setButtonLoading(btn, true, pdfFile ? 'Lecture PDF...' : 'Génération...');
   if (result) result.innerHTML = pdfFile
-    ? '<div class="pay-note">L’IA lit le PDF et prépare des brouillons. Vérifie toujours avant publication.</div>'
-    : '<div class="pay-note">L’IA prépare les brouillons. Vérifie toujours avant publication.</div>';
+    ? '<div class="pay-note">L’IA lit le PDF et prépare des propositions à relire avant publication.</div>'
+    : '<div class="pay-note">L’IA prépare des propositions à relire avant publication.</div>';
   if (list) list.innerHTML = '<div class="empty">Génération en cours...</div>';
   try{
     const payload = {
@@ -1332,7 +1329,7 @@ async function generateAiQcm(){
       data = await adminFetch('/api/admin/ai/qcm', { method:'POST', body:JSON.stringify(payload) });
     }
     aiDraftCache = (data.questions || []).map(q => ({...q, source:publicationName, is_premium:payload.is_premium, is_active:true, _published:false}));
-    if (result) result.innerHTML = `<div class="pay-note success">${aiDraftCache.length} brouillon${aiDraftCache.length>1?'s':''} généré${aiDraftCache.length>1?'s':''}${pdfFile ? ' depuis le PDF' : ''} ✅</div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">${aiDraftCache.length} proposition${aiDraftCache.length>1?'s':''} prête${aiDraftCache.length>1?'s':''}${pdfFile ? ' depuis le PDF' : ''} ✅</div>`;
     renderAiDrafts();
   }catch(err){
     aiDraftCache = [];
@@ -1348,7 +1345,7 @@ function renderAiDrafts(){
   if (!wrap) return;
   if (!aiDraftCache.length){ wrap.innerHTML = ''; return; }
   const publishAll = aiDraftCache.some(q => !q._published)
-    ? '<button class="btn btn-green btn-block" onclick="publishAllAiDrafts()" style="margin-bottom:10px">Publier tous les brouillons vérifiés</button>'
+    ? '<button class="btn btn-green btn-block" onclick="publishAllAiDrafts()" style="margin-bottom:10px">Publier les QCM relus</button>'
     : '';
   wrap.innerHTML = publishAll + aiDraftCache.map((q, idx)=>`
     <div class="admin-q-item ${q._published ? 'ai-published' : ''}">
@@ -1356,7 +1353,7 @@ function renderAiDrafts(){
         <span>${escapeHtml(q.category || 'Catégorie')}</span>
         <span>${escapeHtml(q.level || '')}</span>
         ${q.is_premium ? '<span class="premium">Premium abonnés</span>' : '<span class="free">Gratuit</span>'}
-        ${q._published ? '<span class="active">Publié</span>' : '<span>Brouillon IA</span>'}
+        ${q._published ? '<span class="active">Publié</span>' : '<span>Proposition IA</span>'}
       </div>
       <h4>${escapeHtml(q.question_text || '')}</h4>
       <p class="admin-destination-note">Nom du QCM : <b>${escapeHtml(q.source || 'QCM IA')}</b></p>
@@ -1364,7 +1361,7 @@ function renderAiDrafts(){
       <p class="admin-help"><b>A.</b> ${escapeHtml(q.option_a)} · <b>B.</b> ${escapeHtml(q.option_b)} · <b>C.</b> ${escapeHtml(q.option_c)} · <b>D.</b> ${escapeHtml(q.option_d)}</p>
       <p class="admin-help"><b>Correction :</b> ${escapeHtml(q.explanation || '')}</p>
       <div class="admin-q-actions">
-        <button class="edit" onclick="editAiDraft(${idx})">Vérifier / Modifier</button>
+        <button class="edit" onclick="editAiDraft(${idx})">Relire / Modifier</button>
         <button class="pause" onclick="publishAiDraft(${idx})" ${q._published ? 'disabled' : ''}>${q.is_premium ? 'Publier en Premium' : 'Publier en Gratuit'}</button>
         <button class="delete" onclick="removeAiDraft(${idx})">Retirer</button>
       </div>
@@ -1385,10 +1382,10 @@ function editAiDraft(index){
   $('#adminOptionD') && ($('#adminOptionD').value=q.option_d || '');
   $('#adminCorrect') && ($('#adminCorrect').value=String(q.correct_answer ?? 0));
   $('#adminExplanation') && ($('#adminExplanation').value=q.explanation || '');
-  $('#adminSource') && ($('#adminSource').value=q.source || 'Généré par IA - à vérifier');
+  $('#adminSource') && ($('#adminSource').value=q.source || 'Créé avec l’aide de l’IA');
   $('#adminPremium') && ($('#adminPremium').checked=Boolean(q.is_premium));
   $('#adminActive') && ($('#adminActive').checked=true);
-  $('#adminFormTitle') && ($('#adminFormTitle').textContent='Vérifier un brouillon IA');
+  $('#adminFormTitle') && ($('#adminFormTitle').textContent='Relire une proposition IA');
 }
 
 async function publishAiDraft(index){
@@ -1402,7 +1399,7 @@ async function publishAiDraft(index){
       options:[q.option_a,q.option_b,q.option_c,q.option_d],
       correct_answer:q.correct_answer,
       explanation:q.explanation,
-      source:q.source || 'Généré par IA - vérifié admin',
+      source:q.source || 'Créé avec l’aide de l’IA',
       is_premium:Boolean(q.is_premium),
       is_active:true
     }) });
@@ -1413,8 +1410,8 @@ async function publishAiDraft(index){
     renderFormations(currentFormFilter);
     const destination = qcmDestinationText(q);
     const result = $('#aiResult');
-    if (result) result.innerHTML = `<div class="pay-note success">Brouillon publié dans <b>Mes QCM → ${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les QCM publiés</button></div>`;
-    toast('Brouillon IA publié dans ' + destination + ' ✅');
+    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>Mes QCM → ${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les QCM publiés</button></div>`;
+    toast('QCM IA publié dans ' + destination + ' ✅');
   }catch(err){ toast(err.message); }
 }
 
@@ -1435,7 +1432,7 @@ async function scanOfficialNews(){
   const result = $('#aiNewsResult');
   const list = $('#aiNewsDraftList');
   setButtonLoading(btn, true, 'Recherche...');
-  if (result) result.innerHTML = '<div class="pay-note">Recherche sur les sources officielles avec filtre à jour : année en cours, échéances non dépassées. Les résultats restent des brouillons à vérifier.</div>';
+  if (result) result.innerHTML = '<div class="pay-note">Recherche sur les sources officielles avec filtre à jour : année en cours, échéances non dépassées. Les propositions doivent être relues avant publication.</div>';
   if (list) list.innerHTML = '<div class="empty">Analyse des communiqués en cours...</div>';
   try{
     const data = await adminFetch('/api/admin/ai/news-scan', { method:'POST', body:JSON.stringify({ limit:6 }) });
@@ -1467,13 +1464,13 @@ function renderAiNewsDrafts(){
       <div class="admin-q-meta">
         <span>${escapeHtml(item.type || 'Communiqué')}</span>
         <span>${escapeHtml(item.status || 'Info')}</span>
-        <span>Brouillon IA</span>
+        <span>Proposition IA</span>
       </div>
       <h4>${escapeHtml(item.title || '')}</h4>
       <p class="admin-help">${escapeHtml(item.summary || item.organization || '')}</p>
       <p class="admin-destination-note">Source officielle : <b>${escapeHtml(item.sourceName || item.organization || 'Source')}</b></p>
       <div class="admin-q-actions">
-        <button class="edit" onclick="prepareAiNewsDraft(${idx})">Vérifier / Préparer</button>
+        <button class="edit" onclick="prepareAiNewsDraft(${idx})">Relire / Préparer</button>
         <button class="pause" onclick="openAiNewsSource(${idx})">Ouvrir la source</button>
         <button class="delete" onclick="removeAiNewsDraft(${idx})">Retirer</button>
       </div>
@@ -1499,9 +1496,9 @@ function prepareAiNewsDraft(index){
   $('#adminNewsContent') && ($('#adminNewsContent').value=item.content || item.summary || '');
   $('#adminNewsSource') && ($('#adminNewsSource').value=item.sourceUrl || '');
   $('#adminNewsActive') && ($('#adminNewsActive').checked=true);
-  $('#adminNewsFormTitle') && ($('#adminNewsFormTitle').textContent='Vérifier une actualité IA');
-  $('#adminNewsSaveBtn') && ($('#adminNewsSaveBtn').textContent='Publier après vérification');
-  toast('Brouillon chargé. Vérifie puis publie ✅');
+  $('#adminNewsFormTitle') && ($('#adminNewsFormTitle').textContent='Relire une actualité IA');
+  $('#adminNewsSaveBtn') && ($('#adminNewsSaveBtn').textContent='Publier l’actualité');
+  toast('Proposition chargée. Relis puis publie ✅');
 }
 
 function removeAiNewsDraft(index){
@@ -1906,8 +1903,8 @@ async function loadAdminNotificationStatus(){
   try{
     const data = await adminFetch('/api/admin/notifications/status');
     wrap.innerHTML = `
-      <div><b>${data.emailConfigured ? 'Prêt' : 'À configurer'}</b><span>E-mail</span></div>
-      <div><b>${data.smsConfigured ? 'Prêt' : 'À configurer'}</b><span>SMS</span></div>
+      <div><b>${data.emailConfigured ? 'Prêt' : 'Non actif'}</b><span>E-mail</span></div>
+      <div><b>${data.smsConfigured ? 'Prêt' : 'Non actif'}</b><span>SMS</span></div>
       <div><b>Test</b><span>Admin</span></div>`;
   }catch(err){
     wrap.innerHTML = `<div><b>Erreur</b><span>${escapeHtml(err.message)}</span></div>`;
@@ -1920,14 +1917,14 @@ async function sendAdminNotificationTest(){
   const email = ($('#adminTestEmail')?.value || state.user?.email || '').trim();
   const phone = normalizePhone($('#adminTestPhone')?.value || state.user?.phone || '');
   if (!email && !phone){ toast('Entre un e-mail ou un téléphone'); return; }
-  setButtonLoading(btn, true, 'Envoi du test...');
+  setButtonLoading(btn, true, 'Envoi...');
   try{
     const data = await adminFetch('/api/admin/notifications/test', {
       method:'POST',
       body:JSON.stringify({ email, phone: fullPhone(phone), channel:'both' })
     });
-    const emailText = data.results?.email?.sent ? 'E-mail envoyé ✅' : (data.results?.email?.attempted ? 'E-mail non envoyé' : 'E-mail non testé');
-    const smsText = data.results?.sms?.sent ? 'SMS envoyé ✅' : (data.results?.sms?.attempted ? 'SMS non envoyé' : 'SMS non testé');
+    const emailText = data.results?.email?.sent ? 'E-mail envoyé ✅' : (data.results?.email?.attempted ? 'E-mail non envoyé' : 'E-mail non vérifié');
+    const smsText = data.results?.sms?.sent ? 'SMS envoyé ✅' : (data.results?.sms?.attempted ? 'SMS non envoyé' : 'SMS non vérifié');
     if (result) result.innerHTML = `<div class="pay-note ${data.results?.email?.sent || data.results?.sms?.sent ? 'success' : 'warn'}">${emailText}<br>${smsText}</div>`;
     await loadAdminNotificationStatus();
   }catch(err){
@@ -2158,7 +2155,7 @@ async function simulatePaymentSuccess(){
   const plan = selectedSubscriptionPlan();
   activatePremium(plan.days, tx, state.selectedProvider);
   state.subscription.plan = plan.id;
-  runtimePaymentMessage = `<div class="pay-note success">Simulation : Premium activé pour ${plan.days} jours ✅</div>`;
+  runtimePaymentMessage = `<div class="pay-note success">Premium activé pour ${plan.days} jours ✅</div>`;
   paywallFeature = null;
   renderSubscription();
   renderAccount();
