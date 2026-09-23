@@ -568,3 +568,27 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .admin-destination-note b{color:var(--ink)}
 .admin-switch-row small{font-size:.68rem;color:var(--ink-soft);font-weight:800}
 @media(max-width:520px){.access-map,.admin-destination-map,.admin-qcm-summary{grid-template-columns:1fr}.access-map{padding:0 16px 12px}}
+
+/* QCM gratuits/Premium et veille IA */
+.access-btn{margin-top:8px;border:0;border-radius:999px;padding:9px 12px;font-size:.74rem;font-weight:950;background:var(--green);color:#fff;box-shadow:0 10px 22px rgba(14,159,110,.18)}
+.access-btn.premium{background:#f59e0b;color:#111827;box-shadow:0 10px 22px rgba(245,158,11,.2)}
+.premium-pill{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:3px 7px;border-radius:999px;background:#111827;color:#fff;font-size:.58rem;font-weight:950;vertical-align:middle;letter-spacing:.02em}
+.form-item.paid{border-color:#fde68a;background:linear-gradient(135deg,#fff,#fffbeb)}
+.form-item.paid .lock-dot{background:#111827;color:#fff;box-shadow:0 10px 20px rgba(17,24,39,.16)}
+.ai-panel-heading{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+.ai-panel-heading.small{margin-top:4px}
+.ai-panel-heading img{width:48px;height:48px;border-radius:16px;box-shadow:0 12px 26px rgba(14,159,110,.18);flex:0 0 auto}
+.ai-panel-heading h3{margin:0 0 3px;font-size:1rem;font-weight:950;color:var(--ink)}
+.published-qcm-intro{background:linear-gradient(135deg,#ecfdf5,#fff);border:1px solid #a7f3d0;border-radius:22px;padding:16px;margin-bottom:12px;box-shadow:var(--shadow-soft)}
+.published-qcm-intro h2{font-size:1.08rem;font-weight:950;margin-bottom:4px;color:var(--ink)}
+.published-qcm-intro p{font-size:.82rem;font-weight:800;line-height:1.45;color:var(--ink-soft)}
+.published-qcm-card{border:1px solid var(--line);border-radius:18px;background:#fff;padding:14px;box-shadow:var(--shadow-soft)}
+.published-qcm-card.free{border-left:5px solid var(--green)}
+.published-qcm-card.premium{border-left:5px solid #f59e0b;background:linear-gradient(135deg,#fff,#fffbeb)}
+.published-qcm-card.locked{opacity:.92}
+.published-qcm-top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.published-qcm-top span{font-size:.68rem;font-weight:950;border-radius:999px;background:#f3f4f6;color:#374151;padding:5px 8px}
+.published-qcm-card h3{font-size:.98rem;font-weight:950;line-height:1.28;margin-bottom:5px;color:var(--ink)}
+.published-qcm-card p{font-size:.78rem;font-weight:800;color:var(--ink-soft);line-height:1.4;margin-bottom:10px}
+.ai-news-draft{border-left:4px solid #0e9f6e}
+@media(max-width:420px){.ai-panel-heading img{width:42px;height:42px}.published-qcm-card{padding:12px}}

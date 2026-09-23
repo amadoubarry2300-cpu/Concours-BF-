@@ -55,6 +55,7 @@ const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_FROM = process.env.TWILIO_FROM || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+const OFFICIAL_NEWS_SOURCES = process.env.OFFICIAL_NEWS_SOURCES || '';
 const premiumNotificationTxSent = new Set();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -867,6 +868,157 @@ async function callGeminiGenerate(prompt){
   throw err;
 }
 
+
+const DEFAULT_OFFICIAL_NEWS_SOURCES = [
+  { name:'Ministère de la Fonction publique', url:'https://www.fonction-publique.gov.bf/accueil/actualites' },
+  { name:'Ministère de la Fonction publique — Accueil', url:'https://www.fonction-publique.gov.bf/accueil' },
+  { name:'Plateforme eConcours', url:'https://www.econcours.gov.bf/' },
+  { name:'Plateforme eConcours professionnels', url:'https://www.econcours-pro.gov.bf/' }
+];
+
+function officialNewsSources(){
+  const custom = String(OFFICIAL_NEWS_SOURCES || '').split(/[,;\r\n]+/).map(v => v.trim()).filter(Boolean).map((entry, idx) => {
+    const [name, url] = entry.includes('|') ? entry.split('|').map(x => x.trim()) : [`Source officielle ${idx + 1}`, entry];
+    return cleanUrl(url) ? { name:name || `Source officielle ${idx + 1}`, url:cleanUrl(url) } : null;
+  }).filter(Boolean);
+  return custom.length ? custom : DEFAULT_OFFICIAL_NEWS_SOURCES;
+}
+
+function decodeHtmlEntities(value){
+  return String(value || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)));
+}
+
+function stripHtml(value){
+  return decodeHtmlEntities(String(value || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim());
+}
+
+function absoluteSourceUrl(href, base){
+  try{ return new URL(String(href || '').trim(), base).toString(); }catch{ return ''; }
+}
+
+function officialNewsKeyword(text){
+  return /(concours|recrut|communiqu|résultat|resultat|admissibil|admission|inscription|econcours|e-concours|session|fonction publique|calendrier|ouverture|dépôt|depot)/i.test(String(text || ''));
+}
+
+async function fetchOfficialSource(source){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try{
+    const res = await fetch(source.url, {
+      signal:controller.signal,
+      headers:{
+        'User-Agent':'ReussiteConcoursBF/1.0 (+veille concours)',
+        'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    const text = await res.text();
+    if (!res.ok) throw Object.assign(new Error(`Source indisponible ${res.status}`), { status:res.status });
+    return { ...source, html:text.slice(0, 400000) };
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+function extractOfficialCandidates(page){
+  const html = String(page.html || '');
+  const cleanPageText = stripHtml(html).slice(0, 9000);
+  const candidates = [];
+  const seen = new Set();
+  const anchorRe = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = anchorRe.exec(html)) && candidates.length < 18){
+    const url = absoluteSourceUrl(match[1], page.url);
+    const title = stripHtml(match[2]).replace(/\s+/g, ' ').trim();
+    if (!url || title.length < 8 || title.length > 260) continue;
+    if (!officialNewsKeyword(title + ' ' + url)) continue;
+    const key = title.toLowerCase() + '|' + url;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push({ title, url, sourceName:page.name, snippet:title });
+  }
+  if (!candidates.length && officialNewsKeyword(cleanPageText)){
+    const pageTitle = stripHtml((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [,'Actualités concours'])[1]);
+    candidates.push({
+      title:pageTitle || `Actualités — ${page.name}`,
+      url:page.url,
+      sourceName:page.name,
+      snippet:cleanPageText.slice(0, 900)
+    });
+  }
+  return candidates.map(item => ({ ...item, snippet:String(item.snippet || cleanPageText).slice(0, 900) }));
+}
+
+function fallbackOfficialDrafts(candidates, limit){
+  return candidates.slice(0, limit).map(item => ({
+    title:cleanText(item.title, 180),
+    type:/résultat|resultat|admission|admissibil/i.test(item.title) ? 'Résultat' : (/recrut/i.test(item.title) ? 'Recrutement' : 'Communiqué'),
+    organization:item.sourceName || 'Source officielle',
+    deadline:'',
+    status:/ouvert|inscription|ouverture/i.test(item.title) ? 'Ouvert' : 'Info',
+    summary:cleanText(item.snippet || item.title, 500),
+    content:cleanText(`${item.snippet || item.title}\n\nSource officielle à vérifier avant publication.`, 4000),
+    sourceUrl:item.url,
+    sourceName:item.sourceName || 'Source officielle'
+  })).filter(item => item.title && item.sourceUrl);
+}
+
+function normalizeOfficialNewsDraft(item, fallback = {}){
+  return {
+    title:cleanText(item?.title || fallback.title, 180),
+    type:cleanText(item?.type || fallback.type || 'Communiqué', 60),
+    organization:cleanText(item?.organization || fallback.organization || fallback.sourceName || 'Source officielle', 120),
+    deadline:cleanText(item?.deadline || '', 40),
+    status:cleanText(item?.status || fallback.status || 'Info', 40),
+    summary:cleanText(item?.summary || fallback.summary || fallback.snippet || '', 500),
+    content:cleanText(item?.content || fallback.content || fallback.snippet || fallback.title || '', 6000),
+    sourceUrl:cleanUrl(item?.sourceUrl || item?.source_url || fallback.sourceUrl || fallback.url),
+    sourceName:cleanText(item?.sourceName || fallback.sourceName || fallback.organization || 'Source officielle', 120)
+  };
+}
+
+async function buildOfficialNewsDrafts(limit = 6){
+  const pages = await Promise.allSettled(officialNewsSources().map(fetchOfficialSource));
+  const candidates = pages
+    .filter(r => r.status === 'fulfilled')
+    .flatMap(r => extractOfficialCandidates(r.value));
+  const unique = [];
+  const seen = new Set();
+  for (const item of candidates){
+    const key = `${String(item.title || '').toLowerCase()}|${item.url}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+  if (!unique.length) return { candidates:[], items:[] };
+  let items = [];
+  if (GEMINI_API_KEY){
+    try{
+      const prompt = `Tu es assistant de veille pour Réussite Concours BF. À partir de cette liste issue de sources officielles, propose au maximum ${limit} brouillons d'actualités concours. N'invente rien hors des extraits. Si une date limite n'est pas claire, laisse deadline vide. Réponds uniquement en JSON valide: {"items":[{"title":"...","type":"Concours|Recrutement|Communiqué|Résultat|Calendrier","organization":"...","deadline":"YYYY-MM-DD ou vide","status":"Ouvert|Bientôt|Info|Clôturé","summary":"...","content":"...","sourceUrl":"...","sourceName":"..."}]}\n\nSources extraites:\n${JSON.stringify(unique.slice(0, 30), null, 2)}`;
+      const ai = await callGeminiGenerate(prompt);
+      const parsed = extractJsonFromAi(ai.text);
+      const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.items) ? parsed.items : []);
+      items = rows.map(row => normalizeOfficialNewsDraft(row)).filter(item => item.title && item.summary && item.sourceUrl).slice(0, limit);
+    }catch(err){
+      console.warn('Veille IA actualités fallback:', err.message);
+    }
+  }
+  if (!items.length) items = fallbackOfficialDrafts(unique, limit).map(item => normalizeOfficialNewsDraft(item));
+  return { candidates:unique, items:items.slice(0, limit) };
+}
+
 function requireCinetPayConfig(){
   if (!CINETPAY_APIKEY || !CINETPAY_SITE_ID){
     const err = new Error('CinetPay non configuré: ajoutez CINETPAY_APIKEY et CINETPAY_SITE_ID dans Vercel');
@@ -1554,6 +1706,25 @@ app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
   }catch(err){ next(err); }
 });
 
+
+app.post('/api/admin/ai/news-scan', requireAdmin, async (req, res, next) => {
+  try{
+    const limit = Math.min(8, Math.max(1, Number(req.body?.limit || 6)));
+    const result = await buildOfficialNewsDrafts(limit);
+    let notificationSent = false;
+    if (result.items.length && emailNotificationsConfigured() && req.profile?.email){
+      const text = result.items.map((item, i) => `${i + 1}. ${item.title}\n${item.summary}\nSource: ${item.sourceUrl}`).join('\n\n');
+      notificationSent = await sendEmailNotification({
+        to:req.profile.email,
+        subject:`${result.items.length} nouvelle(s) concours à vérifier`,
+        text:`Réussite Concours BF a détecté des actualités officielles à vérifier:\n\n${text}`,
+        html:`<p>Réussite Concours BF a détecté des actualités officielles à vérifier :</p><ol>${result.items.map(item => `<li><b>${htmlEscape(item.title)}</b><br>${htmlEscape(item.summary)}<br><a href="${htmlEscape(item.sourceUrl)}">Source officielle</a></li>`).join('')}</ol>`
+      }).catch(err => { console.warn('Notification veille IA:', err.message); return false; });
+    }
+    res.json({ ok:true, sources:officialNewsSources(), found:result.candidates.length, items:result.items, notificationSent });
+  }catch(err){ next(err); }
+});
+
 app.get('/api/admin/questions', requireAdmin, async (req, res, next) => {
   try{
     if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
@@ -1918,22 +2089,55 @@ function safeQuestion(row){
     option_d: row.option_d,
     correct_answer: row.correct_answer,
     explanation: row.explanation || '',
-    is_premium: Boolean(row.is_premium)
+    is_premium: Boolean(row.is_premium),
+    source: row.source || '',
+    created_at: row.created_at || ''
   };
 }
 
+async function premiumAllowedForRequest(req){
+  const sessionData = await getSessionFromRequest(req).catch(() => null);
+  if (!sessionData?.profile?.phone) return false;
+  if (isAdminProfile(sessionData.profile)) return true;
+  const sub = await getActiveSubscription(sessionData.profile.phone);
+  return Boolean(sub);
+}
+
+app.get('/api/qcm-publications', async (req, res, next) => {
+  try{
+    if (!supabaseReady()) return res.json({ ok:true, publications:[], premiumIncluded:false });
+    const premiumAllowed = await premiumAllowedForRequest(req);
+    const rows = await supabaseRequest('questions?is_active=eq.true&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.desc&limit=800').catch(()=>[]);
+    const groups = new Map();
+    for (const row of (Array.isArray(rows) ? rows : [])){
+      const name = cleanText(row.source || `${row.category || 'QCM'} — ${String(row.created_at || '').slice(0, 10)}`, 180) || 'QCM publié';
+      const date = String(row.created_at || new Date().toISOString()).slice(0, 10);
+      const key = `${name}|${date}|${Boolean(row.is_premium)}|${row.category || ''}|${row.level || ''}`;
+      if (!groups.has(key)){
+        groups.set(key, {
+          id:crypto.createHash('sha1').update(key).digest('hex').slice(0, 16),
+          title:name,
+          date:row.created_at || date,
+          category:row.category || '',
+          level:row.level || '',
+          is_premium:Boolean(row.is_premium),
+          locked:Boolean(row.is_premium) && !premiumAllowed,
+          questionCount:0,
+          questions:[]
+        });
+      }
+      const group = groups.get(key);
+      group.questionCount += 1;
+      if (!group.locked) group.questions.push(safeQuestion(row));
+    }
+    const publications = Array.from(groups.values()).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    res.json({ ok:true, premiumIncluded:premiumAllowed, publications });
+  }catch(err){ next(err); }
+});
+
 app.get('/api/questions', async (req, res, next) => {
   try{
-    let premiumAllowed = false;
-    const sessionData = await getSessionFromRequest(req).catch(() => null);
-    if (sessionData?.profile?.phone){
-      if (isAdminProfile(sessionData.profile)){
-        premiumAllowed = true;
-      } else {
-        const sub = await getActiveSubscription(sessionData.profile.phone);
-        premiumAllowed = Boolean(sub);
-      }
-    }
+    const premiumAllowed = await premiumAllowedForRequest(req);
 
     const localBank = loadLocalQcmBank();
     if (localBank.length){
@@ -1941,7 +2145,7 @@ app.get('/api/questions', async (req, res, next) => {
       const questions = filtered.map(safeLocalQuestion);
       if (supabaseReady()){
         const premiumFilter = premiumAllowed ? '' : '&is_premium=eq.false';
-        const extraRows = await supabaseRequest(`questions?is_active=eq.true${premiumFilter}&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source&order=created_at.desc`).catch(()=>[]);
+        const extraRows = await supabaseRequest(`questions?is_active=eq.true${premiumFilter}&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.desc`).catch(()=>[]);
         const seen = new Set(questions.map(q => String(q.question_text || '').toLowerCase().trim()));
         if (Array.isArray(extraRows)){
           extraRows.map(safeQuestion).forEach(q => {
@@ -1963,7 +2167,7 @@ app.get('/api/questions', async (req, res, next) => {
 
     if (!supabaseReady()) return res.status(503).json({ message:'Supabase service_role non configuré dans Vercel' });
     const premiumFilter = premiumAllowed ? '' : '&is_premium=eq.false';
-    const rows = await supabaseRequest(`questions?is_active=eq.true${premiumFilter}&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium&order=created_at.asc`);
+    const rows = await supabaseRequest(`questions?is_active=eq.true${premiumFilter}&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.asc`);
     res.json({ ok:true, source:'supabase', premiumIncluded:premiumAllowed, questions:Array.isArray(rows) ? rows.map(safeQuestion) : [] });
   }catch(err){ next(err); }
 });

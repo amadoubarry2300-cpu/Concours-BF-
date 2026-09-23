@@ -219,3 +219,12 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout de filtres rapides : Tout, Gratuit, Premium, Masqué.
 - Après publication d’un brouillon IA, l’admin voit clairement la destination : **Mes QCM → Gratuit** ou **Mes QCM → Premium**.
 - L’écran Formations affiche aussi un rappel simple des zones gratuites et Premium.
+
+## 2026-09-23 — QCM publiés, cadenas Premium et veille IA concours
+
+- Les formations Premium affichent maintenant clairement un cadenas et un badge **Premium**.
+- Les blocs **Gratuit** et **Premium** ont des boutons pour filtrer rapidement les contenus accessibles.
+- Le défi gratuit quotidien est réglé sur **10 QCM gratuits par jour**.
+- Ajout d’un écran public **QCM publiés** : chaque publication affiche son nom, sa date, sa catégorie, son niveau et un bouton pour commencer le quiz.
+- Les QCM ajoutés par l’admin et les brouillons IA publiés proposent un bouton pour ouvrir directement les QCM publiés côté candidat.
+- Ajout d’un logo IA dans le panel admin et d’une veille IA qui prépare des brouillons d’actualités à partir de sources officielles, sans publication automatique.

@@ -20,6 +20,9 @@ const SUPABASE_CONFIG = window.REUSSITE_CONCOURS_BF_SUPABASE_CONFIG || {
 const ACCESS_OPEN_UNTIL_PAYMENT = false; // Premium réactivé : seules les catégories gratuites restent ouvertes sans paiement.
 const FREE_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo'];
 const ALL_QCM_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo', 'Mathématiques', 'Psychotechnique', 'Français', 'SVT', 'Greffier / Droit'];
+const PAID_CATEGORIES = ALL_QCM_CATEGORIES.filter(cat => !FREE_CATEGORIES.includes(cat));
+function isFreeCategory(cat){ return FREE_CATEGORIES.includes(cat); }
+function isPaidCategory(cat){ return !isFreeCategory(cat); }
 const CATEGORY_TOTALS = {
   'Mathématiques': 1200,
   'Psychotechnique': 1000,
@@ -422,7 +425,7 @@ function show(id){
   target.classList.add('active');
   window.scrollTo({top:0});
   $$('.nav-btn').forEach(b=>b.classList.toggle('on', b.dataset.target===id));
-  const navIds = ['home','formations','news','resources','passport','stats','subscription','account'];
+  const navIds = ['home','formations','publishedqcm','news','resources','passport','stats','subscription','account'];
   $('#bottomNav').style.display = navIds.includes(id) ? 'flex' : 'none';
 
   if (id==='stats') setTimeout(renderStats, 60);
@@ -430,6 +433,7 @@ function show(id){
   if (id==='home') renderHome();
   if (id==='errors') renderErrors();
   if (id==='formations') renderFormations(currentFormFilter);
+  if (id==='publishedqcm') loadPublishedQcm(currentPublishedQcmFilter);
   if (id==='news') loadNews();
   if (id==='resources') loadResources();
   if (id==='subscription') setTimeout(renderSubscription, 20);
@@ -683,6 +687,22 @@ function startQuiz(opts){
   quiz = {
     qs, i:0, ok:0, ko:0, title:opts.title || 'Quiz', daily:opts.daily||false,
     time: opts.time||0, left: opts.time||0, answered:false, wrongList:[]
+  };
+  $('#quizTitleTag').textContent = quiz.title;
+  show('quiz');
+  if (quiz.time){ $('#timer').style.display='block'; tickTimer(); quiz.timer = setInterval(tickTimer, 1000); }
+  else $('#timer').style.display='none';
+  renderQuestion();
+}
+
+function startQuestionListQuiz(qs, opts = {}){
+  const clean = (Array.isArray(qs) ? qs : []).filter(q => q?.q && Array.isArray(q.o) && q.o.length === 4);
+  if (!clean.length){ toast('Aucun QCM disponible pour cette publication'); return; }
+  const limit = opts.limit ? Math.max(1, Math.min(Number(opts.limit), clean.length)) : clean.length;
+  const selected = shuffle(clean).slice(0, limit);
+  quiz = {
+    qs:selected, i:0, ok:0, ko:0, title:opts.title || 'QCM publié', daily:opts.daily || false,
+    time:opts.time || 0, left:opts.time || 0, answered:false, wrongList:[]
   };
   $('#quizTitleTag').textContent = quiz.title;
   show('quiz');
@@ -953,9 +973,12 @@ let adminQuestionCache = [];
 let adminResourceCache = [];
 let adminNewsCache = [];
 let aiDraftCache = [];
+let aiNewsDraftCache = [];
 let resourceCache = [];
 let newsCache = [];
+let publishedQcmCache = [];
 let currentNewsFilter = 'Tout';
+let currentPublishedQcmFilter = 'all';
 let adminQuestionFilter = 'all';
 let adminTab = 'create';
 
@@ -1028,6 +1051,10 @@ async function renderAdminPanel(force){
   setAdminTab(adminTab || 'create');
 }
 
+function defaultQcmPublicationName(){
+  return 'QCM publié le ' + formatDate(new Date().toISOString());
+}
+
 function adminFormPayload(){
   return {
     id: $('#adminQuestionId')?.value || '',
@@ -1037,7 +1064,7 @@ function adminFormPayload(){
     options: [$('#adminOptionA')?.value || '', $('#adminOptionB')?.value || '', $('#adminOptionC')?.value || '', $('#adminOptionD')?.value || ''],
     correct_answer: Number($('#adminCorrect')?.value || 0),
     explanation: $('#adminExplanation')?.value || '',
-    source: $('#adminSource')?.value || 'Ajout administrateur',
+    source: $('#adminSource')?.value || defaultQcmPublicationName(),
     is_premium: Boolean($('#adminPremium')?.checked),
     is_active: Boolean($('#adminActive')?.checked)
   };
@@ -1054,7 +1081,7 @@ async function saveAdminQuestion(){
     const url = id ? '/api/admin/questions/' + encodeURIComponent(id) : '/api/admin/questions';
     const data = await adminFetch(url, { method, body:JSON.stringify(payload) });
     const destination = payload.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
-    if (result) result.innerHTML = `<div class="pay-note success">QCM enregistré dans <b>${destination}</b> ✅</div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">QCM enregistré dans <b>${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les QCM publiés</button></div>`;
     resetAdminForm(false);
     await loadAdminQuestions();
     await loadSupabaseQuestions();
@@ -1099,8 +1126,10 @@ function renderAdminQuestionCards(items){
         ${q.is_premium ? '<span class="premium">Premium abonnés</span>' : '<span class="free">Gratuit</span>'}
       </div>
       <h4>${escapeHtml(q.question_text || '')}</h4>
+      <p class="admin-destination-note">Nom du QCM : <b>${escapeHtml(q.source || 'QCM publié')}</b> · Date : <b>${escapeHtml(formatDate(q.created_at))}</b></p>
       <p class="admin-destination-note">Destination : <b>${qcmDestinationText(q)}</b></p>
       <div class="admin-q-actions">
+        <button class="edit" onclick="openPublishedQcmFromAdmin()">Ouvrir le quiz</button>
         <button class="edit" onclick="editAdminQuestion(${idx})">Modifier</button>
         <button class="pause" onclick="toggleAdminQuestion(${idx})">${q.is_active ? 'Masquer' : 'Publier'}</button>
         <button class="delete" onclick="deleteAdminQuestion(${idx})">Supprimer</button>
@@ -1235,8 +1264,9 @@ async function generateAiQcm(){
       count: Number($('#aiCount')?.value || 5),
       is_premium: Boolean($('#aiPremium')?.checked)
     };
+    const publicationName = ($('#aiPublicationName')?.value || payload.theme || ('QCM IA ' + formatDate(new Date().toISOString()))).trim();
     const data = await adminFetch('/api/admin/ai/qcm', { method:'POST', body:JSON.stringify(payload) });
-    aiDraftCache = (data.questions || []).map(q => ({...q, is_premium:payload.is_premium, is_active:true, _published:false}));
+    aiDraftCache = (data.questions || []).map(q => ({...q, source:publicationName, is_premium:payload.is_premium, is_active:true, _published:false}));
     if (result) result.innerHTML = `<div class="pay-note success">${aiDraftCache.length} brouillon${aiDraftCache.length>1?'s':''} généré${aiDraftCache.length>1?'s':''} ✅</div>`;
     renderAiDrafts();
   }catch(err){
@@ -1264,6 +1294,7 @@ function renderAiDrafts(){
         ${q._published ? '<span class="active">Publié</span>' : '<span>Brouillon IA</span>'}
       </div>
       <h4>${escapeHtml(q.question_text || '')}</h4>
+      <p class="admin-destination-note">Nom du QCM : <b>${escapeHtml(q.source || 'QCM IA')}</b></p>
       <p class="admin-destination-note">Destination après validation : <b>${qcmDestinationText(q)}</b></p>
       <p class="admin-help"><b>A.</b> ${escapeHtml(q.option_a)} · <b>B.</b> ${escapeHtml(q.option_b)} · <b>C.</b> ${escapeHtml(q.option_c)} · <b>D.</b> ${escapeHtml(q.option_d)}</p>
       <p class="admin-help"><b>Correction :</b> ${escapeHtml(q.explanation || '')}</p>
@@ -1317,7 +1348,7 @@ async function publishAiDraft(index){
     renderFormations(currentFormFilter);
     const destination = qcmDestinationText(q);
     const result = $('#aiResult');
-    if (result) result.innerHTML = `<div class="pay-note success">Brouillon publié dans <b>Mes QCM → ${destination}</b> ✅</div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">Brouillon publié dans <b>Mes QCM → ${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les QCM publiés</button></div>`;
     toast('Brouillon IA publié dans ' + destination + ' ✅');
   }catch(err){ toast(err.message); }
 }
@@ -1331,6 +1362,85 @@ async function publishAllAiDrafts(){
 function removeAiDraft(index){
   aiDraftCache.splice(index, 1);
   renderAiDrafts();
+}
+
+
+async function scanOfficialNews(){
+  const btn = $('#aiNewsScanBtn');
+  const result = $('#aiNewsResult');
+  const list = $('#aiNewsDraftList');
+  setButtonLoading(btn, true, 'Recherche...');
+  if (result) result.innerHTML = '<div class="pay-note">Recherche sur les sources officielles. Les résultats restent des brouillons à vérifier.</div>';
+  if (list) list.innerHTML = '<div class="empty">Analyse des communiqués en cours...</div>';
+  try{
+    const data = await adminFetch('/api/admin/ai/news-scan', { method:'POST', body:JSON.stringify({ limit:6 }) });
+    aiNewsDraftCache = data.items || [];
+    if (result){
+      const note = data.notificationSent ? ' Notification envoyée.' : '';
+      result.innerHTML = `<div class="pay-note success">${aiNewsDraftCache.length} nouvelle${aiNewsDraftCache.length>1?'s':''} proposée${aiNewsDraftCache.length>1?'s':''} par la veille IA ✅${note}</div>`;
+    }
+    renderAiNewsDrafts();
+  }catch(err){
+    aiNewsDraftCache = [];
+    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    if (list) list.innerHTML = '';
+  }finally{
+    setButtonLoading(btn, false);
+  }
+}
+
+function renderAiNewsDrafts(){
+  const wrap = $('#aiNewsDraftList');
+  if (!wrap) return;
+  if (!aiNewsDraftCache.length){
+    wrap.innerHTML = '<div class="empty">Aucune nouvelle détectée pour le moment.</div>';
+    return;
+  }
+  wrap.innerHTML = aiNewsDraftCache.map((item, idx)=>`
+    <div class="admin-q-item ai-news-draft">
+      <div class="admin-q-meta">
+        <span>${escapeHtml(item.type || 'Communiqué')}</span>
+        <span>${escapeHtml(item.status || 'Info')}</span>
+        <span>Brouillon IA</span>
+      </div>
+      <h4>${escapeHtml(item.title || '')}</h4>
+      <p class="admin-help">${escapeHtml(item.summary || item.organization || '')}</p>
+      <p class="admin-destination-note">Source officielle : <b>${escapeHtml(item.sourceName || item.organization || 'Source')}</b></p>
+      <div class="admin-q-actions">
+        <button class="edit" onclick="prepareAiNewsDraft(${idx})">Vérifier / Préparer</button>
+        <button class="pause" onclick="openAiNewsSource(${idx})">Ouvrir la source</button>
+        <button class="delete" onclick="removeAiNewsDraft(${idx})">Retirer</button>
+      </div>
+    </div>`).join('');
+}
+
+function openAiNewsSource(index){
+  const item = aiNewsDraftCache[index];
+  if (item?.sourceUrl) window.open(item.sourceUrl, '_blank', 'noopener');
+}
+
+function prepareAiNewsDraft(index){
+  const item = aiNewsDraftCache[index];
+  if (!item) return;
+  setAdminTab('news');
+  $('#adminNewsId') && ($('#adminNewsId').value='');
+  $('#adminNewsTitle') && ($('#adminNewsTitle').value=item.title || '');
+  $('#adminNewsType') && ($('#adminNewsType').value=item.type || 'Communiqué');
+  $('#adminNewsStatus') && ($('#adminNewsStatus').value=item.status || 'Info');
+  $('#adminNewsOrganization') && ($('#adminNewsOrganization').value=item.organization || item.sourceName || '');
+  $('#adminNewsDeadline') && ($('#adminNewsDeadline').value=item.deadline || '');
+  $('#adminNewsSummary') && ($('#adminNewsSummary').value=item.summary || '');
+  $('#adminNewsContent') && ($('#adminNewsContent').value=item.content || item.summary || '');
+  $('#adminNewsSource') && ($('#adminNewsSource').value=item.sourceUrl || '');
+  $('#adminNewsActive') && ($('#adminNewsActive').checked=true);
+  $('#adminNewsFormTitle') && ($('#adminNewsFormTitle').textContent='Vérifier une actualité IA');
+  $('#adminNewsSaveBtn') && ($('#adminNewsSaveBtn').textContent='Publier après vérification');
+  toast('Brouillon chargé. Vérifie puis publie ✅');
+}
+
+function removeAiNewsDraft(index){
+  aiNewsDraftCache.splice(index, 1);
+  renderAiNewsDrafts();
 }
 
 function newsTypeIcon(type){
@@ -1980,7 +2090,7 @@ function renderHome(){
   $('#errSub').textContent = state.errors.length ? state.errors.length + ' question' + (state.errors.length>1?'s':'') + ' à revoir' : 'Aucune pour l\u2019instant';
   const done = state.dailyDone === today();
   $('#dailyCard').style.opacity = done ? .55 : 1;
-  $('#dailySub').textContent = done ? 'Déjà fait aujourd\u2019hui ✅' : '15 questions · 1 fois/jour';
+  $('#dailySub').textContent = done ? 'Déjà fait aujourd\u2019hui ✅' : '10 QCM gratuits · chaque jour';
 }
 
 function renderPassport(){
@@ -2042,10 +2152,8 @@ function renderErrors(){
     </div>`).join('');
 }
 
-function renderFormations(filter){
-  renderAccount();
-  currentFormFilter = filter || currentFormFilter || 'Tout';
-  const groups = {
+function formationGroups(){
+  return {
     'Matières':[
       ['img/subject-history-geo.svg','Histoire-Géographie','Histoire-Géo'],
       ['img/subject-svt.svg','SVT','SVT'],
@@ -2069,36 +2177,157 @@ function renderFormations(filter){
       ['img/subject-culture.svg','Culture burkinabè','Burkina Faso']
     ]
   };
-  const keys = currentFormFilter && currentFormFilter!=='Tout' ? [currentFormFilter] : Object.keys(groups);
-  $('#formWrap').innerHTML = keys.map(g=>`
+}
+
+function startFormationQuiz(title, cat){
+  const paid = isPaidCategory(cat);
+  if (paid){
+    startQuiz({n:'all', time:0, title, cat});
+    return;
+  }
+  const freeLimit = hasOpenAccess() ? 'all' : 10;
+  startQuiz({n:freeLimit, time:0, title, cat, free:true});
+}
+
+function renderFormations(filter){
+  renderAccount();
+  currentFormFilter = filter || currentFormFilter || 'Tout';
+  const groups = formationGroups();
+  const accessFilter = currentFormFilter === 'Gratuit' || currentFormFilter === 'Premium';
+  const keys = accessFilter || currentFormFilter === 'Tout' ? Object.keys(groups) : [currentFormFilter];
+  const html = keys.map(g=>{
+    const rawItems = groups[g] || [];
+    const items = rawItems.filter(([, , cat]) => {
+      if (currentFormFilter === 'Gratuit') return isFreeCategory(cat);
+      if (currentFormFilter === 'Premium') return isPaidCategory(cat);
+      return true;
+    });
+    if (!items.length) return '';
+    return `
     <div class="section"><div class="section-head"><h2>${g}</h2></div>
     <div class="form-list">
-      ${groups[g].map(([img,name,cat])=>{
+      ${items.map(([img,name,cat])=>{
         const total = qcmCount(cat);
-        const free = ACCESS_OPEN_UNTIL_PAYMENT || FREE_CATEGORIES.includes(cat);
-        const locked = !free && !hasOpenAccess();
+        const paid = isPaidCategory(cat);
+        const locked = paid && !hasOpenAccess();
         const safeTitle = name.replace(/'/g,"\'");
         const safeCat = cat.replace(/'/g,"\'");
-        return `<button class="form-item ${locked?'locked':''}" onclick="startQuiz({n:'all',time:0,title:'${safeTitle}',cat:'${safeCat}'})">
+        const titleHtml = paid ? `${name} <span class="premium-pill">🔒 PREMIUM</span>` : name;
+        const desc = paid
+          ? `${formatQcmCount(total)} corrigés Premium · abonnement requis`
+          : `${hasOpenAccess() ? formatQcmCount(total) + ' corrigés disponibles' : '10 QCM gratuits pour débuter aujourd’hui'}`;
+        return `<button class="form-item ${locked?'locked':''} ${paid?'paid':''}" onclick="startFormationQuiz('${safeTitle}','${safeCat}')">
           <img class="form-thumb" src="${img}" alt="${name}">
-          <span class="fi-body"><h4>${name}</h4><p>${formatQcmCount(total)} corrigés disponibles · ouvrir toute la banque</p></span>
-          <span class="${locked?'lock-dot':'chev'}">${locked?'🔒':'›'}</span>
+          <span class="fi-body"><h4>${titleHtml}</h4><p>${desc}</p></span>
+          <span class="${paid?'lock-dot':'chev'}">${paid?'🔒':'›'}</span>
         </button>`;
       }).join('')}
-    </div></div>`).join('');
+    </div></div>`;
+  }).join('');
+  $('#formWrap').innerHTML = html || '<div class="section"><div class="empty">Aucune formation dans ce filtre.</div></div>';
 }
 
 function filterForm(el, f){
   currentFormFilter = f;
   $$('#chipRow .chip').forEach(c=>c.classList.remove('on'));
-  el.classList.add('on');
+  if (el) el.classList.add('on');
   renderFormations(f);
+}
+
+function filterFormAccess(f){
+  currentFormFilter = f;
+  $$('#chipRow .chip').forEach(c=>c.classList.toggle('on', c.textContent.trim().toLowerCase().includes(f.toLowerCase())));
+  renderFormations(f);
+}
+
+
+/* ---------- QCM publiés par l'administration ---------- */
+function mapPublishedQuestion(row){
+  return {
+    c:row.category,
+    level:row.level,
+    q:row.question_text,
+    o:[row.option_a,row.option_b,row.option_c,row.option_d],
+    a:Number(row.correct_answer),
+    e:row.explanation || '',
+    premium:Boolean(row.is_premium)
+  };
+}
+
+async function loadPublishedQcm(filter){
+  currentPublishedQcmFilter = filter || currentPublishedQcmFilter || 'all';
+  const wrap = $('#publishedQcmList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty">Chargement des QCM publiés...</div>';
+  try{
+    const res = await fetch('/api/qcm-publications', { headers:authHeaders({}) });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(data.message || 'QCM publiés indisponibles');
+    publishedQcmCache = data.publications || [];
+    renderPublishedQcm();
+  }catch(err){
+    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+  }
+}
+
+function renderPublishedQcm(){
+  const wrap = $('#publishedQcmList');
+  if (!wrap) return;
+  const items = publishedQcmCache.map((set, idx)=>({set, idx})).filter(({set}) => {
+    if (currentPublishedQcmFilter === 'free') return !set.is_premium;
+    if (currentPublishedQcmFilter === 'premium') return set.is_premium;
+    return true;
+  });
+  if (!items.length){
+    wrap.innerHTML = '<div class="empty">Aucun QCM publié dans ce filtre pour le moment.</div>';
+    return;
+  }
+  wrap.innerHTML = items.map(({set, idx})=>{
+    const locked = Boolean(set.locked || (set.is_premium && !hasOpenAccess()));
+    const date = set.date ? formatDate(set.date) : 'Date non précisée';
+    const count = Number(set.questionCount || set.questions?.length || 0);
+    const action = locked ? 'Débloquer Premium' : (!hasOpenAccess() && !set.is_premium ? 'Commencer 10 QCM gratuits' : 'Commencer le quiz');
+    return `<div class="published-qcm-card ${set.is_premium ? 'premium' : 'free'} ${locked ? 'locked' : ''}">
+      <div class="published-qcm-top">
+        <span>${set.is_premium ? '🔒 Premium' : '✅ Gratuit'}</span>
+        <span>Publié le ${escapeHtml(date)}</span>
+      </div>
+      <h3>${escapeHtml(set.title || 'QCM publié')}</h3>
+      <p>${escapeHtml(set.category || 'Catégorie')} · ${escapeHtml(set.level || 'Niveau')} · ${count} QCM</p>
+      <button class="btn ${locked ? 'btn-ghost' : 'btn-green'} btn-block" onclick="startPublishedQcm(${idx})">${action}</button>
+    </div>`;
+  }).join('');
+}
+
+function filterPublishedQcm(el, filter){
+  currentPublishedQcmFilter = filter || 'all';
+  $$('#publishedQcmFilterRow .chip').forEach(c=>c.classList.remove('on'));
+  if (el) el.classList.add('on');
+  renderPublishedQcm();
+}
+
+function startPublishedQcm(index){
+  const set = publishedQcmCache[index];
+  if (!set) return;
+  if (set.locked || (set.is_premium && !hasOpenAccess())){
+    openPremium(set.title || 'QCM Premium');
+    return;
+  }
+  const qs = (set.questions || []).map(mapPublishedQuestion).filter(q => q.q && q.o.every(Boolean));
+  const limit = (!hasOpenAccess() && !set.is_premium) ? Math.min(10, qs.length) : qs.length;
+  startQuestionListQuiz(qs, { title:set.title || 'QCM publié', limit });
+}
+
+function openPublishedQcmFromAdmin(){
+  currentPublishedQcmFilter = 'all';
+  show('publishedqcm');
+  setTimeout(()=>loadPublishedQcm('all'), 50);
 }
 
 /* ---------- daily / mock ---------- */
 function startDaily(){
   if (state.dailyDone === today()){ toast('Défi déjà relevé aujourd\u2019hui ! Reviens demain 🔥'); return; }
-  startQuiz({n:15, time:15*60, title:'Défi du jour', daily:true});
+  startQuiz({n:10, time:10*60, title:'Défi du jour', daily:true, free:true});
 }
 
 /* ---------- modal offre ---------- */
