@@ -292,3 +292,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Il présente maintenant clairement l’intérêt de Premium : 5000 QCM, matières avancées, examens blancs, erreurs et progression.
 - Ajout d’une image d’arrière-plan très transparente dans le bloc Premium, avec texte lisible et rendu plus professionnel.
 - Les cartes d’abonnement en bas restent inchangées.
+
+## 2026-09-23 — Bouton WhatsApp déplaçable
+
+- Le bouton WhatsApp flottant peut maintenant être déplacé par glisser-déposer sur l’écran.
+- Sa position est mémorisée sur le téléphone/navigateur du candidat.
+- Un simple toucher continue d’ouvrir WhatsApp normalement.

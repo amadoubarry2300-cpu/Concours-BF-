@@ -2430,6 +2430,95 @@ function shareApp(){
   else { navigator.clipboard && navigator.clipboard.writeText(data.text+' '+data.url); toast('Lien copié ! 📋'); }
 }
 
+
+/* ---------- bouton WhatsApp déplaçable ---------- */
+function clampWhatsappPosition(x, y, btn){
+  const margin = 8;
+  const rect = btn.getBoundingClientRect();
+  const w = rect.width || 56;
+  const h = rect.height || 56;
+  return {
+    x: Math.min(Math.max(margin, x), Math.max(margin, window.innerWidth - w - margin)),
+    y: Math.min(Math.max(margin, y), Math.max(margin, window.innerHeight - h - margin))
+  };
+}
+
+function setWhatsappFloatPosition(btn, x, y){
+  const pos = clampWhatsappPosition(x, y, btn);
+  btn.style.left = pos.x + 'px';
+  btn.style.top = pos.y + 'px';
+  btn.style.right = 'auto';
+  btn.style.bottom = 'auto';
+  btn.classList.add('is-positioned');
+  return pos;
+}
+
+function initDraggableWhatsapp(){
+  const btn = document.querySelector('.whatsapp-float');
+  if (!btn) return;
+  const saved = store.get('whatsappFloatPos', null);
+  if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)){
+    setTimeout(()=>setWhatsappFloatPosition(btn, Number(saved.x), Number(saved.y)), 60);
+  }
+  let pointerId = null;
+  let startX = 0, startY = 0, originX = 0, originY = 0;
+  let moved = false;
+
+  btn.addEventListener('pointerdown', (e)=>{
+    if (e.button !== undefined && e.button !== 0) return;
+    const rect = btn.getBoundingClientRect();
+    pointerId = e.pointerId;
+    startX = e.clientX;
+    startY = e.clientY;
+    originX = rect.left;
+    originY = rect.top;
+    moved = false;
+    btn.classList.add('dragging');
+    try{ btn.setPointerCapture(pointerId); }catch{}
+  });
+
+  btn.addEventListener('pointermove', (e)=>{
+    if (pointerId !== e.pointerId) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (!moved && Math.hypot(dx, dy) < 7) return;
+    moved = true;
+    setWhatsappFloatPosition(btn, originX + dx, originY + dy);
+    e.preventDefault();
+  });
+
+  const finishDrag = (e)=>{
+    if (pointerId !== e.pointerId) return;
+    pointerId = null;
+    btn.classList.remove('dragging');
+    try{ btn.releasePointerCapture(e.pointerId); }catch{}
+    if (moved){
+      const rect = btn.getBoundingClientRect();
+      const pos = setWhatsappFloatPosition(btn, rect.left, rect.top);
+      store.set('whatsappFloatPos', pos);
+      btn.dataset.dragged = '1';
+      setTimeout(()=>{ delete btn.dataset.dragged; }, 350);
+    }
+  };
+  btn.addEventListener('pointerup', finishDrag);
+  btn.addEventListener('pointercancel', finishDrag);
+
+  btn.addEventListener('click', (e)=>{
+    if (btn.dataset.dragged === '1'){
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+
+  window.addEventListener('resize', ()=>{
+    const rect = btn.getBoundingClientRect();
+    if (btn.classList.contains('is-positioned')){
+      const pos = setWhatsappFloatPosition(btn, rect.left, rect.top);
+      store.set('whatsappFloatPos', pos);
+    }
+  });
+}
+
 /* ---------- init ---------- */
 window.addEventListener('scroll', ()=>{
   $('#topbar').classList.toggle('scrolled', window.scrollY>10);
@@ -2440,6 +2529,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   renderHome();
   renderFormations('Tout');
   renderAccount();
+  initDraggableWhatsapp();
   setTimeout(openOffer, 15000);
   if (location.hash === '#subscription'){
     show('subscription');
