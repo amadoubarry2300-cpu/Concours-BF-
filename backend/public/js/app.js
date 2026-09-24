@@ -35,12 +35,13 @@ const SUPABASE_CONFIG = window.REUSSITE_CONCOURS_BF_SUPABASE_CONFIG || {
 
 const ACCESS_OPEN_UNTIL_PAYMENT = false; // Premium réactivé : seules les catégories gratuites restent ouvertes sans paiement.
 const FREE_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo'];
-const ALL_QCM_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo', 'Mathématiques', 'Psychotechnique', 'Français', 'SVT', 'Greffier / Droit'];
+const ALL_QCM_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo', 'Mathématiques', 'Physique-Chimie', 'Psychotechnique', 'Français', 'SVT', 'Greffier / Droit'];
 const PAID_CATEGORIES = ALL_QCM_CATEGORIES.filter(cat => !FREE_CATEGORIES.includes(cat));
 function isFreeCategory(cat){ return FREE_CATEGORIES.includes(cat); }
 function isPaidCategory(cat){ return !isFreeCategory(cat); }
 const CATEGORY_TOTALS = {
   'Mathématiques': 1200,
+  'Physique-Chimie': 700,
   'Psychotechnique': 1000,
   'Français': 900,
   'Burkina Faso': 500,
@@ -1382,7 +1383,7 @@ function renderDailyAiDrafts(){
       <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. Télécharge le fichier, vérifie les questions et publie seulement après validation.</p>
       <div class="admin-q-actions">
         <button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>
-        <button class="pause" onclick="publishDailyAiDraft(${idx})" ${d.status === 'published' ? 'disabled' : ''}>Publier les ${Number(d.count || 0)} QCM</button>
+        <button class="pause" onclick="publishDailyAiDraft(${idx})">${d.status === 'published' ? 'Synchroniser' : `Publier les ${Number(d.count || 0)} QCM`}</button>
         <button class="delete" onclick="deleteDailyAiDraft(${idx})">Supprimer</button>
       </div>
     </div>`).join('');
@@ -1507,25 +1508,30 @@ function publishCurrentDailyPdf(){
 
 async function publishDailyAiDraft(index){
   const d = aiDailyDraftCache[index];
-  if (!d || d.status === 'published') return;
-  const category = $('#dailyPublishCategory')?.value || d.category || 'Culture générale';
-  const level = $('#dailyPublishLevel')?.value || d.level || 'Concours';
-  const isPremium = Boolean($('#dailyPublishPremium')?.checked);
+  if (!d) return;
+  const reviewOpen = currentDailyPdfIndex === index && $('#pdfreview')?.classList.contains('active');
+  const category = reviewOpen ? ($('#dailyPublishCategory')?.value || d.category || 'Culture générale') : (d.category || 'Culture générale');
+  const level = reviewOpen ? ($('#dailyPublishLevel')?.value || d.level || 'Concours') : (d.level || 'Concours');
+  const isPremium = reviewOpen ? Boolean($('#dailyPublishPremium')?.checked) : Boolean(d.is_premium);
   const destination = isPremium ? 'Premium' : 'Gratuit';
-  if (!confirm(`Publier les ${Number(d.count || 0)} QCM dans ${category} · ${level} · ${destination} ?`)) return;
+  const verb = d.status === 'published' ? 'Synchroniser' : 'Publier';
+  if (!confirm(`${verb} les ${Number(d.count || 0)} QCM dans ${category} · ${level} · ${destination} ?`)) return;
   try{
     const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/publish', {
       method:'POST',
       body:JSON.stringify({ category, level, is_premium:isPremium })
     });
     const result = $('#aiDailyResult');
-    if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM publiés dans <b>${escapeHtml(category)} · ${escapeHtml(level)} · ${destination}</b> ✅</div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM disponibles dans <b>Nouveaux QCM → ${destination}</b> ✅${data.resource ? '<br>PDF ajouté dans <b>Documents & fichiers</b> ✅' : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${isPremium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir les QCM ${destination}</button> <button class="mini-btn" onclick="openResourcesFromAdmin()" style="margin-top:8px">Ouvrir Documents</button></div>`;
     await loadDailyAiDrafts();
     if (currentDailyPdfIndex === index && $('#pdfreview')?.classList.contains('active')) closeDailyPdfReview();
     await loadAdminQuestions();
     await loadSupabaseQuestions();
+    await loadPublishedQcm(isPremium ? 'premium' : 'free');
+    await loadResources();
+    if (isAdmin()) await loadAdminResources().catch(()=>{});
     renderFormations(currentFormFilter);
-    toast('QCM quotidiens publiés ✅');
+    toast(data.alreadyPublished ? 'Synchronisation terminée ✅' : 'QCM quotidiens publiés ✅');
   }catch(err){ toast(err.message); }
 }
 
@@ -2744,6 +2750,7 @@ function formationGroups(){
       ['img/subject-svt.svg','SVT','SVT'],
       ['img/subject-french.svg','Français','Français'],
       ['img/subject-math.svg','Mathématiques','Mathématiques'],
+      ['img/subject-svt.svg','Physique-Chimie','Physique-Chimie'],
       ['img/subject-psychotech.svg','Psychotechnique','Psychotechnique']
     ],
     'Concours & examens':[
@@ -2903,10 +2910,21 @@ function startPublishedQcm(index){
   startQuestionListQuiz(qs, { title:set.title || 'Nouveau QCM', limit });
 }
 
-function openPublishedQcmFromAdmin(){
-  currentPublishedQcmFilter = 'all';
+function openPublishedQcmFromAdmin(filter='all'){
+  currentPublishedQcmFilter = filter || 'all';
   show('publishedqcm');
-  setTimeout(()=>loadPublishedQcm('all'), 50);
+  setTimeout(()=>{
+    $$('#publishedQcmFilterRow .chip').forEach(btn=>{
+      const txt = btn.textContent.trim().toLowerCase();
+      btn.classList.toggle('on', (currentPublishedQcmFilter === 'all' && txt.includes('tout')) || (currentPublishedQcmFilter === 'free' && txt.includes('gratuit')) || (currentPublishedQcmFilter === 'premium' && txt.includes('premium')));
+    });
+    loadPublishedQcm(currentPublishedQcmFilter);
+  }, 50);
+}
+
+function openResourcesFromAdmin(){
+  show('resources');
+  setTimeout(()=>loadResources(), 50);
 }
 
 /* ---------- daily / mock ---------- */

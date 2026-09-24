@@ -62,7 +62,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 const OFFICIAL_NEWS_SOURCES = process.env.OFFICIAL_NEWS_SOURCES || '';
 const AI_DAILY_INDEX_PATH = 'ai-daily/index.json';
-const AI_DAILY_DEFAULT_CATEGORIES = ['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Psychotechnique','Français','SVT','Greffier / Droit'];
+const AI_DAILY_DEFAULT_CATEGORIES = ['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Physique-Chimie','Psychotechnique','Français','SVT','Greffier / Droit'];
 const AI_DAILY_DEFAULT_LEVELS = ['Concours','BEPC','BAC','CEP','Licence'];
 const AI_DAILY_QCM_COUNT = Math.min(50, Math.max(1, Number(process.env.AI_DAILY_QCM_COUNT || 50)));
 const AI_QCM_MAX_COUNT = Math.min(50, Math.max(1, Number(process.env.AI_QCM_MAX_COUNT || 50)));
@@ -1269,6 +1269,68 @@ function publicAiDailyDraft(row){
   };
 }
 
+function dailyDraftResourceId(draft){
+  return `daily-pdf-${String(draft?.id || '').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
+
+async function ensureDailyDraftResource(draft, { category, level, is_premium, author_phone } = {}){
+  if (!draft?.storage_path) return null;
+  const resources = await loadResourceIndex().catch(err => {
+    if (err.status === 404 || /Fichier introuvable|not found|does not exist|object.*not/i.test(String(err.message || err.details?.message || ''))) return [];
+    throw err;
+  });
+  const id = dailyDraftResourceId(draft);
+  const idx = resources.findIndex(r => r.id === id || r.source_draft_id === draft.id);
+  const existing = idx >= 0 ? resources[idx] : null;
+  const cleanCategory = cleanText(category || draft.category || 'QCM', 80);
+  const cleanLevel = cleanText(level || draft.level || 'Concours', 40);
+  const cleanDate = cleanText(draft.date || todayId(), 20);
+  const title = safePdfTitle(`QCM quotidien — ${cleanCategory} — ${cleanLevel} — ${cleanDate}`);
+  const fileName = safeFileName(`${title}.pdf`);
+  let storagePath = existing?.storage_path || '';
+  let size = Number(existing?.size || draft.size || 0);
+  let mimeType = existing?.mime_type || 'application/pdf';
+  if (!storagePath){
+    const file = await downloadResourceObject(draft.storage_path);
+    const objectPath = `resources/files/${cleanDate.slice(0,4) || new Date().getFullYear()}/${id}-${fileName}`;
+    await uploadResourceObject(objectPath, file.buffer, 'application/pdf');
+    storagePath = objectPath;
+    size = file.buffer.length;
+    mimeType = 'application/pdf';
+  }
+  const now = new Date().toISOString();
+  const resource = {
+    ...(existing || {}),
+    id,
+    title,
+    category:'QCM quotidiens',
+    description:`${Number(draft.count || draft.questions?.length || 0)} QCM corrigés — ${cleanCategory} · ${cleanLevel}.`,
+    file_name:fileName,
+    mime_type:mimeType,
+    kind:'pdf',
+    size,
+    storage_path:storagePath,
+    is_premium:Boolean(is_premium),
+    is_active:true,
+    source_draft_id:draft.id,
+    source_type:'daily_qcm_pdf',
+    author_phone:author_phone || existing?.author_phone || '',
+    created_at:existing?.created_at || now,
+    updated_at:now
+  };
+  if (idx >= 0) resources[idx] = resource;
+  else resources.unshift(resource);
+  await saveResourceIndex(resources);
+  return publicResource(resource);
+}
+
+async function findPublishedRowsForDailyDraft(draft, { category, level, is_premium } = {}){
+  if (!supabaseReady()) return [];
+  const sourceTitle = safePdfTitle(draft?.title || `QCM quotidien — ${category || ''} — ${level || ''} — ${draft?.date || ''}`);
+  const query = `questions?select=id&source=eq.${encodeURIComponent(sourceTitle)}&category=eq.${encodeURIComponent(category || draft?.category || '')}&level=eq.${encodeURIComponent(level || draft?.level || '')}&is_premium=eq.${Boolean(is_premium)}&limit=1000`;
+  return await supabaseRequest(query).catch(() => []);
+}
+
 function pdfCleanText(value){
   return String(value || '')
     .replace(/\u0000/g, '')
@@ -2229,7 +2291,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'strict-ai-50-3',
+    build: 'publish-resource-1',
     time: new Date().toISOString()
   });
 });
@@ -2720,26 +2782,44 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
     const publishCategory = cleanText(req.body?.category || draft.category || '', 80) || draft.category;
     const publishLevel = cleanText(req.body?.level || draft.level || '', 40) || draft.level;
     const publishPremium = req.body?.is_premium === undefined ? Boolean(draft.is_premium) : Boolean(req.body?.is_premium);
-    const checked = await validateQuestionsForPublication(questions.map(q => ({ ...q, category:publishCategory || q.category, level:publishLevel || q.level })));
-    if (checked.rejected.length){
-      return res.status(409).json({ message:`Publication bloquée : ${checked.rejected.length} QCM déjà existant(s), trop proche(s) ou non conforme(s). Régénère un nouveau PDF strict.`, rejected:checked.rejected.slice(0, 5) });
+    const existingPublishedRows = await findPublishedRowsForDailyDraft(draft, { category:publishCategory, level:publishLevel, is_premium:publishPremium });
+    const alreadyHasQuestions = Array.isArray(existingPublishedRows) && existingPublishedRows.length > 0;
+    let publishedCount = alreadyHasQuestions ? existingPublishedRows.length : 0;
+    let rows = [];
+    if (!alreadyHasQuestions){
+      const checked = await validateQuestionsForPublication(questions.map(q => ({ ...q, category:publishCategory || q.category, level:publishLevel || q.level })));
+      if (checked.rejected.length){
+        return res.status(409).json({ message:`Publication bloquée : ${checked.rejected.length} QCM déjà existant(s), trop proche(s) ou non conforme(s). Régénère un nouveau PDF strict.`, rejected:checked.rejected.slice(0, 5) });
+      }
+      const payload = checked.accepted.map(q => adminQuestionPayload({
+        ...q,
+        category:publishCategory || q.category,
+        level:publishLevel || q.level,
+        source:safePdfTitle(draft.title || q.source || 'QCM quotidien'),
+        is_premium:publishPremium,
+        is_active:true
+      }));
+      rows = await supabaseRequest('questions?select=*', {
+        method:'POST',
+        prefer:'return=representation',
+        body:payload
+      });
+      publishedCount = Array.isArray(rows) ? rows.length : payload.length;
     }
-    const payload = checked.accepted.map(q => adminQuestionPayload({
-      ...q,
-      category:publishCategory || q.category,
-      level:publishLevel || q.level,
-      source:safePdfTitle(draft.title || q.source || 'QCM quotidien'),
+    const resource = await ensureDailyDraftResource(draft, { category:publishCategory, level:publishLevel, is_premium:publishPremium, author_phone:req.phone });
+    drafts[idx] = {
+      ...draft,
+      category:publishCategory,
+      level:publishLevel,
       is_premium:publishPremium,
-      is_active:true
-    }));
-    const rows = await supabaseRequest('questions?select=*', {
-      method:'POST',
-      prefer:'return=representation',
-      body:payload
-    });
-    drafts[idx] = { ...draft, category:publishCategory, level:publishLevel, is_premium:publishPremium, status:'published', published_at:new Date().toISOString(), updated_at:new Date().toISOString(), published_count:Array.isArray(rows) ? rows.length : payload.length };
+      status:'published',
+      published_at:draft.published_at || new Date().toISOString(),
+      updated_at:new Date().toISOString(),
+      published_count:publishedCount || Number(draft.published_count || questions.length || 0),
+      resource_id:resource?.id || draft.resource_id || ''
+    };
     await saveAiDailyIndex(drafts);
-    res.json({ ok:true, published:Array.isArray(rows) ? rows.length : payload.length, draft:publicAiDailyDraft(drafts[idx]) });
+    res.json({ ok:true, published:publishedCount || Number(draft.published_count || questions.length || 0), alreadyPublished:alreadyHasQuestions, resource, draft:publicAiDailyDraft(drafts[idx]) });
   }catch(err){ next(err); }
 });
 
