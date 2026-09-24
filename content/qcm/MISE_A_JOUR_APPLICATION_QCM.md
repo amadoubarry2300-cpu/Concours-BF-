@@ -398,4 +398,4 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 
 - Les matières proposées dépendent maintenant du niveau sélectionné : par exemple **CEP** ne propose plus **Physique-Chimie**.
 - La génération quotidienne garde plusieurs PDF le même jour si le niveau ou la matière change ; un nouveau PDF ne remplace plus les autres PDF du jour.
-- L’historique admin récupère aussi les PDF quotidiens déjà publiés qui existent dans Documents ou dans les QCM publiés mais avaient disparu de la liste IA.
+- L’historique admin et Documents récupèrent aussi les PDF quotidiens déjà publiés qui existent dans Documents ou dans les QCM publiés mais avaient disparu de la liste IA.

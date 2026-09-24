@@ -1400,9 +1400,12 @@ function dailyDraftPublicResource(draft){
 
 async function loadPublishedDailyPdfResources(){
   const drafts = await loadAiDailyIndex().catch(() => []);
-  return (Array.isArray(drafts) ? drafts : [])
-    .filter(d => d.status === 'published' && d.storage_path)
-    .map(dailyDraftPublicResource);
+  const publishedDrafts = (Array.isArray(drafts) ? drafts : []).filter(d => d.status === 'published' && d.storage_path);
+  const questionDrafts = await loadPublishedDailyQuestionDrafts(publishedDrafts).catch(() => []);
+  return mergePublicResources(
+    publishedDrafts.map(dailyDraftPublicResource),
+    questionDrafts.map(dailyDraftPublicResource)
+  );
 }
 
 function parseDailyResourceTitle(resource){
@@ -1511,6 +1514,11 @@ async function loadPublishedDailyQuestionDrafts(existingDrafts = []){
 async function loadPublishedDailyQuestionDraftById(id){
   const drafts = await loadPublishedDailyQuestionDrafts([]);
   return drafts.find(d => d.id === id) || null;
+}
+
+async function loadPublishedDailyQuestionDraftByResourceId(resourceId){
+  const drafts = await loadPublishedDailyQuestionDrafts([]);
+  return drafts.find(d => dailyDraftResourceId(d) === resourceId) || null;
 }
 
 function mergePublicResources(primary = [], secondary = []){
@@ -2525,7 +2533,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'level-history-fix-2',
+    build: 'level-history-fix-3',
     time: new Date().toISOString()
   });
 });
@@ -3594,7 +3602,23 @@ app.get('/api/resources/:id/download', async (req, res, next) => {
       is_premium:Boolean(dailyDraft.is_premium),
       is_active:true
     };
-    if (!item) return res.status(404).json({ message:'Document introuvable' });
+    if (!item){
+      const questionDraft = await loadPublishedDailyQuestionDraftByResourceId(req.params.id);
+      if (questionDraft){
+        if (questionDraft.is_premium){
+          const premiumAllowed = await requestHasPremium(req);
+          if (!premiumAllowed) return res.status(402).json({ message:'Ce document est réservé aux comptes Premium' });
+        }
+        const pdf = await buildQcmDraftPdf({ title:questionDraft.title, date:questionDraft.date, category:questionDraft.category, level:questionDraft.level, questions:questionDraft.questions });
+        const filename = safeFileName(`QCM quotidien — ${questionDraft.category || 'QCM'} — ${questionDraft.level || 'Concours'} — ${questionDraft.date || todayId()}.pdf`);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Length', pdf.length);
+        res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`);
+        res.setHeader('Cache-Control', 'private, max-age=60');
+        return res.send(pdf);
+      }
+      return res.status(404).json({ message:'Document introuvable' });
+    }
     if (item.is_premium){
       const premiumAllowed = await requestHasPremium(req);
       if (!premiumAllowed) return res.status(402).json({ message:'Ce document est réservé aux comptes Premium' });
