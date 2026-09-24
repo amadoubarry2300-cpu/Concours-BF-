@@ -489,6 +489,10 @@ function renderAccount(){
   $('#topbar')?.classList.toggle('user-connected', connected);
   $('#home')?.classList.toggle('home-connected', connected);
   document.body.classList.toggle('candidate-connected', connected);
+  const homeNavLabel = $('#homeNavLabel');
+  const homeNavIcon = $('#homeNavIcon');
+  if (homeNavLabel) homeNavLabel.textContent = connected ? 'Mon espace' : 'Accueil';
+  if (homeNavIcon) homeNavIcon.textContent = connected ? '🎯' : '🏠';
   const chip = $('#accountChip');
   const name = displayUserName();
   if (chip){
@@ -2414,6 +2418,8 @@ function renderSmartDashboard(){
 function renderHome(){
   renderAccount();
   renderSmartDashboard();
+  const homeToolsTitle = $('#homeToolsTitle');
+  if (homeToolsTitle) homeToolsTitle.textContent = state.user ? 'Mon espace de révision' : 'Tes outils';
   $('#streakVal').textContent = state.streak;
   $('#errCount').textContent = state.errors.length;
   $('#errCount').style.display = state.errors.length ? 'grid' : 'none';

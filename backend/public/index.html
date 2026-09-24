@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=connected-home-1">
+<link rel="stylesheet" href="css/styles.css?v=candidate-space-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -25,7 +25,7 @@
 
   <!-- ================= HOME ================= -->
   <section class="screen active" id="home">
-    <div class="hero">
+    <div class="hero public-home-block">
       <div class="hero-img"><img src="img/hero.jpg" alt="Étudiant qui révise"></div>
       <h1>Ne dis pas que tu as travaillé.<br><span>Prouve-le.</span></h1>
       <p>Ton passeport de préparation mesure ton entraînement réel, question après question.</p>
@@ -33,21 +33,21 @@
 
     <div class="smart-dashboard" id="smartDashboardCard" style="display:none"></div>
 
-    <div class="features">
+    <div class="features public-home-block">
       <div class="feature"><img class="feature-img" src="img/students-group.jpg" alt="Étudiants en groupe"><h3>+5000 questions</h3><p>Corrections et explications incluses.</p></div>
       <div class="feature"><img class="feature-img" src="img/teacher-class.jpg" alt="Classe avec enseignants"><h3>Culture générale</h3><p>2020 – 2027, l'essentiel à connaître.</p></div>
       <div class="feature"><img class="feature-img" src="img/classroom-bf.jpg" alt="Classe au Burkina Faso"><h3>Spécial Burkina</h3><p>Histoire, provinces, régions, gouvernements.</p></div>
       <div class="feature"><img class="feature-img" src="img/exam-student.jpg" alt="Candidat en examen"><h3>Ton concours</h3><p>CEP, BEPC, BAC, licence et concours pro.</p></div>
     </div>
 
-    <div class="cta-banner">
+    <div class="cta-banner public-home-block">
       <div class="tag">À faire maintenant</div>
       <h2>Commence ta préparation</h2>
       <p>Un premier quiz gratuit, 2 minutes, sans inscription.</p>
       <button class="btn btn-white" onclick="startQuiz({n:10,time:120,title:'Quiz découverte',free:true})">🚀 Commencer</button>
     </div>
 
-    <div class="premium-home" id="premiumHomeCard">
+    <div class="premium-home public-home-block" id="premiumHomeCard">
       <img class="premium-mini-img" src="img/success.jpg" alt="Premium Réussite Concours BF">
       <div class="premium-copy">
         <div class="premium-kicker">Réussite Concours BF Premium</div>
@@ -57,7 +57,7 @@
       <button class="mini-btn" onclick="show('subscription')">Voir l’offre</button>
     </div>
 
-    <div class="auth-home-card" id="accountHomeCard">
+    <div class="auth-home-card public-home-block" id="accountHomeCard">
       <img src="img/student-portrait.jpg" alt="Espace candidat">
       <div class="auth-home-copy">
         <div class="premium-kicker">Espace candidat</div>
@@ -71,7 +71,7 @@
     </div>
 
     <div class="section">
-      <div class="section-head"><h2>Tes outils</h2></div>
+      <div class="section-head"><h2 id="homeToolsTitle">Tes outils</h2></div>
       <div class="actions">
         <button class="action-card" onclick="show('setup')">
           <img class="action-photo" src="img/exam-student.jpg" alt="Préparation concours"><h3>Je prépare un concours</h3><p>Choisis ton niveau et révise l'essentiel</p>
@@ -149,14 +149,14 @@
       </button>
     </div>
 
-    <div class="share-card">
+    <div class="share-card public-home-block">
       <img src="img/success.jpg" alt="Trophée">
       <h3>Aide un ami à réussir</h3>
       <p>Partage Réussite Concours BF et progressez ensemble.</p>
       <button class="btn btn-green" onclick="shareApp()">📤 Partager l'application</button>
     </div>
 
-    <footer class="landing-footer">
+    <footer class="landing-footer public-home-block">
       <div class="footer-brand">
         <img src="img/logo.png" alt="Logo Réussite Concours BF">
         <div>
@@ -1079,7 +1079,7 @@
 
   <!-- ===== bottom nav ===== -->
   <nav class="bottom-nav" id="bottomNav">
-    <button class="nav-btn on" data-target="home" onclick="show('home')"><span class="ni">🏠</span>Accueil</button>
+    <button class="nav-btn on" data-target="home" onclick="show('home')"><span class="ni" id="homeNavIcon">🏠</span><span class="nav-label" id="homeNavLabel">Accueil</span></button>
     <button class="nav-btn" data-target="formations" onclick="show('formations')"><span class="ni">🗂️</span>Formations</button>
     <button class="nav-btn" data-target="passport" onclick="show('passport')"><span class="ni">🛂</span>Passeport</button>
     <button class="nav-btn" data-target="stats" onclick="show('stats')"><span class="ni">📊</span>Progrès</button>
@@ -1109,7 +1109,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=connected-home-1"></script>
-<script src="js/app.js?v=connected-home-1"></script>
+<script src="js/questions.js?v=candidate-space-1"></script>
+<script src="js/app.js?v=candidate-space-1"></script>
 </body>
 </html>

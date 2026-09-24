@@ -318,3 +318,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Le tableau de bord candidat apparaît maintenant juste sous le bloc principal de l’accueil après connexion.
 - La barre supérieure et le bouton profil changent visuellement quand le candidat est connecté, sans ajouter de bloc inutile au milieu de l’accueil.
 - Ajout d’un raccourci **Fiches courtes** dans l’espace compte pour mieux organiser les actions du candidat.
+
+
+## 2026-09-24 — Accueil transformé en espace candidat connecté
+
+- Quand un candidat est connecté, l’onglet **Accueil** devient **Mon espace**.
+- Les blocs publics de présentation sont masqués pour le candidat connecté afin que l’écran commence directement par son tableau de bord et ses outils.
+- Le contenu public reste inchangé pour les visiteurs non connectés.
