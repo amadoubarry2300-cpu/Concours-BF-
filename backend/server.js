@@ -2246,6 +2246,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
+    build: 'strict-ai-50-2',
     time: new Date().toISOString()
   });
 });
