@@ -381,3 +381,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 
 - Les PDF quotidiens déjà publiés apparaissent automatiquement dans **Documents & fichiers**, même s’ils ont été publiés avant la synchronisation Documents.
 - Le téléchargement public des PDF quotidiens publiés utilise le stockage du brouillon validé si le document n’a pas encore été copié dans l’index Documents.
+
+## 2026-09-24 — Historique PDF admin
+
+- Les PDF quotidiens déjà publiés sont masqués par défaut dans l’administration afin de garder l’espace propre.
+- Un bouton **Voir l’historique publié** permet de les revoir au besoin.
+- Retirer un PDF publié de l’historique admin conserve les QCM et le document côté candidat.

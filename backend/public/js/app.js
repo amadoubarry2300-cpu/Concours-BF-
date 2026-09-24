@@ -1032,6 +1032,7 @@ let adminResourceCache = [];
 let adminNewsCache = [];
 let aiDraftCache = [];
 let aiDailyDraftCache = [];
+let showPublishedDailyDrafts = false;
 let currentDailyPdfIndex = -1;
 let currentDailyPdfUrl = '';
 let aiNewsDraftCache = [];
@@ -1363,14 +1364,25 @@ async function runDailyAiQcm(){
   }
 }
 
+function toggleDailyPublishedHistory(){
+  showPublishedDailyDrafts = !showPublishedDailyDrafts;
+  renderDailyAiDrafts();
+}
+
 function renderDailyAiDrafts(){
   const wrap = $('#aiDailyDraftList');
   if (!wrap) return;
-  if (!aiDailyDraftCache.length){
-    wrap.innerHTML = '<div class="empty">Aucun PDF quotidien pour le moment. Clique sur “Créer le PDF du jour maintenant”.</div>';
+  const entries = aiDailyDraftCache.map((d, idx)=>({d, idx}));
+  const publishedCount = entries.filter(({d}) => d.status === 'published').length;
+  const visibleEntries = entries.filter(({d}) => showPublishedDailyDrafts || d.status !== 'published');
+  const historyButton = publishedCount
+    ? `<button class="mini-btn" onclick="toggleDailyPublishedHistory()">${showPublishedDailyDrafts ? 'Masquer l’historique publié' : `Voir l’historique publié (${publishedCount})`}</button>`
+    : '';
+  if (!visibleEntries.length){
+    wrap.innerHTML = `<div class="empty">Aucun PDF en attente de vérification.${publishedCount ? '<br>Les PDF déjà publiés sont rangés dans l’historique admin et restent visibles côté candidat.' : '<br>Clique sur “Créer le PDF du jour maintenant”.'}<br>${historyButton}</div>`;
     return;
   }
-  wrap.innerHTML = aiDailyDraftCache.map((d, idx)=>`
+  wrap.innerHTML = `${historyButton ? `<div class="pay-note">${showPublishedDailyDrafts ? 'Historique affiché : les PDF publiés restent dans Nouveaux QCM et Documents.' : 'Les PDF déjà publiés sont masqués ici pour garder l’administration propre.'} ${historyButton}</div>` : ''}` + visibleEntries.map(({d, idx})=>`
     <div class="admin-q-item daily-ai-draft ${d.status === 'published' ? 'ai-published' : ''}">
       <div class="admin-q-meta">
         <span>${escapeHtml(d.date || '')}</span>
@@ -1380,11 +1392,11 @@ function renderDailyAiDrafts(){
         ${d.status === 'published' ? '<span class="active">Publié</span>' : '<span>PDF à relire</span>'}
       </div>
       <h4>${escapeHtml(d.title || 'QCM quotidien')}</h4>
-      <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. Télécharge le fichier, vérifie les questions et publie seulement après validation.</p>
+      <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Télécharge le fichier, vérifie les questions et publie seulement après validation.'}</p>
       <div class="admin-q-actions">
         <button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>
         <button class="pause" onclick="publishDailyAiDraft(${idx})">${d.status === 'published' ? 'Synchroniser' : `Publier les ${Number(d.count || 0)} QCM`}</button>
-        <button class="delete" onclick="deleteDailyAiDraft(${idx})">Supprimer</button>
+        <button class="delete" onclick="deleteDailyAiDraft(${idx})">${d.status === 'published' ? 'Retirer de l’admin' : 'Supprimer'}</button>
       </div>
     </div>`).join('');
 }
@@ -1523,6 +1535,7 @@ async function publishDailyAiDraft(index){
     });
     const result = $('#aiDailyResult');
     if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM disponibles dans <b>Nouveaux QCM → ${destination}</b> ✅${data.resource ? '<br>PDF ajouté dans <b>Documents & fichiers</b> ✅' : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${isPremium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir les QCM ${destination}</button> <button class="mini-btn" onclick="openResourcesFromAdmin()" style="margin-top:8px">Ouvrir Documents</button></div>`;
+    showPublishedDailyDrafts = false;
     await loadDailyAiDrafts();
     if (currentDailyPdfIndex === index && $('#pdfreview')?.classList.contains('active')) closeDailyPdfReview();
     await loadAdminQuestions();
@@ -1538,11 +1551,19 @@ async function publishDailyAiDraft(index){
 async function deleteDailyAiDraft(index){
   const d = aiDailyDraftCache[index];
   if (!d) return;
-  if (!confirm('Supprimer ce PDF quotidien ?')) return;
+  const msg = d.status === 'published'
+    ? 'Retirer ce PDF de l’historique admin ? Les QCM et le document restent visibles côté candidat.'
+    : 'Supprimer ce PDF quotidien ?';
+  if (!confirm(msg)) return;
   try{
     await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id), { method:'DELETE' });
     await loadDailyAiDrafts();
-    toast('PDF supprimé');
+    if (d.status === 'published'){
+      await loadResources().catch(()=>{});
+      toast('Retiré de l’administration ✅');
+    } else {
+      toast('PDF supprimé');
+    }
   }catch(err){ toast(err.message); }
 }
 

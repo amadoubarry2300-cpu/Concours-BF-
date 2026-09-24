@@ -2335,7 +2335,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'publish-resource-2',
+    build: 'admin-pdf-history-1',
     time: new Date().toISOString()
   });
 });
@@ -2873,6 +2873,9 @@ app.delete('/api/admin/ai/daily/:id', requireAdmin, async (req, res, next) => {
     const idx = drafts.findIndex(d => d.id === req.params.id);
     if (idx < 0) return res.status(404).json({ message:'Brouillon IA introuvable' });
     const draft = drafts[idx];
+    if (draft.status === 'published'){
+      await ensureDailyDraftResource(draft, { category:draft.category, level:draft.level, is_premium:draft.is_premium, author_phone:req.phone }).catch(()=>{});
+    }
     if (draft.storage_path) await deleteResourceObject(draft.storage_path).catch(()=>{});
     drafts.splice(idx, 1);
     await saveAiDailyIndex(drafts);
