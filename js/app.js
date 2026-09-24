@@ -81,11 +81,12 @@ let state = {
   selectedPlan: store.get('selectedPlan', PAYMENT_CONFIG.plan || 'premium_monthly'),
   profileAvatars: store.get('profileAvatars', {}),
   authToken: store.get('authToken', null),
-  authExpiresAt: store.get('authExpiresAt', null)
+  authExpiresAt: store.get('authExpiresAt', null),
+  revisionRead: store.get('revisionRead', [])
 };
 
 function save(){
-  for (const k of ['xp','quizDone','correct','answered','errors','catStats','streak','lastDay','dailyDone','bestScore','phoneSaved','user','subscription','pendingPayment','selectedProvider','selectedPlan','profileAvatars','authToken','authExpiresAt'])
+  for (const k of ['xp','quizDone','correct','answered','errors','catStats','streak','lastDay','dailyDone','bestScore','phoneSaved','user','subscription','pendingPayment','selectedProvider','selectedPlan','profileAvatars','authToken','authExpiresAt','revisionRead'])
     store.set(k, state[k]);
 }
 
@@ -443,7 +444,7 @@ function show(id){
   currentScreenId = id;
   window.scrollTo({top:0});
   $$('.nav-btn').forEach(b=>b.classList.toggle('on', b.dataset.target===id));
-  const navIds = ['home','formations','publishedqcm','news','resources','passport','stats','subscription','account'];
+  const navIds = ['home','formations','publishedqcm','news','resources','revision','passport','stats','subscription','account'];
   $('#bottomNav').style.display = navIds.includes(id) ? 'flex' : 'none';
 
   if (id==='stats') setTimeout(renderStats, 60);
@@ -454,6 +455,7 @@ function show(id){
   if (id==='publishedqcm') loadPublishedQcm(currentPublishedQcmFilter);
   if (id==='news') loadNews();
   if (id==='resources') loadResources();
+  if (id==='revision') renderRevisionFiches(currentRevisionFilter);
   if (id==='subscription') setTimeout(renderSubscription, 20);
   if (id==='account') setTimeout(renderAccountScreen, 20);
   if (id==='admin') setTimeout(()=>renderAdminPanel(false), 20);
@@ -1024,6 +1026,7 @@ let newsCache = [];
 let publishedQcmCache = [];
 let currentNewsFilter = 'Tout';
 let currentPublishedQcmFilter = 'all';
+let currentRevisionFilter = 'Tout';
 let currentScreenId = 'home';
 let quizReturnScreen = 'home';
 let adminQuestionFilter = 'all';
@@ -2164,6 +2167,153 @@ async function simulatePaymentSuccess(){
 }
 
 /* ---------- rendus ---------- */
+
+const REVISION_FICHES = [
+  {
+    id:'bf-reperes', cat:'Burkina Faso', img:'img/subject-burkina.svg', title:'Burkina Faso : repères indispensables', time:'2 min', level:'Base concours', quizTitle:'QCM repères Burkina Faso',
+    points:['Capitale à retenir : Ouagadougou.', 'Monnaie utilisée : franc CFA (XOF).', 'Révise les institutions, les régions/provinces, les symboles nationaux et les grandes dates.'],
+    remember:'Dans les QCM, commence par identifier si la question porte sur un lieu, une institution, une date ou un symbole.'
+  },
+  {
+    id:'bf-citoyennete', cat:'Burkina Faso', img:'img/subject-burkina.svg', title:'Citoyenneté : droits, devoirs et institutions', time:'3 min', level:'Concours', quizTitle:'QCM citoyenneté Burkina Faso',
+    points:['Un citoyen connaît ses droits mais respecte aussi ses devoirs.', 'Distingue pouvoir exécutif, pouvoir législatif et pouvoir judiciaire.', 'Les sujets demandent souvent de relier une institution à son rôle.'],
+    remember:'Pour répondre vite, cherche le verbe clé : gouverner, voter la loi, rendre la justice, contrôler.'
+  },
+  {
+    id:'culture-organisations', cat:'Culture générale', img:'img/subject-culture.svg', title:'Organisations et sigles fréquents', time:'2 min', level:'Tous niveaux', quizTitle:'QCM organisations et sigles',
+    points:['ONU : coopération internationale, paix et sécurité.', 'Union africaine : coopération entre États africains.', 'Dans l’actualité régionale, lis toujours le sigle puis son rôle.'],
+    remember:'Ne mémorise pas seulement le sigle : retiens aussi pourquoi l’organisation existe.'
+  },
+  {
+    id:'histoire-geo-methode', cat:'Histoire-Géo', img:'img/subject-history-geo.svg', title:'Histoire-Géo : méthode pour ne pas confondre', time:'3 min', level:'BEPC/BAC', quizTitle:'QCM méthode Histoire-Géo',
+    points:['Classe les informations en trois familles : dates, lieux, acteurs.', 'En géographie, repère d’abord l’échelle : pays, région, continent ou monde.', 'En histoire, cherche la chronologie avant de choisir la réponse.'],
+    remember:'Une bonne réponse en Histoire-Géo est souvent la plus précise dans le temps et dans l’espace.'
+  },
+  {
+    id:'maths-pourcentages', cat:'Mathématiques', img:'img/subject-math.svg', title:'Maths : pourcentages rapides', time:'3 min', level:'BEPC/BAC', quizTitle:'QCM pourcentages',
+    points:['x% signifie x divisé par 100.', 'Augmenter de 20% revient à multiplier par 1,20.', 'Diminuer de 15% revient à multiplier par 0,85.'],
+    remember:'Pour gagner du temps, transforme le pourcentage en coefficient multiplicateur.'
+  },
+  {
+    id:'francais-accords', cat:'Français', img:'img/subject-french.svg', title:'Français : accords à surveiller', time:'3 min', level:'Tous niveaux', quizTitle:'QCM accords en français',
+    points:['Le verbe s’accorde avec son sujet.', 'Avec être, le participe passé s’accorde généralement avec le sujet.', 'Avec avoir, il s’accorde avec le COD si le COD est placé avant le verbe.'],
+    remember:'Dans une phrase longue, retrouve d’abord le sujet réel avant de choisir l’accord.'
+  },
+  {
+    id:'svt-sante-environnement', cat:'SVT', img:'img/subject-svt.svg', title:'SVT : santé et environnement', time:'2 min', level:'BEPC/BAC', quizTitle:'QCM santé et environnement',
+    points:['Prévention : agir avant la maladie ou le risque.', 'Hygiène : ensemble des pratiques qui protègent la santé.', 'Écosystème : êtres vivants, milieu et relations entre eux.'],
+    remember:'Quand deux réponses semblent proches, choisis celle qui décrit le mécanisme le plus complet.'
+  },
+  {
+    id:'psycho-series', cat:'Psychotechnique', img:'img/subject-psychotech.svg', title:'Psychotechnique : séries logiques', time:'2 min', level:'Concours', quizTitle:'QCM séries logiques',
+    points:['Cherche d’abord l’opération : +, −, ×, ÷, alternance.', 'Teste si la suite avance par deux séries séparées : positions paires et impaires.', 'Pour les formes, compare nombre, orientation, couleur et ordre.'],
+    remember:'Ne réponds pas trop vite : écris mentalement la règle avant de choisir.'
+  },
+  {
+    id:'droit-vocabulaire', cat:'Greffier / Droit', img:'img/subject-law.svg', title:'Droit : vocabulaire de base', time:'3 min', level:'Concours pro', quizTitle:'QCM vocabulaire juridique',
+    points:['Une juridiction est un organe chargé de rendre la justice.', 'Une infraction est un comportement puni par la loi.', 'Une procédure est l’ensemble des règles à suivre dans une affaire.'],
+    remember:'En droit, la précision des mots compte : lis chaque terme avant de choisir.'
+  }
+];
+
+function revisionReadSet(){
+  return new Set(Array.isArray(state.revisionRead) ? state.revisionRead : []);
+}
+
+function revisionFilteredList(filter = currentRevisionFilter){
+  const f = filter || 'Tout';
+  return REVISION_FICHES.filter(item => {
+    if (f === 'Tout') return true;
+    if (f === 'Gratuit') return isFreeCategory(item.cat);
+    if (f === 'Premium') return isPaidCategory(item.cat);
+    return item.cat === f;
+  });
+}
+
+function filterRevisionFiches(el, filter){
+  currentRevisionFilter = filter || 'Tout';
+  $$('#revisionFilterRow .chip').forEach(c=>c.classList.remove('on'));
+  if (el) el.classList.add('on');
+  renderRevisionFiches(currentRevisionFilter);
+}
+
+function openRecommendedRevision(){
+  currentRevisionFilter = smartRecommendedCategory();
+  show('revision');
+}
+
+function markRevisionFiche(id){
+  if (!id) return;
+  const read = revisionReadSet();
+  read.add(id);
+  state.revisionRead = [...read];
+  save();
+  renderRevisionFiches(currentRevisionFilter);
+  toast('Fiche marquée comme lue ✅');
+}
+
+function startRevisionQuiz(cat, title){
+  startFormationQuiz(title || ('QCM ' + cat), cat);
+}
+
+function renderRevisionFiches(filter = currentRevisionFilter){
+  renderAccount();
+  currentRevisionFilter = filter || 'Tout';
+  $$('#revisionFilterRow .chip').forEach(c=>c.classList.toggle('on', c.dataset.filter === currentRevisionFilter));
+  const list = revisionFilteredList(currentRevisionFilter);
+  const read = revisionReadSet();
+  const readCount = REVISION_FICHES.filter(f=>read.has(f.id)).length;
+  const pct = Math.round(readCount / REVISION_FICHES.length * 100);
+  const recCat = smartRecommendedCategory();
+  const rec = REVISION_FICHES.find(f=>f.cat === recCat) || REVISION_FICHES[0];
+  const progress = $('#revisionProgressCard');
+  if (progress){
+    progress.innerHTML = `
+      <div class="revision-progress-copy">
+        <span>Progression fiches</span>
+        <b>${readCount}/${REVISION_FICHES.length} lue${readCount>1?'s':''}</b>
+        <small>Conseil du jour : ${escapeHtml(rec.title)}</small>
+      </div>
+      <div class="revision-progress-actions">
+        <button class="mini-btn" onclick="openRecommendedRevision()">Lire la fiche conseillée</button>
+        <i><em style="width:${pct}%"></em></i>
+      </div>`;
+  }
+  const wrap = $('#revisionList');
+  if (!wrap) return;
+  if (!list.length){
+    wrap.innerHTML = '<div class="empty">Aucune fiche dans ce filtre.</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(f=>{
+    const paid = isPaidCategory(f.cat);
+    const locked = paid && !hasOpenAccess();
+    const done = read.has(f.id);
+    const meta = paid ? 'Premium' : 'Gratuit';
+    return `<article class="revision-card ${locked?'locked':''} ${done?'read':''}">
+      <div class="revision-head">
+        <img class="revision-thumb" src="${escapeHtml(f.img)}" alt="${escapeHtml(f.cat)}">
+        <div>
+          <div class="revision-meta">
+            <span class="${paid?'premium':''}">${paid?'🔒 ':''}${meta}</span>
+            <span>${escapeHtml(f.time)}</span>
+            <span>${escapeHtml(f.level)}</span>
+          </div>
+          <h3>${escapeHtml(f.title)}</h3>
+          <p>${escapeHtml(f.cat)}</p>
+        </div>
+      </div>
+      <ul class="revision-points">
+        ${f.points.map(p=>`<li>${escapeHtml(p)}</li>`).join('')}
+      </ul>
+      <div class="revision-remember"><b>À retenir</b><span>${escapeHtml(f.remember)}</span></div>
+      <div class="revision-actions">
+        <button class="btn btn-green" onclick='startRevisionQuiz(${JSON.stringify(f.cat)},${JSON.stringify(f.quizTitle)})'>Lancer un QCM lié</button>
+        <button class="btn btn-ghost" onclick='markRevisionFiche(${JSON.stringify(f.id)})'>${done?'Lue ✅':'Marquer comme lue'}</button>
+      </div>
+    </article>`;
+  }).join('');
+}
 
 function smartSuccessRate(){
   const answered = Number(state.answered || 0);

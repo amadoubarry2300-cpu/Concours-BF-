@@ -304,3 +304,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout d’un tableau de bord sur l’accueil pour les candidats connectés.
 - Il affiche les QCM faits, le taux de réussite, le niveau, les erreurs à revoir et une priorité de révision.
 - Ajout de boutons directs pour le défi du jour, la révision des erreurs, les nouveaux QCM ou la matière prioritaire.
+
+## 2026-09-24 — Fiches de révision courtes
+
+- Ajout d’un écran **Fiches de révision courtes** accessible depuis l’accueil.
+- Les candidats peuvent lire des résumés rapides par matière, filtrer par catégorie, puis lancer un QCM lié.
+- Ajout d’un suivi local des fiches déjà lues et d’une fiche conseillée selon la priorité de révision.
+- Les matières Premium gardent le cadenas au moment de lancer les QCM associés.

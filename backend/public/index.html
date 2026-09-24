@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=smart-dashboard-1">
+<link rel="stylesheet" href="css/styles.css?v=revision-fiches-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -90,6 +90,9 @@
         </button>
         <button class="action-card" id="dailyCard" onclick="startDaily()">
           <img class="action-photo" src="img/students-group.jpg" alt="Défi du jour"><h3>Défi du jour</h3><p id="dailySub">10 QCM gratuits · chaque jour</p>
+        </button>
+        <button class="action-card" onclick="show('revision')">
+          <img class="action-photo" src="img/study.jpg" alt="Fiches de révision"><h3>Fiches courtes</h3><p>Résumés rapides avant les QCM</p>
         </button>
         <button class="action-card" onclick="show('quickpick')">
           <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20, 40, 100 ou 5000 questions</p>
@@ -373,6 +376,43 @@
     </div>
     <div style="height:24px"></div>
   </section>
+
+  <!-- ================= FICHES DE RÉVISION ================= -->
+  <section class="screen" id="revision">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="show('home')">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">📘 Fiches de révision courtes</h2>
+    </div>
+    <div class="section" style="padding-top:10px">
+      <div class="revision-intro-card">
+        <img src="img/study.jpg" alt="Révision courte">
+        <div>
+          <span>Révision rapide</span>
+          <h2>L’essentiel avant les QCM</h2>
+          <p>Lis une fiche courte, retiens les points clés, puis lance un QCM lié.</p>
+        </div>
+      </div>
+      <div class="revision-progress-card" id="revisionProgressCard"></div>
+    </div>
+    <div class="chip-row" id="revisionFilterRow">
+      <button class="chip on" data-filter="Tout" onclick="filterRevisionFiches(this,'Tout')">Tout</button>
+      <button class="chip" data-filter="Gratuit" onclick="filterRevisionFiches(this,'Gratuit')">Gratuit</button>
+      <button class="chip" data-filter="Premium" onclick="filterRevisionFiches(this,'Premium')">Premium</button>
+      <button class="chip" data-filter="Burkina Faso" onclick="filterRevisionFiches(this,'Burkina Faso')">Burkina</button>
+      <button class="chip" data-filter="Culture générale" onclick="filterRevisionFiches(this,'Culture générale')">Culture</button>
+      <button class="chip" data-filter="Histoire-Géo" onclick="filterRevisionFiches(this,'Histoire-Géo')">Histoire-Géo</button>
+      <button class="chip" data-filter="Mathématiques" onclick="filterRevisionFiches(this,'Mathématiques')">Maths</button>
+      <button class="chip" data-filter="Français" onclick="filterRevisionFiches(this,'Français')">Français</button>
+      <button class="chip" data-filter="SVT" onclick="filterRevisionFiches(this,'SVT')">SVT</button>
+      <button class="chip" data-filter="Psychotechnique" onclick="filterRevisionFiches(this,'Psychotechnique')">Psycho</button>
+      <button class="chip" data-filter="Greffier / Droit" onclick="filterRevisionFiches(this,'Greffier / Droit')">Droit</button>
+    </div>
+    <div class="section" style="padding-top:0">
+      <div id="revisionList" class="revision-list"></div>
+    </div>
+    <div style="height:24px"></div>
+  </section>
+
 
   <!-- ================= PASSPORT ================= -->
   <section class="screen" id="passport">
@@ -1068,7 +1108,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=smart-dashboard-1"></script>
-<script src="js/app.js?v=smart-dashboard-1"></script>
+<script src="js/questions.js?v=revision-fiches-1"></script>
+<script src="js/app.js?v=revision-fiches-1"></script>
 </body>
 </html>
