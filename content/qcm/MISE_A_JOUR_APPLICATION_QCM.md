@@ -298,3 +298,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Le bouton WhatsApp flottant peut maintenant être déplacé par glisser-déposer sur l’écran.
 - Sa position est mémorisée sur le téléphone/navigateur du candidat.
 - Un simple toucher continue d’ouvrir WhatsApp normalement.
+
+## 2026-09-23 — Tableau de bord candidat
+
+- Ajout d’un tableau de bord sur l’accueil pour les candidats connectés.
+- Il affiche les QCM faits, le taux de réussite, le niveau, les erreurs à revoir et une priorité de révision.
+- Ajout de boutons directs pour le défi du jour, la révision des erreurs, les nouveaux QCM ou la matière prioritaire.

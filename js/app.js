@@ -527,6 +527,8 @@ function renderAccount(){
     }
   }
 
+  renderSmartDashboard();
+
   const adminBtn = $('#adminPanelBtn');
   if (adminBtn) adminBtn.style.display = isAdmin() ? 'flex' : 'none';
 
@@ -618,6 +620,8 @@ function renderAccountScreen(){
   $('#accountInfoPhone') && ($('#accountInfoPhone').textContent = '+226 ' + phone);
   $('#accountInfoEmail') && ($('#accountInfoEmail').textContent = state.user.email || '—');
   $('#accountLastLogin') && ($('#accountLastLogin').textContent = state.user.lastLoginAt ? formatDate(state.user.lastLoginAt) : 'Aujourd’hui');
+  renderSmartDashboard();
+
   const adminBtn = $('#adminPanelBtn');
   if (adminBtn) adminBtn.style.display = isAdmin() ? 'flex' : 'none';
 }
@@ -2160,8 +2164,100 @@ async function simulatePaymentSuccess(){
 }
 
 /* ---------- rendus ---------- */
+
+function smartSuccessRate(){
+  const answered = Number(state.answered || 0);
+  return answered ? Math.round((Number(state.correct || 0) / answered) * 100) : 0;
+}
+
+function smartCandidateLevel(){
+  const answered = Number(state.answered || 0);
+  if (answered >= 500) return 'Avancé';
+  if (answered >= 200) return 'Solide';
+  if (answered >= 50) return 'Régulier';
+  return answered ? 'En progression' : 'Nouveau départ';
+}
+
+function smartWeakCategory(){
+  const rows = Object.entries(state.catStats || {})
+    .map(([cat, stat]) => ({ cat, ok:Number(stat?.ok || 0), total:Number(stat?.total || 0) }))
+    .filter(row => row.total >= 3)
+    .map(row => ({ ...row, rate:Math.round((row.ok / row.total) * 100) }))
+    .sort((a, b) => a.rate - b.rate || b.total - a.total);
+  return rows[0] || null;
+}
+
+function smartRecommendedCategory(){
+  const weak = smartWeakCategory();
+  if (weak?.cat) return weak.cat;
+  if (!state.answered) return 'Burkina Faso';
+  return hasOpenAccess() ? 'Mathématiques' : 'Culture générale';
+}
+
+function startSmartRecommendation(){
+  const cat = smartRecommendedCategory();
+  const title = smartWeakCategory()?.cat ? `Renforcer ${cat}` : `Réviser ${cat}`;
+  if (isPaidCategory(cat)){
+    startFormationQuiz(title, cat);
+    return;
+  }
+  const n = hasOpenAccess() ? 'all' : 10;
+  startQuiz({n, time:0, title, cat, free:!hasOpenAccess()});
+}
+
+function renderSmartDashboard(){
+  const card = $('#smartDashboardCard');
+  if (!card) return;
+  if (!state.user){
+    card.style.display = 'none';
+    card.innerHTML = '';
+    return;
+  }
+  const firstName = escapeHtml((displayUserName().split(/\s+/)[0] || 'Candidat'));
+  const answered = Number(state.answered || 0);
+  const rate = smartSuccessRate();
+  const level = smartCandidateLevel();
+  const errors = state.errors.length;
+  const weak = smartWeakCategory();
+  const recCat = smartRecommendedCategory();
+  const dailyDone = state.dailyDone === today();
+  const focusText = weak
+    ? `${escapeHtml(weak.cat)} · ${weak.rate}% de réussite`
+    : `${escapeHtml(recCat)} · 10 QCM pour commencer`;
+  const dailyText = dailyDone ? 'Défi du jour validé' : '10 QCM gratuits à faire aujourd’hui';
+  const mainLabel = dailyDone ? 'Continuer ma révision' : 'Faire le défi du jour';
+  const mainAction = dailyDone ? "show('formations')" : 'startDaily()';
+  const secondLabel = errors ? `Revoir ${errors} erreur${errors>1?'s':''}` : 'Voir les nouveaux QCM';
+  const secondAction = errors ? "show('errors')" : "show('publishedqcm')";
+  card.style.display = 'block';
+  card.innerHTML = `
+    <div class="smart-top">
+      <div>
+        <span>Tableau de bord</span>
+        <h2>Bonjour ${firstName}</h2>
+        <p>${dailyText}. Concentre-toi sur ce qui peut améliorer ton score aujourd’hui.</p>
+      </div>
+      <div class="smart-ring" style="--p:${rate}"><b>${rate}%</b><small>réussite</small></div>
+    </div>
+    <div class="smart-stats">
+      <div><b>${answered}</b><span>QCM faits</span></div>
+      <div><b>${level}</b><span>Niveau</span></div>
+      <div><b>${errors}</b><span>À revoir</span></div>
+    </div>
+    <div class="smart-focus">
+      <span>🎯 Priorité</span>
+      <b>${focusText}</b>
+    </div>
+    <div class="smart-actions">
+      <button class="btn btn-green" onclick="${mainAction}">${mainLabel}</button>
+      <button class="btn btn-ghost" onclick="${secondAction}">${secondLabel}</button>
+      <button class="btn btn-ghost" onclick="startSmartRecommendation()">Réviser la priorité</button>
+    </div>`;
+}
+
 function renderHome(){
   renderAccount();
+  renderSmartDashboard();
   $('#streakVal').textContent = state.streak;
   $('#errCount').textContent = state.errors.length;
   $('#errCount').style.display = state.errors.length ? 'grid' : 'none';
