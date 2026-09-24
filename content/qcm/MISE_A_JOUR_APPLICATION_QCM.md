@@ -387,3 +387,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Les PDF quotidiens déjà publiés sont masqués par défaut dans l’administration afin de garder l’espace propre.
 - Un bouton **Voir l’historique publié** permet de les revoir au besoin.
 - Retirer un PDF publié de l’historique admin conserve les QCM et le document côté candidat.
+
+## 2026-09-24 — Suppression côté candidat
+
+- Ajout d’un bouton **Supprimer chez candidat** dans l’historique des PDF quotidiens publiés.
+- Cette action retire le groupe de QCM de **Nouveaux QCM** et le PDF de **Documents & fichiers**.
+- Le PDF reste disponible dans l’administration pour correction, republication ou suppression complète.

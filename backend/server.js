@@ -1375,6 +1375,33 @@ async function findPublishedDailyDraftByResourceId(id){
   return (Array.isArray(drafts) ? drafts : []).find(d => d.status === 'published' && d.storage_path && dailyDraftResourceId(d) === id) || null;
 }
 
+async function deleteDailyDraftResource(draft){
+  const resources = await loadResourceIndex().catch(err => {
+    if (err.status === 404 || /Fichier introuvable|not found|does not exist|object.*not/i.test(String(err.message || err.details?.message || ''))) return [];
+    throw err;
+  });
+  const id = dailyDraftResourceId(draft);
+  const item = resources.find(r => r.id === id || r.source_draft_id === draft.id);
+  if (item?.storage_path) await deleteResourceObject(item.storage_path).catch(()=>{});
+  const next = resources.filter(r => r.id !== id && r.source_draft_id !== draft.id);
+  if (next.length !== resources.length) await saveResourceIndex(next);
+  return Boolean(item);
+}
+
+async function deletePublishedDailyQuestions(draft, { category, level, is_premium } = {}){
+  if (!supabaseReady()) return 0;
+  const sourceTitle = safePdfTitle(draft?.title || `QCM quotidien — ${category || ''} — ${level || ''} — ${draft?.date || ''}`);
+  const publishCategory = category || draft?.category || '';
+  const publishLevel = level || draft?.level || '';
+  const publishPremium = Boolean(is_premium);
+  const existing = await findPublishedRowsForDailyDraft(draft, { category:publishCategory, level:publishLevel, is_premium:publishPremium });
+  await supabaseRequest(`questions?source=eq.${encodeURIComponent(sourceTitle)}&category=eq.${encodeURIComponent(publishCategory)}&level=eq.${encodeURIComponent(publishLevel)}&is_premium=eq.${publishPremium}`, {
+    method:'DELETE',
+    prefer:'return=minimal'
+  }).catch(() => {});
+  return Array.isArray(existing) ? existing.length : 0;
+}
+
 function pdfCleanText(value){
   return String(value || '')
     .replace(/\u0000/g, '')
@@ -2335,7 +2362,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'admin-pdf-history-1',
+    build: 'candidate-delete-1',
     time: new Date().toISOString()
   });
 });
@@ -2864,6 +2891,28 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
     };
     await saveAiDailyIndex(drafts);
     res.json({ ok:true, published:publishedCount || Number(draft.published_count || questions.length || 0), alreadyPublished:alreadyHasQuestions, resource, draft:publicAiDailyDraft(drafts[idx]) });
+  }catch(err){ next(err); }
+});
+
+app.delete('/api/admin/ai/daily/:id/public', requireAdmin, async (req, res, next) => {
+  try{
+    const drafts = await loadAiDailyIndex();
+    const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
+    if (idx < 0) return res.status(404).json({ message:'PDF quotidien introuvable' });
+    const draft = drafts[idx];
+    if (draft.status !== 'published') return res.status(400).json({ message:'Ce PDF n’est pas publié côté candidat.' });
+    const removedQuestions = await deletePublishedDailyQuestions(draft, { category:draft.category, level:draft.level, is_premium:draft.is_premium });
+    const removedResource = await deleteDailyDraftResource(draft);
+    drafts[idx] = {
+      ...draft,
+      status:'draft',
+      published_at:'',
+      published_count:0,
+      resource_id:'',
+      updated_at:new Date().toISOString()
+    };
+    await saveAiDailyIndex(drafts);
+    res.json({ ok:true, removedQuestions, removedResource, draft:publicAiDailyDraft(drafts[idx]) });
   }catch(err){ next(err); }
 });
 

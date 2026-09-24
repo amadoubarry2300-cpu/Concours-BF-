@@ -1396,6 +1396,7 @@ function renderDailyAiDrafts(){
       <div class="admin-q-actions">
         <button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>
         <button class="pause" onclick="publishDailyAiDraft(${idx})">${d.status === 'published' ? 'Synchroniser' : `Publier les ${Number(d.count || 0)} QCM`}</button>
+        ${d.status === 'published' ? `<button class="delete" onclick="unpublishDailyAiDraft(${idx})">Supprimer chez candidat</button>` : ''}
         <button class="delete" onclick="deleteDailyAiDraft(${idx})">${d.status === 'published' ? 'Retirer de l’admin' : 'Supprimer'}</button>
       </div>
     </div>`).join('');
@@ -1545,6 +1546,22 @@ async function publishDailyAiDraft(index){
     if (isAdmin()) await loadAdminResources().catch(()=>{});
     renderFormations(currentFormFilter);
     toast(data.alreadyPublished ? 'Synchronisation terminée ✅' : 'QCM quotidiens publiés ✅');
+  }catch(err){ toast(err.message); }
+}
+
+async function unpublishDailyAiDraft(index){
+  const d = aiDailyDraftCache[index];
+  if (!d || d.status !== 'published') return;
+  if (!confirm('Supprimer chez le candidat ? Les QCM disparaîtront de Nouveaux QCM et le PDF disparaîtra de Documents & fichiers. Le PDF restera dans l’admin pour correction ou republication.')) return;
+  try{
+    const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/public', { method:'DELETE' });
+    await loadDailyAiDrafts();
+    await loadPublishedQcm(currentPublishedQcmFilter || 'all').catch(()=>{});
+    await loadResources().catch(()=>{});
+    if (isAdmin()) await loadAdminResources().catch(()=>{});
+    const result = $('#aiDailyResult');
+    if (result) result.innerHTML = `<div class="pay-note success">Contenu retiré côté candidat ✅ ${Number(data.removedQuestions || 0)} QCM retiré${Number(data.removedQuestions || 0)>1?'s':''}. Le PDF peut être corrigé ou supprimé dans l’admin.</div>`;
+    toast('Supprimé chez le candidat ✅');
   }catch(err){ toast(err.message); }
 }
 
