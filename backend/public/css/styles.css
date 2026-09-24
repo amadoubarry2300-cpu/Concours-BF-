@@ -264,6 +264,12 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .account-chip{display:flex;align-items:center;gap:6px;background:#fff;color:var(--ink-soft);font-weight:800;font-size:.74rem;padding:7px 10px;border-radius:999px;border:1px solid var(--line);box-shadow:var(--shadow);white-space:nowrap;transition:all .2s}
 .account-chip:hover{transform:translateY(-1px);border-color:var(--green)}
 .account-chip.premium{background:linear-gradient(135deg,var(--gold),#fbbf24);color:#78350f;border-color:transparent;box-shadow:0 8px 18px rgba(245,166,35,.28)}
+.topbar.user-connected{background:linear-gradient(180deg,rgba(236,253,245,.96),rgba(247,248,250,.92));border-bottom-color:rgba(14,159,110,.18);box-shadow:0 8px 24px rgba(14,159,110,.08)}
+.account-chip.signed-in{position:relative}
+.account-chip.signed-in:not(.premium){background:#ecfdf5;color:#065f46;border-color:rgba(14,159,110,.28);box-shadow:0 8px 18px rgba(14,159,110,.14)}
+.account-chip.signed-in:not(.premium) .chip-avatar{box-shadow:0 0 0 2px rgba(14,159,110,.20)}
+.account-chip.signed-in::after{content:"";position:absolute;right:5px;top:5px;width:8px;height:8px;border-radius:999px;background:#10b981;box-shadow:0 0 0 2px #fff}
+.home-connected .smart-dashboard{margin-top:12px;margin-bottom:18px}
 .btn:disabled{opacity:.65;cursor:not-allowed;transform:none!important}
 
 .premium-home{margin:16px 20px;background:linear-gradient(135deg,#111827,#374151);color:#fff;border-radius:22px;padding:16px;display:flex;align-items:center;gap:13px;box-shadow:var(--shadow-lg);position:relative;overflow:hidden;animation:screenIn .42s cubic-bezier(.22,1,.36,1)}

@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=revision-fiches-1">
+<link rel="stylesheet" href="css/styles.css?v=connected-home-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -30,6 +30,8 @@
       <h1>Ne dis pas que tu as travaillé.<br><span>Prouve-le.</span></h1>
       <p>Ton passeport de préparation mesure ton entraînement réel, question après question.</p>
     </div>
+
+    <div class="smart-dashboard" id="smartDashboardCard" style="display:none"></div>
 
     <div class="features">
       <div class="feature"><img class="feature-img" src="img/students-group.jpg" alt="Étudiants en groupe"><h3>+5000 questions</h3><p>Corrections et explications incluses.</p></div>
@@ -67,8 +69,6 @@
         </div>
       </div>
     </div>
-
-    <div class="smart-dashboard" id="smartDashboardCard" style="display:none"></div>
 
     <div class="section">
       <div class="section-head"><h2>Tes outils</h2></div>
@@ -547,6 +547,7 @@
       <div class="account-actions-panel">
         <button class="account-action" onclick="show('subscription')"><span>⭐</span><div><b>Gérer mon accès</b><small>Premium, paiement et renouvellement</small></div><em>›</em></button>
         <button class="account-action" onclick="show('passport')"><span>🛂</span><div><b>Mon passeport</b><small>Niveaux, badges et progression</small></div><em>›</em></button>
+        <button class="account-action" onclick="show('revision')"><span>📘</span><div><b>Fiches courtes</b><small>Résumés rapides avant les QCM</small></div><em>›</em></button>
         <button class="account-action" onclick="show('stats')"><span>📊</span><div><b>Mes statistiques</b><small>Scores et progression par matière</small></div><em>›</em></button>
         <button class="account-action" id="adminPanelBtn" onclick="show('admin')" style="display:none"><span>🛠️</span><div><b>Administration</b><small>Publier et gérer les QCM</small></div><em>›</em></button>
       </div>
@@ -1108,7 +1109,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=revision-fiches-1"></script>
-<script src="js/app.js?v=revision-fiches-1"></script>
+<script src="js/questions.js?v=connected-home-1"></script>
+<script src="js/app.js?v=connected-home-1"></script>
 </body>
 </html>

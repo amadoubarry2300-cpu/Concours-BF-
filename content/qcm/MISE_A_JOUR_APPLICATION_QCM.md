@@ -311,3 +311,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Les candidats peuvent lire des résumés rapides par matière, filtrer par catégorie, puis lancer un QCM lié.
 - Ajout d’un suivi local des fiches déjà lues et d’une fiche conseillée selon la priorité de révision.
 - Les matières Premium gardent le cadenas au moment de lancer les QCM associés.
+
+
+## 2026-09-24 — Accueil candidat connecté mieux différencié
+
+- Le tableau de bord candidat apparaît maintenant juste sous le bloc principal de l’accueil après connexion.
+- La barre supérieure et le bouton profil changent visuellement quand le candidat est connecté, sans ajouter de bloc inutile au milieu de l’accueil.
+- Ajout d’un raccourci **Fiches courtes** dans l’espace compte pour mieux organiser les actions du candidat.

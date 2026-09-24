@@ -485,10 +485,16 @@ function setAuthMode(mode){
 }
 
 function renderAccount(){
+  const connected = Boolean(state.user);
+  $('#topbar')?.classList.toggle('user-connected', connected);
+  $('#home')?.classList.toggle('home-connected', connected);
+  document.body.classList.toggle('candidate-connected', connected);
   const chip = $('#accountChip');
   const name = displayUserName();
   if (chip){
+    chip.classList.toggle('signed-in', connected);
     chip.classList.toggle('premium', isPremium());
+    chip.setAttribute('aria-label', connected ? 'Profil candidat' : 'Connexion');
     if (state.user){
       const fullName = (name || state.user.displayName || 'Profil').trim();
       const avatar = avatarDataForUser()
