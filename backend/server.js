@@ -855,7 +855,7 @@ function extractJsonFromAi(text){
 }
 
 const AI_QCM_FORBIDDEN_PATTERNS = [
-  /\battention\b/i,
+  /\battention\s*(?:[,!:;.-]|c[’']est|ceci|cela)/i,
   /\bI\.?A\.?\b|\bintelligence artificielle\b|\bartificial intelligence\b/i,
   /\bbrouillon\b|avant\s+publication|par\s+l[’\']?administrateur/i,
   /\b(?:à|a)\s+v[ée]rifier\b|\bv[ée]rifiez\b|doit\s+être\s+v[ée]rifi[ée]/i,
@@ -996,7 +996,7 @@ function promptAvoidBlock(avoidQuestions = [], existingCount = 0){
   const rows = (avoidQuestions || [])
     .map(q => strictCleanAiQcmText(q, 220))
     .filter(Boolean)
-    .slice(0, 90);
+    .slice(0, 35);
   const header = existingCount > 0
     ? `\nLa base de l'application contient déjà environ ${existingCount} QCM. Tu dois créer des questions nouvelles, sans reformuler les anciennes.`
     : '';
@@ -1112,10 +1112,10 @@ function qcmGenerationAngle(category, attempt){
 function buildAvoidQuestions(existingRows, existingTexts, category, level, questions, attempt){
   const relevant = relevantExistingQcmTexts(existingRows, category, level);
   const avoid = [];
-  avoid.push(...rotatingAvoidSample(relevant, attempt * 17, 65));
-  avoid.push(...rotatingAvoidSample(existingTexts, attempt * 53, 25));
+  avoid.push(...rotatingAvoidSample(relevant, attempt * 17, 24));
+  avoid.push(...rotatingAvoidSample(existingTexts, attempt * 53, 8));
   avoid.push(...questions.map(q => q.question_text));
-  return Array.from(new Set(avoid.map(q => strictCleanAiQcmText(q, 220)).filter(Boolean))).slice(0, 100);
+  return Array.from(new Set(avoid.map(q => strictCleanAiQcmText(q, 180)).filter(Boolean))).slice(0, 40);
 }
 
 async function validateQuestionsForPublication(questions){
@@ -1143,41 +1143,24 @@ async function generateUniqueAiQuestions({ count, category, level, theme, fromPd
   const questions = [];
   let model = '';
   const defaults = { category, level, is_premium, source:'Réussite Concours BF' };
-  // Lots plus petits + plus nombreux: cela évite les réponses tronquées et permet de compléter vraiment jusqu'à 50.
-  const maxAttempts = Math.max(fromPdf ? 10 : 14, Math.ceil(target / 5) + 8);
+  // Lots efficaces: prompt plus court, moins de saturation, plus de chances d'atteindre 50 dans Vercel.
+  const maxAttempts = Math.max(fromPdf ? 8 : 10, Math.ceil(target / 8) + 5);
   for (let attempt = 0; questions.length < target && attempt < maxAttempts; attempt++){
     const remaining = target - questions.length;
-    const batchCount = Math.min(14, Math.max(6, Math.min(14, remaining + 4)));
+    const batchCount = Math.min(18, Math.max(8, Math.min(18, remaining + 6)));
     const angle = qcmGenerationAngle(category, attempt);
     const avoidQuestions = buildAvoidQuestions(existingRows, existingTexts, category, level, questions, attempt);
-    const batchTheme = `${theme || category}. Angle obligatoire du lot ${attempt + 1}: ${angle}. Produire uniquement des questions nouvelles, sans reprendre les questions déjà listées.`;
+    const batchTheme = `${theme || category}. Angle obligatoire du lot ${attempt + 1}: ${angle}. Avant de répondre, contrôle intérieurement chaque bonne réponse et chaque correction. Retourne seulement des QCM validés, nouveaux et différents.`;
     const prompt = aiQcmPrompt({ count:batchCount, category, level, theme:batchTheme, fromPdf, avoidQuestions, existingCount:existingTexts.length });
     const ai = extraParts.length
       ? await callGeminiGenerateParts([{ text:prompt }, ...extraParts])
       : await callGeminiGenerate(prompt);
     model = ai.model || model;
-    let preliminary = [];
-    try{
-      preliminary = normalizeAiQuestionList(ai.text, defaults, batchCount, { dedupeIndex:createQuestionDedupeIndex() });
-    }catch(err){
-      preliminary = [];
-    }
-    if (!preliminary.length) continue;
-
     let accepted = [];
     try{
-      const verified = await verifyAiQuestionsWithGemini(preliminary, { category, level, theme:batchTheme, count:batchCount });
-      model = verified.model || model;
-      accepted = normalizeAiQuestionList(verified.text || '', defaults, remaining, { dedupeIndex });
+      accepted = normalizeAiQuestionList(ai.text, defaults, remaining, { dedupeIndex });
     }catch(err){
-      console.warn('Vérification IA QCM ignorée:', err.message);
-    }
-
-    // Si le vérificateur renvoie trop peu de questions, on ne bloque pas tout le PDF:
-    // on complète avec les questions préliminaires qui passent encore les contrôles stricts.
-    if (accepted.length < remaining){
-      const fallback = normalizeAiQuestionRows(preliminary, defaults, remaining - accepted.length, { dedupeIndex });
-      accepted.push(...fallback);
+      accepted = [];
     }
     questions.push(...accepted.slice(0, remaining));
   }
@@ -1191,7 +1174,7 @@ async function callGeminiGenerateParts(parts){
   for (const model of models){
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
     for (const jsonMode of [true, false]){
-      const generationConfig = { temperature:0.28, topP:0.85, maxOutputTokens:8192 };
+      const generationConfig = { temperature:0.28, topP:0.85, maxOutputTokens:12000 };
       if (jsonMode) generationConfig.responseMimeType = 'application/json';
       const res = await fetch(url, {
         method:'POST',
@@ -2246,7 +2229,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'strict-ai-50-2',
+    build: 'strict-ai-50-3',
     time: new Date().toISOString()
   });
 });

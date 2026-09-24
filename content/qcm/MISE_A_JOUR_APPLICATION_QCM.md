@@ -370,3 +370,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - La génération quotidienne ne s’arrête plus après un lot partiellement validé.
 - Les 50 QCM sont préparés par petits lots mieux ciblés pour éviter les réponses tronquées et augmenter le nombre de QCM fiables.
 - Les anciennes questions de la même catégorie sont davantage prises en compte pour éviter les répétitions, sans bloquer abusivement les questions réellement différentes.
+
+## 2026-09-24 — Fiabilisation finale des 50 QCM
+
+- La liste anti-répétition transmise au modèle est raccourcie pour éviter de saturer la génération.
+- Les QCM sont produits par lots plus efficaces avec contrôle interne demandé au modèle et contrôle local strict conservé.
+- Le mot “attention” n’est plus rejeté quand il fait partie d’un vrai thème, mais les commentaires internes du type “attention,” restent bloqués.
