@@ -64,7 +64,8 @@ const OFFICIAL_NEWS_SOURCES = process.env.OFFICIAL_NEWS_SOURCES || '';
 const AI_DAILY_INDEX_PATH = 'ai-daily/index.json';
 const AI_DAILY_DEFAULT_CATEGORIES = ['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Psychotechnique','Français','SVT','Greffier / Droit'];
 const AI_DAILY_DEFAULT_LEVELS = ['Concours','BEPC','BAC','CEP','Licence'];
-const AI_DAILY_QCM_COUNT = Math.min(20, Math.max(1, Number(process.env.AI_DAILY_QCM_COUNT || 20)));
+const AI_DAILY_QCM_COUNT = Math.min(50, Math.max(1, Number(process.env.AI_DAILY_QCM_COUNT || 50)));
+const AI_QCM_MAX_COUNT = Math.min(50, Math.max(1, Number(process.env.AI_QCM_MAX_COUNT || 50)));
 const AI_DAILY_GROUP_MODE = ['module','niveau'].includes(String(process.env.AI_DAILY_GROUP_MODE || '').toLowerCase()) ? String(process.env.AI_DAILY_GROUP_MODE).toLowerCase() : 'module';
 const AI_DAILY_CATEGORIES = parseEnvList(process.env.AI_DAILY_QCM_CATEGORIES, AI_DAILY_DEFAULT_CATEGORIES);
 const AI_DAILY_LEVELS = parseEnvList(process.env.AI_DAILY_QCM_LEVELS, AI_DAILY_DEFAULT_LEVELS);
@@ -853,6 +854,101 @@ function extractJsonFromAi(text){
   throw Object.assign(new Error('Réponse IA non lisible'), { status:502 });
 }
 
+const AI_QCM_FORBIDDEN_PATTERNS = [
+  /\battention\b/i,
+  /\bI\.?A\.?\b|\bintelligence artificielle\b|\bartificial intelligence\b/i,
+  /\bbrouillon\b|avant\s+publication|par\s+l[’\']?administrateur/i,
+  /\b(?:à|a)\s+v[ée]rifier\b|\bv[ée]rifiez\b|doit\s+être\s+v[ée]rifi[ée]/i,
+  /\bincertain\b|\bje\s+(?:ne\s+)?(?:peux|vais|dois)\b|\ben tant qu\b/i,
+  /source officielle\s+(?:à|a)\s+relire/i,
+  /pour\s+ce\s+dernier/i,
+  /\(\s*(?:attention|note|remarque|v[ée]rifier|source|incertain)[^)]+\)/i
+];
+
+const QCM_STOPWORDS = new Set('le la les un une des de du d au aux a à en et ou pour par sur dans avec sans ce ces cet cette qui que quoi dont est sont être etre fait font plus moins comme entre afin alors ainsi donc car ne pas se sa son ses leur leurs niveau module concours question reponse réponse bonne vrai faux'.split(/\s+/));
+
+function normalizeQuestionKey(value){
+  return String(value || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[’']/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\s+/)
+    .filter(w => w && w.length > 1 && !QCM_STOPWORDS.has(w))
+    .join(' ')
+    .trim();
+}
+
+function questionTokenSet(value){
+  return new Set(normalizeQuestionKey(value).split(/\s+/).filter(Boolean));
+}
+
+function tokenSimilarity(a, b){
+  if (!a?.size || !b?.size) return 0;
+  let common = 0;
+  for (const token of a) if (b.has(token)) common += 1;
+  const union = a.size + b.size - common;
+  return union ? common / union : 0;
+}
+
+function createQuestionDedupeIndex(texts = []){
+  const index = { keys:new Set(), samples:[] };
+  for (const text of texts) addQuestionToDedupeIndex(text, index);
+  return index;
+}
+
+function addQuestionToDedupeIndex(text, index){
+  if (!index) return;
+  const key = normalizeQuestionKey(text);
+  if (!key || index.keys.has(key)) return;
+  const tokens = questionTokenSet(text);
+  index.keys.add(key);
+  if (tokens.size) index.samples.push({ key, tokens, size:tokens.size });
+}
+
+function isDuplicateQuestionText(text, index){
+  if (!index) return false;
+  const key = normalizeQuestionKey(text);
+  if (!key) return true;
+  if (index.keys.has(key)) return true;
+  const tokens = questionTokenSet(text);
+  if (tokens.size < 4) return false;
+  for (const sample of index.samples){
+    if (!sample?.tokens?.size) continue;
+    if (Math.abs(sample.size - tokens.size) > Math.max(7, Math.ceil(Math.max(sample.size, tokens.size) * 0.45))) continue;
+    if (tokenSimilarity(tokens, sample.tokens) >= 0.84) return true;
+  }
+  return false;
+}
+
+function hasForbiddenAiQcmText(value){
+  const text = String(value || '');
+  return AI_QCM_FORBIDDEN_PATTERNS.some(re => re.test(text));
+}
+
+function strictCleanAiQcmText(value, max = 1200){
+  return cleanText(value, max)
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([?.!,;:])/g, '$1')
+    .trim();
+}
+
+function aiQuestionQualityIssue(q, dedupeIndex){
+  const question = strictCleanAiQcmText(q?.question_text, 1200);
+  const opts = [q?.option_a, q?.option_b, q?.option_c, q?.option_d].map(v => strictCleanAiQcmText(v, 500));
+  const explanation = strictCleanAiQcmText(q?.explanation, 3000);
+  if (question.length < 24) return 'Question trop courte';
+  if (opts.some(o => o.length < 1)) return 'Option manquante';
+  if (new Set(opts.map(normalizeQuestionKey)).size !== 4) return 'Options répétées';
+  if (!Number.isInteger(Number(q?.correct_answer)) || Number(q.correct_answer) < 0 || Number(q.correct_answer) > 3) return 'Bonne réponse invalide';
+  if (explanation.length < 22) return 'Correction trop courte';
+  const allText = [question, ...opts, explanation].join(' ');
+  if (hasForbiddenAiQcmText(allText)) return 'Contenu interne ou commentaire IA détecté';
+  if (/\b(?:toutes?\s+les\s+r[ée]ponses|aucune\s+des\s+r[ée]ponses)\b/i.test(allText)) return 'Option trop vague';
+  if (isDuplicateQuestionText(question, dedupeIndex)) return 'Question déjà existante ou trop proche';
+  return '';
+}
+
 function normalizeAiQuestion(item, defaults = {}){
   const options = Array.isArray(item?.options) ? item.options : [item?.option_a, item?.option_b, item?.option_c, item?.option_d];
   const correctRaw = item?.correct_answer ?? item?.answer_index ?? item?.answer ?? item?.correctIndex;
@@ -862,35 +958,155 @@ function normalizeAiQuestion(item, defaults = {}){
     correct = ({A:0, B:1, C:2, D:3})[label] ?? -1;
   }
   return adminQuestionPayload({
-    category:item?.category || defaults.category,
-    level:item?.level || defaults.level,
-    question_text:item?.question_text || item?.question,
-    options,
+    category:strictCleanAiQcmText(item?.category || defaults.category, 80),
+    level:strictCleanAiQcmText(item?.level || defaults.level, 40),
+    question_text:strictCleanAiQcmText(item?.question_text || item?.question, 1200),
+    options:options.map(opt => strictCleanAiQcmText(opt, 500)),
     correct_answer:correct,
-    explanation:item?.explanation || item?.correction || item?.reason,
-    source:item?.source || 'Créé avec l’aide de l’IA',
+    explanation:strictCleanAiQcmText(item?.explanation || item?.correction || item?.reason, 3000),
+    source:strictCleanAiQcmText(item?.source || defaults.source || 'Réussite Concours BF', 500),
     is_premium:defaults.is_premium,
     is_active:false
   });
 }
 
-function normalizeAiQuestionList(aiText, defaults, count){
-  const parsed = extractJsonFromAi(aiText);
-  const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.questions) ? parsed.questions : []);
+function normalizeAiQuestionRows(rows, defaults, count, { dedupeIndex } = {}){
   const questions = [];
-  for (const row of rows){
+  const index = dedupeIndex || createQuestionDedupeIndex();
+  for (const row of (Array.isArray(rows) ? rows : [])){
     try{
-      questions.push(normalizeAiQuestion(row, defaults));
+      const q = normalizeAiQuestion(row, defaults);
+      const issue = aiQuestionQualityIssue(q, index);
+      if (issue) continue;
+      questions.push(q);
+      addQuestionToDedupeIndex(q.question_text, index);
     }catch(err){ /* ignore invalid draft */ }
+    if (questions.length >= count) break;
   }
-  return questions.slice(0, count);
+  return questions;
 }
 
-function aiQcmPrompt({ count, category, level, theme, fromPdf = false }){
+function normalizeAiQuestionList(aiText, defaults, count, options = {}){
+  const parsed = extractJsonFromAi(aiText);
+  const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.questions) ? parsed.questions : []);
+  return normalizeAiQuestionRows(rows, defaults, count, options);
+}
+
+function promptAvoidBlock(avoidQuestions = [], existingCount = 0){
+  const rows = (avoidQuestions || [])
+    .map(q => strictCleanAiQcmText(q, 220))
+    .filter(Boolean)
+    .slice(0, 90);
+  const header = existingCount > 0
+    ? `\nLa base de l'application contient déjà environ ${existingCount} QCM. Tu dois créer des questions nouvelles, sans reformuler les anciennes.`
+    : '';
+  if (!rows.length) return header;
+  return `${header}\nQuestions déjà présentes ou déjà préparées à NE PAS répéter ni reformuler:\n${rows.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
+}
+
+function aiQcmPrompt({ count, category, level, theme, fromPdf = false, avoidQuestions = [], existingCount = 0 }){
   const sourceLine = fromPdf
-    ? `Lis le PDF joint et génère exactement ${count} QCM en français à partir de son contenu. Si une information n'est pas clairement présente dans le PDF, ne l'invente pas.`
+    ? `Lis le PDF joint et génère exactement ${count} QCM en français à partir de son contenu. Si une information n'est pas clairement présente dans le PDF, ne l'invente pas: remplace par une autre question appuyée par le document.`
     : `Génère exactement ${count} QCM en français.`;
-  return `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\n${sourceLine}\nCatégorie: ${category}. Niveau: ${level}. Thème: ${theme}.\nContraintes importantes:\n- chaque QCM doit être factuel, clair, non ambigu, adapté au Burkina Faso si pertinent;\n- niveau exigeant pour une vraie préparation de concours: éviter les questions trop évidentes, les réponses faciles et les généralités;\n- privilégier les situations de raisonnement, les détails utiles, les pièges réalistes et les distracteurs plausibles;\n- pour Burkina Faso, éviter les questions basiques répétitives comme capitale/monnaie sauf si le thème l'exige;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse;\n- correction détaillée et pédagogique;\n- éviter les affirmations incertaines ou inventées;\n- si le thème concerne un fait officiel récent, rester général et mentionner qu'il faut vérifier la source officielle;\n- les QCM générés doivent être relus par l'administrateur avant publication.\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Créé avec l’aide de l’IA"}]}`;
+  return `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\n${sourceLine}\nCatégorie: ${category}. Niveau: ${level}. Thème: ${theme}.\nContraintes strictes:\n- chaque QCM doit être factuel, clair, non ambigu et adapté au Burkina Faso si pertinent;\n- vérifie la bonne réponse avant de l'écrire: si tu as un doute, remplace entièrement la question;\n- ne mélange jamais deux questions en une seule;\n- niveau exigeant pour une vraie préparation de concours: éviter les questions trop évidentes, les réponses faciles et les généralités;\n- privilégier le raisonnement, les détails utiles, les pièges réalistes et les distracteurs plausibles;\n- pour Burkina Faso, éviter les questions basiques répétitives comme capitale/monnaie sauf si le thème l'exige;\n- aucune remarque interne dans les questions, options ou corrections: ne jamais écrire "attention", "à vérifier", "brouillon", "IA", "je ne peux pas", ni une parenthèse qui corrige la consigne;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse, cohérente avec la correction;\n- correction détaillée, pédagogique, concise et affirmative;\n- éviter toute affirmation incertaine ou inventée;\n- aucun doublon et aucune reformulation d'une question existante.\n${promptAvoidBlock(avoidQuestions, existingCount)}\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Réussite Concours BF"}]}`;
+}
+
+function questionRowsForVerification(questions){
+  return (questions || []).map(q => ({
+    category:q.category,
+    level:q.level,
+    question_text:q.question_text,
+    options:[q.option_a, q.option_b, q.option_c, q.option_d],
+    correct_answer:Number(q.correct_answer),
+    explanation:q.explanation,
+    source:'Réussite Concours BF'
+  }));
+}
+
+async function verifyAiQuestionsWithGemini(questions, { category, level, theme, count }){
+  if (!GEMINI_API_KEY || !Array.isArray(questions) || !questions.length) return { text:JSON.stringify({ questions:questionRowsForVerification(questions) }), model:'' };
+  const prompt = `Tu es vérificateur pédagogique pour des QCM de concours au Burkina Faso. Vérifie factuellement chaque question, la bonne réponse et la correction. Supprime ou corrige toute question fausse, ambiguë, trop facile, répétitive ou contenant une remarque interne. N'écris jamais "attention", "à vérifier", "IA", "brouillon" ou un commentaire de doute. Si une question n'est pas sûre, remplace-la par une question fiable du même thème. Retourne au maximum ${count} QCM validés. Catégorie: ${category}. Niveau: ${level}. Thème: ${theme}. Réponds uniquement en JSON valide: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Réussite Concours BF"}]}\n\nQCM à contrôler:\n${JSON.stringify(questionRowsForVerification(questions))}`;
+  return callGeminiGenerate(prompt);
+}
+
+function rotatingAvoidSample(texts, offset = 0, limit = 70){
+  const clean = (texts || []).map(t => strictCleanAiQcmText(t, 220)).filter(Boolean);
+  if (clean.length <= limit) return clean;
+  const rows = [];
+  for (let i = 0; i < limit; i++) rows.push(clean[(offset + i * 37) % clean.length]);
+  return rows;
+}
+
+async function collectExistingQcmTexts({ includeDaily = true } = {}){
+  const texts = [];
+  loadLocalQcmBank().forEach(q => { if (q?.question_text) texts.push(q.question_text); });
+  if (supabaseReady()){
+    const rows = await supabaseRequest('questions?select=question_text&limit=10000').catch(() => []);
+    if (Array.isArray(rows)) rows.forEach(q => { if (q?.question_text) texts.push(q.question_text); });
+  }
+  if (includeDaily){
+    const drafts = await loadAiDailyIndex().catch(() => []);
+    if (Array.isArray(drafts)){
+      drafts.forEach(d => (Array.isArray(d.questions) ? d.questions : []).forEach(q => { if (q?.question_text) texts.push(q.question_text); }));
+    }
+  }
+  return Array.from(new Set(texts.map(t => strictCleanAiQcmText(t, 1200)).filter(Boolean)));
+}
+
+async function validateQuestionsForPublication(questions){
+  const existingTexts = await collectExistingQcmTexts({ includeDaily:false });
+  const dedupeIndex = createQuestionDedupeIndex(existingTexts);
+  const accepted = [];
+  const rejected = [];
+  for (const q of (Array.isArray(questions) ? questions : [])){
+    const issue = aiQuestionQualityIssue(q, dedupeIndex);
+    if (issue){
+      rejected.push({ question:q?.question_text || '', reason:issue });
+      continue;
+    }
+    accepted.push(q);
+    addQuestionToDedupeIndex(q.question_text, dedupeIndex);
+  }
+  return { accepted, rejected, existingCount:existingTexts.length };
+}
+
+async function generateUniqueAiQuestions({ count, category, level, theme, fromPdf = false, extraParts = [], is_premium = false }){
+  const target = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(count || 1)));
+  const existingTexts = await collectExistingQcmTexts();
+  const dedupeIndex = createQuestionDedupeIndex(existingTexts);
+  const questions = [];
+  let model = '';
+  const defaults = { category, level, is_premium, source:'Réussite Concours BF' };
+  const maxAttempts = Math.max(3, Math.ceil(target / 18) + 2);
+  for (let attempt = 0; questions.length < target && attempt < maxAttempts; attempt++){
+    const remaining = target - questions.length;
+    const batchCount = Math.min(AI_QCM_MAX_COUNT, Math.max(10, Math.min(25, remaining + 8)));
+    const avoidQuestions = rotatingAvoidSample(existingTexts, attempt * 53, 55).concat(questions.map(q => q.question_text));
+    const batchTheme = `${theme || category}. Lot ${attempt + 1}: produire uniquement des questions nouvelles, différentes des lots précédents.`;
+    const prompt = aiQcmPrompt({ count:batchCount, category, level, theme:batchTheme, fromPdf, avoidQuestions, existingCount:existingTexts.length });
+    const ai = extraParts.length
+      ? await callGeminiGenerateParts([{ text:prompt }, ...extraParts])
+      : await callGeminiGenerate(prompt);
+    model = ai.model || model;
+    let preliminary = [];
+    try{
+      preliminary = normalizeAiQuestionList(ai.text, defaults, batchCount, { dedupeIndex:createQuestionDedupeIndex() });
+    }catch(err){
+      preliminary = [];
+    }
+    if (!preliminary.length) continue;
+    let verifiedText = JSON.stringify({ questions:questionRowsForVerification(preliminary) });
+    try{
+      const verified = await verifyAiQuestionsWithGemini(preliminary, { category, level, theme, count:batchCount });
+      verifiedText = verified.text || verifiedText;
+      model = verified.model || model;
+    }catch(err){
+      console.warn('Vérification IA QCM ignorée:', err.message);
+    }
+    const accepted = normalizeAiQuestionList(verifiedText, defaults, remaining, { dedupeIndex });
+    questions.push(...accepted);
+  }
+  return { questions:questions.slice(0, target), model, existingCount:existingTexts.length };
 }
 
 async function callGeminiGenerateParts(parts){
@@ -900,7 +1116,7 @@ async function callGeminiGenerateParts(parts){
   for (const model of models){
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
     for (const jsonMode of [true, false]){
-      const generationConfig = { temperature:0.35, topP:0.9, maxOutputTokens:6000 };
+      const generationConfig = { temperature:0.28, topP:0.85, maxOutputTokens:8192 };
       if (jsonMode) generationConfig.responseMimeType = 'application/json';
       const res = await fetch(url, {
         method:'POST',
@@ -947,7 +1163,7 @@ function daysSinceEpoch(dateId){
 }
 
 function dailyAiPlan(dateId = todayId(), overrides = {}){
-  const count = Math.min(20, Math.max(1, Number(overrides.count || AI_DAILY_QCM_COUNT || 20)));
+  const count = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(overrides.count || AI_DAILY_QCM_COUNT || 50)));
   const categories = AI_DAILY_CATEGORIES.length ? AI_DAILY_CATEGORIES : AI_DAILY_DEFAULT_CATEGORIES;
   const levels = AI_DAILY_LEVELS.length ? AI_DAILY_LEVELS : AI_DAILY_DEFAULT_LEVELS;
   const day = daysSinceEpoch(dateId);
@@ -1078,7 +1294,7 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
       info:{
         Title:cleanTitle,
         Author:'Réussite Concours BF',
-        Subject:'QCM quotidien à vérifier avant publication'
+        Subject:'QCM quotidien corrigé'
       }
     });
     const fonts = setupPdfFonts(doc);
@@ -1187,7 +1403,7 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
       font('bold', 13, '#fbbf24').text(`NIVEAU : ${levelName.toUpperCase()}`, 304, 657, { width:198, align:'right', ellipsis:true });
 
       doc.roundedRect(72, 710, 450, 39, 12).fill('#ecfdf5').strokeColor('#0e9f6e').lineWidth(1).stroke();
-      font('bold', 14, '#065f46').text('Document de révision à vérifier avant publication', 88, 721, { width:418, align:'center' });
+      font('bold', 14, '#065f46').text('QCM corrigés pour entraînement intensif', 88, 721, { width:418, align:'center' });
       font('bold', 13.5, '#d71920').text('BURKINA FASO', 54, pageH - 72, { width:220, align:'center', lineBreak:false });
       font('regular', 9.2, '#057a55').text('Ouagadougou • reussiteconcoursbf@yahoo.com', 300, pageH - 69, { width:236, align:'left', lineBreak:false });
     }
@@ -1259,10 +1475,17 @@ async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
   const drafts = await loadAiDailyIndex();
   const existing = drafts.find(d => d.date === plan.date && d.status !== 'deleted');
   if (existing && !force) return { draft:existing, skipped:true, plan };
-  const prompt = `${aiQcmPrompt({ count:plan.count, category:plan.category, level:plan.level, theme:plan.theme })}\n\nImportant pour cette generation quotidienne: produire un sujet exigeant, de haut niveau, utile pour une vraie preparation. Evite les questions trop simples ou scolaires. Les corrections doivent etre detaillees mais concises pour tenir dans un PDF de relecture. Source: Brouillon quotidien a verifier.`;
-  const ai = await callGeminiGenerate(prompt);
-  const questions = normalizeAiQuestionList(ai.text, { category:plan.category, level:plan.level, is_premium:plan.is_premium }, plan.count);
-  if (!questions.length) throw Object.assign(new Error('Aucun QCM quotidien valide généré'), { status:502 });
+  const generated = await generateUniqueAiQuestions({
+    count:plan.count,
+    category:plan.category,
+    level:plan.level,
+    theme:plan.theme,
+    is_premium:plan.is_premium
+  });
+  const questions = generated.questions;
+  if (questions.length < plan.count){
+    throw Object.assign(new Error(`Seulement ${questions.length}/${plan.count} QCM fiables et non répétitifs ont été validés. Relance la génération avec un thème plus précis.`), { status:502 });
+  }
   const title = `QCM quotidien — ${plan.category} — ${plan.level} — ${plan.date}`;
   const pdfBuffer = await buildQcmDraftPdf({ title, date:plan.date, category:plan.category, level:plan.level, questions });
   const id = 'daily-' + plan.date.replace(/\D/g, '') + '-' + crypto.randomBytes(4).toString('hex');
@@ -1278,7 +1501,7 @@ async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
     count:questions.length,
     is_premium:plan.is_premium,
     status:'draft',
-    model:ai.model,
+    model:generated.model,
     file_name:fileName,
     mime_type:'application/pdf',
     size:pdfBuffer.length,
@@ -1304,7 +1527,10 @@ function cronAuthorized(req){
 
 const DEFAULT_OFFICIAL_NEWS_SOURCES = [
   { name:'Ministère de la Fonction publique', url:'https://www.fonction-publique.gov.bf/accueil/actualites' },
+  { name:'Ministère de la Fonction publique — Actualités', url:'https://www.fonction-publique.gov.bf/informations/actualites' },
   { name:'Ministère de la Fonction publique — Accueil', url:'https://www.fonction-publique.gov.bf/accueil' },
+  { name:'Gouvernement du Burkina Faso — Actualités', url:'https://gouvernement.gov.bf/actualites/' },
+  { name:'Gouvernement du Burkina Faso — Communiqués', url:'https://gouvernement.gov.bf/communiques/' },
   { name:'Plateforme eConcours', url:'https://www.econcours.gov.bf/' },
   { name:'Plateforme eConcours professionnels', url:'https://www.econcours-pro.gov.bf/' }
 ];
@@ -1527,6 +1753,174 @@ async function buildOfficialNewsDrafts(limit = 6){
       .filter(item => isCurrentOfficialCandidate({ title:item.title, url:item.sourceUrl, snippet:`${item.summary} ${item.content} ${item.deadline}` }, now));
   }
   return { candidates:unique, items:items.slice(0, limit), today:todayIso, currentYear };
+}
+
+function isLikelyPdfUrl(url){
+  return /\.pdf(?:[?#].*)?$/i.test(String(url || ''));
+}
+
+function officialPdfFileName(url, title = 'communique'){
+  let base = '';
+  try{
+    const pathname = new URL(url).pathname.split('/').pop() || '';
+    base = decodeURIComponent(pathname);
+  }catch{}
+  if (!/\.pdf$/i.test(base)) base = `${safeFileName(title || 'communique')}.pdf`;
+  return safeFileName(base || 'communique.pdf');
+}
+
+async function fetchOfficialUrl(url, { timeoutMs = 15000, accept = '*/*' } = {}){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try{
+    return await fetch(url, {
+      signal:controller.signal,
+      headers:{
+        'User-Agent':'ReussiteConcoursBF/1.0 (+veille officielle Burkina Faso)',
+        'Accept':accept
+      }
+    });
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+function findOfficialPdfUrlInHtml(html, baseUrl, title = ''){
+  const rows = [];
+  const titleKey = normalizeQuestionKey(title);
+  const titleTokens = questionTokenSet(title);
+  const anchorRe = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = anchorRe.exec(String(html || '')))){
+    const url = absoluteSourceUrl(match[1], baseUrl);
+    if (!url || !isLikelyPdfUrl(url)) continue;
+    const label = stripHtml(match[2]).replace(/\s+/g, ' ').trim();
+    const context = stripHtml(String(html || '').slice(Math.max(0, match.index - 500), Math.min(String(html || '').length, anchorRe.lastIndex + 500)));
+    const haystack = `${label} ${context} ${url}`;
+    let score = 1;
+    if (/communiqu|concours|recrut|inscription|resultat|résultat|admissibil|calendrier/i.test(haystack)) score += 4;
+    if (/pdf|télécharger|telecharger|ci[- ]?joint|arrêté|arrete/i.test(haystack)) score += 2;
+    if (titleKey && tokenSimilarity(titleTokens, questionTokenSet(haystack)) > 0.2) score += 3;
+    rows.push({ url, score });
+  }
+  rows.sort((a, b) => b.score - a.score);
+  return rows[0]?.url || '';
+}
+
+async function resolveOfficialPdfUrl(item){
+  const direct = cleanUrl(item?.sourcePdfUrl || item?.pdfUrl || '');
+  if (direct && isLikelyPdfUrl(direct)) return direct;
+  const sourceUrl = cleanUrl(item?.sourceUrl || item?.url || '');
+  if (!sourceUrl) return '';
+  if (isLikelyPdfUrl(sourceUrl)) return sourceUrl;
+  try{
+    const res = await fetchOfficialUrl(sourceUrl, { accept:'text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.7' });
+    const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    if (res.ok && (contentType.includes('pdf') || buffer.slice(0, 4).toString('utf8') === '%PDF')) return sourceUrl;
+    if (!res.ok || !/html|text|xml/.test(contentType || 'text/html')) return '';
+    const html = buffer.toString('utf8');
+    return findOfficialPdfUrlInHtml(html, sourceUrl, item?.title || '');
+  }catch(err){
+    console.warn('Recherche PDF officiel impossible:', err.message);
+    return '';
+  }
+}
+
+async function downloadOfficialPdfAttachment(item){
+  const pdfUrl = await resolveOfficialPdfUrl(item);
+  if (!pdfUrl) return null;
+  try{
+    const res = await fetchOfficialUrl(pdfUrl, { timeoutMs:20000, accept:'application/pdf,*/*;q=0.7' });
+    if (!res.ok) return null;
+    const contentType = String(res.headers.get('content-type') || 'application/pdf').split(';')[0].trim() || 'application/pdf';
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    if (!buffer.length || buffer.length > MAX_RESOURCE_FILE_BYTES) return null;
+    const looksPdf = contentType.toLowerCase().includes('pdf') || buffer.slice(0, 4).toString('utf8') === '%PDF';
+    if (!looksPdf) return null;
+    return {
+      url:pdfUrl,
+      fileName:officialPdfFileName(pdfUrl, item?.title || 'communique'),
+      mimeType:'application/pdf',
+      buffer
+    };
+  }catch(err){
+    console.warn('Téléchargement PDF officiel impossible:', err.message);
+    return null;
+  }
+}
+
+function stagedNewsDraftPayload(item){
+  const normalized = normalizeOfficialNewsDraft(item);
+  return adminNewsPayload({
+    title:normalized.title,
+    type:normalized.type || 'Communiqué',
+    organization:normalized.organization || normalized.sourceName || 'Source officielle',
+    deadline:normalized.deadline || '',
+    status:normalized.status || 'Info',
+    summary:normalized.summary || normalized.content,
+    content:normalized.content || normalized.summary,
+    sourceUrl:normalized.sourceUrl,
+    is_active:false
+  });
+}
+
+async function stageOfficialNewsDrafts(items, authorPhone = 'system'){
+  if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour préparer les communiqués officiels'), { status:503 });
+  const news = await loadNewsIndex();
+  const staged = [];
+  const now = new Date().toISOString();
+  for (const raw of (Array.isArray(items) ? items : [])){
+    try{
+      const payload = stagedNewsDraftPayload(raw);
+      const titleKey = normalizeQuestionKey(payload.title);
+      let idx = news.findIndex(item => payload.source_url && item.source_url === payload.source_url);
+      if (idx < 0) idx = news.findIndex(item => normalizeQuestionKey(item.title) === titleKey && titleKey);
+      const existing = idx >= 0 ? news[idx] : null;
+      const id = existing?.id || crypto.randomUUID();
+      let record = {
+        ...(existing || {}),
+        ...payload,
+        id,
+        official_draft:true,
+        source_name:raw.sourceName || raw.organization || existing?.source_name || 'Source officielle',
+        is_active:existing ? existing.is_active !== false : false,
+        author_phone:existing?.author_phone || authorPhone || 'system',
+        created_at:existing?.created_at || now,
+        updated_at:now
+      };
+      if (!record.storage_path){
+        const attachment = await downloadOfficialPdfAttachment({ ...raw, sourceUrl:payload.source_url });
+        if (attachment?.buffer?.length){
+          const objectPath = `news/files/${new Date().getFullYear()}/${id}-${attachment.fileName}`;
+          await uploadResourceObject(objectPath, attachment.buffer, attachment.mimeType || 'application/pdf');
+          record = {
+            ...record,
+            file_name:attachment.fileName,
+            mime_type:attachment.mimeType || 'application/pdf',
+            size:attachment.buffer.length,
+            storage_path:objectPath,
+            source_pdf_url:attachment.url,
+            updated_at:new Date().toISOString()
+          };
+        }
+      }
+      if (idx >= 0) news[idx] = record;
+      else news.unshift(record);
+      staged.push({
+        ...publicNews(record),
+        preparedId:id,
+        sourceName:record.source_name || raw.sourceName || record.organization || 'Source officielle',
+        sourcePdfUrl:record.source_pdf_url || ''
+      });
+    }catch(err){
+      console.warn('Préparation actualité officielle ignorée:', err.message);
+    }
+  }
+  await saveNewsIndex(news);
+  return staged;
 }
 
 function requireCinetPayConfig(){
@@ -2267,7 +2661,11 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
     const publishCategory = cleanText(req.body?.category || draft.category || '', 80) || draft.category;
     const publishLevel = cleanText(req.body?.level || draft.level || '', 40) || draft.level;
     const publishPremium = req.body?.is_premium === undefined ? Boolean(draft.is_premium) : Boolean(req.body?.is_premium);
-    const payload = questions.map(q => adminQuestionPayload({
+    const checked = await validateQuestionsForPublication(questions.map(q => ({ ...q, category:publishCategory || q.category, level:publishLevel || q.level })));
+    if (checked.rejected.length){
+      return res.status(409).json({ message:`Publication bloquée : ${checked.rejected.length} QCM déjà existant(s), trop proche(s) ou non conforme(s). Régénère un nouveau PDF strict.`, rejected:checked.rejected.slice(0, 5) });
+    }
+    const payload = checked.accepted.map(q => adminQuestionPayload({
       ...q,
       category:publishCategory || q.category,
       level:publishLevel || q.level,
@@ -2313,13 +2711,12 @@ app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
     const category = cleanText(req.body?.category || 'Culture générale', 80);
     const level = cleanText(req.body?.level || 'Concours', 40);
     const theme = cleanText(req.body?.theme || category, 200);
-    const count = Math.min(10, Math.max(1, Number(req.body?.count || 5)));
+    const count = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(req.body?.count || 5)));
     const isPremiumDraft = Boolean(req.body?.is_premium);
-    const prompt = aiQcmPrompt({ count, category, level, theme });
-    const ai = await callGeminiGenerate(prompt);
-    const questions = normalizeAiQuestionList(ai.text, { category, level, is_premium:isPremiumDraft }, count);
-    if (!questions.length) return res.status(502).json({ message:'L’IA n’a pas produit de QCM valide. Réessaie avec un thème plus précis.' });
-    res.json({ ok:true, model:ai.model, questions });
+    const generated = await generateUniqueAiQuestions({ count, category, level, theme, is_premium:isPremiumDraft });
+    const questions = generated.questions;
+    if (questions.length < count) return res.status(502).json({ message:`Seulement ${questions.length}/${count} QCM fiables et non répétitifs ont été validés. Précise le thème ou relance.` });
+    res.json({ ok:true, model:generated.model, existingCount:generated.existingCount, questions });
   }catch(err){ next(err); }
 });
 
@@ -2336,16 +2733,20 @@ app.post('/api/admin/ai/qcm-pdf', requireAdmin, express.raw({ type:() => true, l
     const category = headerText(req, 'x-ai-category', 80) || 'Culture générale';
     const level = headerText(req, 'x-ai-level', 40) || 'Concours';
     const theme = headerText(req, 'x-ai-theme', 200) || `PDF ${fileName}`;
-    const count = Math.min(10, Math.max(1, Number(req.headers['x-ai-count'] || 5)));
+    const count = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(req.headers['x-ai-count'] || 5)));
     const isPremiumDraft = String(req.headers['x-ai-is-premium'] || '').toLowerCase() === 'true';
-    const prompt = aiQcmPrompt({ count, category, level, theme, fromPdf:true });
-    const ai = await callGeminiGenerateParts([
-      { text:prompt },
-      { inline_data:{ mime_type:mimeType || 'application/pdf', data:buffer.toString('base64') } }
-    ]);
-    const questions = normalizeAiQuestionList(ai.text, { category, level, is_premium:isPremiumDraft }, count);
-    if (!questions.length) return res.status(502).json({ message:'L’IA n’a pas pu produire de QCM valide depuis ce PDF. Vérifie que le PDF contient du texte lisible.' });
-    res.json({ ok:true, model:ai.model, fileName, questions });
+    const generated = await generateUniqueAiQuestions({
+      count,
+      category,
+      level,
+      theme,
+      fromPdf:true,
+      is_premium:isPremiumDraft,
+      extraParts:[{ inline_data:{ mime_type:mimeType || 'application/pdf', data:buffer.toString('base64') } }]
+    });
+    const questions = generated.questions;
+    if (questions.length < count) return res.status(502).json({ message:`Seulement ${questions.length}/${count} QCM fiables et non répétitifs ont été validés depuis ce PDF. Vérifie que le PDF contient assez de texte ou réduis le nombre.` });
+    res.json({ ok:true, model:generated.model, existingCount:generated.existingCount, fileName, questions });
   }catch(err){ next(err); }
 });
 
@@ -2354,17 +2755,33 @@ app.post('/api/admin/ai/news-scan', requireAdmin, async (req, res, next) => {
   try{
     const limit = Math.min(8, Math.max(1, Number(req.body?.limit || 6)));
     const result = await buildOfficialNewsDrafts(limit);
+    const stagedItems = result.items.length ? await stageOfficialNewsDrafts(result.items, req.phone) : [];
+    const items = stagedItems.length ? stagedItems : result.items;
     let notificationSent = false;
-    if (result.items.length && emailNotificationsConfigured() && req.profile?.email){
-      const text = result.items.map((item, i) => `${i + 1}. ${item.title}\n${item.summary}\nSource: ${item.sourceUrl}`).join('\n\n');
+    if (items.length && emailNotificationsConfigured() && req.profile?.email){
+      const text = items.map((item, i) => `${i + 1}. ${item.title}
+${item.summary}
+Source: ${item.sourceUrl}`).join('\n\n');
       notificationSent = await sendEmailNotification({
         to:req.profile.email,
-        subject:`${result.items.length} nouvelle(s) concours à relire`,
-        text:`Réussite Concours BF a détecté des actualités officielles à relire:\n\n${text}`,
-        html:`<p>Réussite Concours BF a détecté des actualités officielles à relire :</p><ol>${result.items.map(item => `<li><b>${htmlEscape(item.title)}</b><br>${htmlEscape(item.summary)}<br><a href="${htmlEscape(item.sourceUrl)}">Source officielle</a></li>`).join('')}</ol>`
+        subject:`${items.length} nouvelle(s) concours à relire`,
+        text:`Réussite Concours BF a détecté des actualités officielles à relire:
+
+${text}`,
+        html:`<p>Réussite Concours BF a détecté des actualités officielles à relire :</p><ol>${items.map(item => `<li><b>${htmlEscape(item.title)}</b><br>${htmlEscape(item.summary)}<br><a href="${htmlEscape(item.sourceUrl)}">Source officielle</a>${item.hasPdf ? '<br>PDF officiel joint dans le brouillon.' : ''}</li>`).join('')}</ol>`
       }).catch(err => { console.warn('Notification veille IA:', err.message); return false; });
     }
-    res.json({ ok:true, sources:officialNewsSources(), found:result.candidates.length, items:result.items, notificationSent, today:result.today, currentYear:result.currentYear, freshness:'current_only' });
+    res.json({ ok:true, sources:officialNewsSources(), found:result.candidates.length, staged:stagedItems.length, items, notificationSent, today:result.today, currentYear:result.currentYear, freshness:'current_only' });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/cron/official-news-scan', async (req, res, next) => {
+  try{
+    if (!cronAuthorized(req)) return res.status(401).json({ ok:false, message:'Cron veille officielle non autorisé' });
+    const limit = Math.min(8, Math.max(1, Number(req.query?.limit || 6)));
+    const result = await buildOfficialNewsDrafts(limit);
+    const stagedItems = result.items.length ? await stageOfficialNewsDrafts(result.items, 'cron') : [];
+    res.json({ ok:true, found:result.candidates.length, staged:stagedItems.length, items:stagedItems, today:result.today, currentYear:result.currentYear, freshness:'current_only' });
   }catch(err){ next(err); }
 });
 
@@ -2386,6 +2803,10 @@ app.post('/api/admin/questions', requireAdmin, async (req, res, next) => {
   try{
     if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
     const payload = adminQuestionPayload(req.body || {});
+    const existingTexts = await collectExistingQcmTexts({ includeDaily:false });
+    if (isDuplicateQuestionText(payload.question_text, createQuestionDedupeIndex(existingTexts))){
+      return res.status(409).json({ message:'Ce QCM existe déjà dans l’application ou ressemble trop à une question existante.' });
+    }
     const rows = await supabaseRequest('questions?select=*', {
       method:'POST',
       prefer:'return=representation',
@@ -2565,6 +2986,21 @@ app.patch('/api/admin/news/:id', requireAdmin, async (req, res, next) => {
     news[idx] = { ...news[idx], ...payload, updated_at:new Date().toISOString() };
     await saveNewsIndex(news);
     res.json({ ok:true, item:publicNews(news[idx]) });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/admin/news/:id/pdf', requireAdmin, async (req, res, next) => {
+  try{
+    const news = await loadNewsIndex();
+    const item = news.find(item => item.id === req.params.id && item.storage_path);
+    if (!item) return res.status(404).json({ message:'Communiqué PDF introuvable' });
+    const file = await downloadResourceObject(item.storage_path);
+    const filename = safeFileName(item.file_name || 'communique.pdf');
+    res.setHeader('Content-Type', item.mime_type || file.contentType || 'application/pdf');
+    res.setHeader('Content-Length', file.buffer.length);
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.send(file.buffer);
   }catch(err){ next(err); }
 });
 

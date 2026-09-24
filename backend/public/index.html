@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=pdf-review-fix-1">
+<link rel="stylesheet" href="css/styles.css?v=strict-ai-50-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -644,7 +644,7 @@
           <textarea class="input admin-textarea" id="adminExplanation" placeholder="Explique clairement pourquoi la réponse est correcte"></textarea>
 
           <label class="field-label" for="adminSource">Nom du QCM / source</label>
-          <input class="input" id="adminSource" placeholder="Ex : QCM IA Culture Burkina 2026, Manuel, arrêté, source officielle...">
+          <input class="input" id="adminSource" placeholder="Ex : Culture Burkina 2026, manuel, arrêté, source officielle...">
 
           <div class="admin-switch-row">
             <label><input type="checkbox" id="adminPremium"> Publier dans Premium <small>(sinon Gratuit)</small></label>
@@ -792,7 +792,7 @@
             <img src="img/ai-qcm-logo.svg" alt="Logo IA QCM">
             <div>
               <h3>Générer des QCM avec l’IA</h3>
-              <p class="admin-help">Prépare des propositions de QCM à relire avant publication.</p>
+              <p class="admin-help">Prépare des QCM exigeants à relire avant publication.</p>
             </div>
           </div>
           <div class="admin-stats" id="adminAiStatus">
@@ -805,12 +805,12 @@
             <div class="daily-ai-head">
               <div>
                 <h3>QCM PDF quotidiens</h3>
-                <p class="admin-help">Chaque jour, l’IA prépare 20 QCM en PDF. Tu relis, puis tu publies quand c’est bon.</p>
+                <p class="admin-help">Chaque jour, l’outil prépare 50 QCM en PDF. Tu relis, puis tu publies quand c’est bon.</p>
               </div>
               <button class="mini-btn" onclick="loadDailyAiDrafts()">Actualiser</button>
             </div>
             <div class="admin-stats" id="aiDailyStatus">
-              <div><b>20</b><span>QCM / jour</span></div>
+              <div><b>50</b><span>QCM / jour</span></div>
               <div><b>PDF</b><span>À vérifier</span></div>
               <div><b>Admin</b><span>Publication</span></div>
             </div>
@@ -889,6 +889,8 @@
                 <option value="3">3</option>
                 <option value="5" selected>5</option>
                 <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
               </select>
             </div>
             <div>
@@ -908,7 +910,7 @@
             <img src="img/ai-qcm-logo.svg" alt="Logo veille IA">
             <div>
               <h3>Veille IA des concours</h3>
-              <p class="admin-help">Recherche uniquement les informations à jour : session en cours, échéances non dépassées et sources officielles. Rien n’est publié sans ta validation.</p>
+              <p class="admin-help">Recherche les informations récentes sur les sites officiels du Burkina Faso, prépare le communiqué et garde tout masqué jusqu’à ta validation.</p>
             </div>
           </div>
           <button class="btn btn-ghost btn-block" id="aiNewsScanBtn" onclick="scanOfficialNews()">🔎 Rechercher les nouvelles officielles</button>
@@ -1199,7 +1201,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=pdf-review-fix-1"></script>
-<script src="js/app.js?v=pdf-review-fix-1"></script>
+<script src="js/questions.js?v=strict-ai-50-1"></script>
+<script src="js/app.js?v=strict-ai-50-1"></script>
 </body>
 </html>

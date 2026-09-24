@@ -1323,7 +1323,7 @@ async function loadDailyAiDrafts(){
     aiDailyDraftCache = data.drafts || [];
     if (status){
       status.innerHTML = `
-        <div><b>${data.settings?.count || 20}</b><span>QCM / jour</span></div>
+        <div><b>${data.settings?.count || 50}</b><span>QCM / jour</span></div>
         <div><b>${data.configured ? 'Prêt' : 'À configurer'}</b><span>PDF</span></div>
         <div><b>${data.settings?.mode === 'niveau' ? 'Niveau' : 'Module'}</b><span>Rotation</span></div>`;
     }
@@ -1341,7 +1341,7 @@ async function runDailyAiQcm(){
   if (result) result.innerHTML = '<div class="pay-note">L’IA prépare le PDF du jour. Cela peut prendre quelques secondes.</div>';
   try{
     const payload = {
-      count:20,
+      count:50,
       mode:$('#aiDailyMode')?.value || 'module',
       category:$('#aiDailyCategory')?.value || '',
       level:$('#aiDailyLevel')?.value || '',
@@ -1421,7 +1421,7 @@ function renderDailyPdfHtml(d){
         <div><span>SUJET</span><b>${Number(d.count || questions.length || 0)} QCM</b></div>
       </div>
       <div class="pdf-module-line"><b>MODULE : ${escapeHtml(d.category || 'Module')}</b><b>NIVEAU : ${escapeHtml(d.level || 'Niveau')}</b></div>
-      <p>Document de révision à vérifier avant publication</p>
+      <p>QCM corrigés pour entraînement intensif</p>
     </div>
     <div class="pdf-question-preview">
       <h2>Questions à choix multiple</h2>
@@ -1558,7 +1558,7 @@ async function generateAiQcm(){
       count: Number($('#aiCount')?.value || 5),
       is_premium: Boolean($('#aiPremium')?.checked)
     };
-    const publicationName = ($('#aiPublicationName')?.value || payload.theme || (pdfFile?.name ? pdfFile.name.replace(/\.pdf$/i,'') : '') || ('QCM IA ' + formatDate(new Date().toISOString()))).trim();
+    const publicationName = ($('#aiPublicationName')?.value || payload.theme || (pdfFile?.name ? pdfFile.name.replace(/\.pdf$/i,'') : '') || ('QCM ' + formatDate(new Date().toISOString()))).trim();
     let data;
     if (pdfFile){
       const headers = authHeaders({
@@ -1601,10 +1601,10 @@ function renderAiDrafts(){
         <span>${escapeHtml(q.category || 'Catégorie')}</span>
         <span>${escapeHtml(q.level || '')}</span>
         ${q.is_premium ? '<span class="premium">Premium abonnés</span>' : '<span class="free">Gratuit</span>'}
-        ${q._published ? '<span class="active">Publié</span>' : '<span>Proposition IA</span>'}
+        ${q._published ? '<span class="active">Publié</span>' : '<span>Proposition</span>'}
       </div>
       <h4>${escapeHtml(q.question_text || '')}</h4>
-      <p class="admin-destination-note">Nom du QCM : <b>${escapeHtml(q.source || 'QCM IA')}</b></p>
+      <p class="admin-destination-note">Nom du QCM : <b>${escapeHtml(q.source || 'QCM')}</b></p>
       <p class="admin-destination-note">Destination après validation : <b>${qcmDestinationText(q)}</b></p>
       <p class="admin-help"><b>A.</b> ${escapeHtml(q.option_a)} · <b>B.</b> ${escapeHtml(q.option_b)} · <b>C.</b> ${escapeHtml(q.option_c)} · <b>D.</b> ${escapeHtml(q.option_d)}</p>
       <p class="admin-help"><b>Correction :</b> ${escapeHtml(q.explanation || '')}</p>
@@ -1630,7 +1630,7 @@ function editAiDraft(index){
   $('#adminOptionD') && ($('#adminOptionD').value=q.option_d || '');
   $('#adminCorrect') && ($('#adminCorrect').value=String(q.correct_answer ?? 0));
   $('#adminExplanation') && ($('#adminExplanation').value=q.explanation || '');
-  $('#adminSource') && ($('#adminSource').value=q.source || 'Créé avec l’aide de l’IA');
+  $('#adminSource') && ($('#adminSource').value=q.source || 'Réussite Concours BF');
   $('#adminPremium') && ($('#adminPremium').checked=Boolean(q.is_premium));
   $('#adminActive') && ($('#adminActive').checked=true);
   $('#adminFormTitle') && ($('#adminFormTitle').textContent='Relire une proposition IA');
@@ -1647,7 +1647,7 @@ async function publishAiDraft(index){
       options:[q.option_a,q.option_b,q.option_c,q.option_d],
       correct_answer:q.correct_answer,
       explanation:q.explanation,
-      source:q.source || 'Créé avec l’aide de l’IA',
+      source:q.source || 'Réussite Concours BF',
       is_premium:Boolean(q.is_premium),
       is_active:true
     }) });
@@ -1659,7 +1659,7 @@ async function publishAiDraft(index){
     const destination = qcmDestinationText(q);
     const result = $('#aiResult');
     if (result) result.innerHTML = `<div class="pay-note success">QCM ajouté dans <b>Mes QCM → ${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
-    toast('QCM IA publié dans ' + destination + ' ✅');
+    toast('QCM publié dans ' + destination + ' ✅');
   }catch(err){ toast(err.message); }
 }
 
@@ -1680,7 +1680,7 @@ async function scanOfficialNews(){
   const result = $('#aiNewsResult');
   const list = $('#aiNewsDraftList');
   setButtonLoading(btn, true, 'Recherche...');
-  if (result) result.innerHTML = '<div class="pay-note">Recherche sur les sources officielles avec filtre à jour : année en cours, échéances non dépassées. Les propositions doivent être relues avant publication.</div>';
+  if (result) result.innerHTML = '<div class="pay-note">Recherche sur les sources officielles avec filtre à jour : année en cours, échéances non dépassées. Les communiqués trouvés restent masqués jusqu’à ta validation.</div>';
   if (list) list.innerHTML = '<div class="empty">Analyse des communiqués en cours...</div>';
   try{
     const data = await adminFetch('/api/admin/ai/news-scan', { method:'POST', body:JSON.stringify({ limit:6 }) });
@@ -1688,9 +1688,10 @@ async function scanOfficialNews(){
     if (result){
       const note = data.notificationSent ? ' Notification envoyée.' : '';
       const fresh = data.today ? ` Filtre à jour appliqué (${data.today}).` : ' Filtre à jour appliqué.';
-      result.innerHTML = `<div class="pay-note success">${aiNewsDraftCache.length} nouvelle${aiNewsDraftCache.length>1?'s':''} actuelle${aiNewsDraftCache.length>1?'s':''} proposée${aiNewsDraftCache.length>1?'s':''} par la veille IA ✅${fresh}${note}</div>`;
+      result.innerHTML = `<div class="pay-note success">${aiNewsDraftCache.length} nouvelle${aiNewsDraftCache.length>1?'s':''} actuelle${aiNewsDraftCache.length>1?'s':''} préparée${aiNewsDraftCache.length>1?'s':''} depuis les sources officielles ✅${fresh}${note}</div>`;
     }
     renderAiNewsDrafts();
+    if (data.staged) loadAdminNews().catch(()=>{});
   }catch(err){
     aiNewsDraftCache = [];
     if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
@@ -1712,13 +1713,15 @@ function renderAiNewsDrafts(){
       <div class="admin-q-meta">
         <span>${escapeHtml(item.type || 'Communiqué')}</span>
         <span>${escapeHtml(item.status || 'Info')}</span>
-        <span>Proposition IA</span>
+        <span>Proposition</span>
+        ${item.hasPdf ? '<span>PDF joint</span>' : ''}
       </div>
       <h4>${escapeHtml(item.title || '')}</h4>
       <p class="admin-help">${escapeHtml(item.summary || item.organization || '')}</p>
       <p class="admin-destination-note">Source officielle : <b>${escapeHtml(item.sourceName || item.organization || 'Source')}</b></p>
       <div class="admin-q-actions">
         <button class="edit" onclick="prepareAiNewsDraft(${idx})">Relire / Préparer</button>
+        ${item.hasPdf && (item.preparedId || item.id) ? `<button class="edit" onclick="openAdminNewsPdf('${escapeHtml(item.preparedId || item.id)}')">PDF</button>` : ''}
         <button class="pause" onclick="openAiNewsSource(${idx})">Ouvrir la source</button>
         <button class="delete" onclick="removeAiNewsDraft(${idx})">Retirer</button>
       </div>
@@ -1734,7 +1737,8 @@ function prepareAiNewsDraft(index){
   const item = aiNewsDraftCache[index];
   if (!item) return;
   setAdminTab('news');
-  $('#adminNewsId') && ($('#adminNewsId').value='');
+  const preparedId = item.preparedId || item.id || '';
+  $('#adminNewsId') && ($('#adminNewsId').value=preparedId);
   $('#adminNewsTitle') && ($('#adminNewsTitle').value=item.title || '');
   $('#adminNewsType') && ($('#adminNewsType').value=item.type || 'Communiqué');
   $('#adminNewsStatus') && ($('#adminNewsStatus').value=item.status || 'Info');
@@ -1744,9 +1748,9 @@ function prepareAiNewsDraft(index){
   $('#adminNewsContent') && ($('#adminNewsContent').value=item.content || item.summary || '');
   $('#adminNewsSource') && ($('#adminNewsSource').value=item.sourceUrl || '');
   $('#adminNewsActive') && ($('#adminNewsActive').checked=true);
-  $('#adminNewsFormTitle') && ($('#adminNewsFormTitle').textContent='Relire une actualité IA');
+  $('#adminNewsFormTitle') && ($('#adminNewsFormTitle').textContent='Relire une actualité officielle');
   $('#adminNewsSaveBtn') && ($('#adminNewsSaveBtn').textContent='Publier l’actualité');
-  toast('Proposition chargée. Relis puis publie ✅');
+  toast(item.hasPdf ? 'Proposition chargée avec PDF. Relis puis publie ✅' : 'Proposition chargée. Relis puis publie ✅');
 }
 
 function removeAiNewsDraft(index){
@@ -1819,6 +1823,20 @@ function renderNewsList(){
       <div class="news-actions">${pdf}${source}</div>
     </article>`;
   }).join('');
+}
+
+async function openAdminNewsPdf(id){
+  try{
+    const res = await fetch('/api/admin/news/' + encodeURIComponent(id) + '/pdf', { headers:authHeaders({}) });
+    if (!res.ok){
+      const data = await res.json().catch(()=>({}));
+      throw new Error(data.message || 'PDF indisponible');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener');
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  }catch(err){ toast(err.message || 'PDF indisponible'); }
 }
 
 async function openNewsPdf(id){
@@ -1927,7 +1945,7 @@ async function loadAdminNews(){
         <p class="admin-help">${escapeHtml(n.summary || n.organization || '')}</p>
         <div class="admin-q-actions">
           <button class="edit" onclick="editAdminNews(${idx})">Modifier</button>
-          ${n.hasPdf ? `<button class="edit" onclick="openNewsPdf('${escapeHtml(n.id)}')">PDF</button>` : ''}
+          ${n.hasPdf ? `<button class="edit" onclick="openAdminNewsPdf('${escapeHtml(n.id)}')">PDF</button>` : ''}
           <button class="pause" onclick="toggleAdminNews(${idx})">${n.is_active ? 'Masquer' : 'Publier'}</button>
           <button class="delete" onclick="deleteAdminNews(${idx})">Supprimer</button>
         </div>

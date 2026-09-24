@@ -18,6 +18,10 @@
     {
       "path": "/api/cron/ai-daily-qcm",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/official-news-scan",
+      "schedule": "30 6 * * *"
     }
   ]
 }

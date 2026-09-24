@@ -354,3 +354,13 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Agrandissement des écritures dans les pages QCM pour se rapprocher du format du PDF de référence.
 - Renforcement du prompt : les QCM quotidiens doivent être de haut niveau, avec raisonnement et pièges réalistes.
 - Avant publication, l’admin choisit maintenant la catégorie, le niveau et Gratuit/Premium.
+
+## 2026-09-24 — QCM stricts, 50 questions et veille officielle
+
+- Le PDF quotidien prépare maintenant **50 QCM** au lieu de 20.
+- Ajout d’une vérification stricte avant création du PDF : blocage des commentaires internes comme “attention”, “à vérifier”, “brouillon” ou “IA” dans les questions/corrections.
+- Ajout d’un contrôle de non-répétition : les QCM générés sont comparés à la banque locale, aux QCM Supabase et aux anciens brouillons pour éviter les doublons ou reformulations trop proches.
+- La publication est bloquée si un QCM du PDF existe déjà ou ressemble trop à une question présente dans l’application.
+- La mention “Document de révision à vérifier avant publication” a été retirée du document et remplacée par une formulation neutre de préparation.
+- La veille actualités consulte davantage de sources officielles du Burkina Faso, prépare des actualités masquées pour validation admin et tente de joindre automatiquement le communiqué PDF officiel quand il est disponible.
+- Ajout d’une route cron de veille officielle quotidienne pour préparer les communiqués récents sans publication automatique.
