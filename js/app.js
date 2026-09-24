@@ -1363,7 +1363,7 @@ function renderDailyAiDrafts(){
   const wrap = $('#aiDailyDraftList');
   if (!wrap) return;
   if (!aiDailyDraftCache.length){
-    wrap.innerHTML = '<div class="empty">Aucun PDF IA quotidien pour le moment. Clique sur “Créer le PDF du jour maintenant”.</div>';
+    wrap.innerHTML = '<div class="empty">Aucun PDF quotidien pour le moment. Clique sur “Créer le PDF du jour maintenant”.</div>';
     return;
   }
   wrap.innerHTML = aiDailyDraftCache.map((d, idx)=>`
@@ -1375,7 +1375,7 @@ function renderDailyAiDrafts(){
         ${d.is_premium ? '<span class="premium">Premium</span>' : '<span class="free">Gratuit</span>'}
         ${d.status === 'published' ? '<span class="active">Publié</span>' : '<span>PDF à relire</span>'}
       </div>
-      <h4>${escapeHtml(d.title || 'QCM IA quotidien')}</h4>
+      <h4>${escapeHtml(d.title || 'QCM quotidien')}</h4>
       <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. Télécharge le fichier, vérifie les questions et publie seulement après validation.</p>
       <div class="admin-q-actions">
         <button class="edit" onclick="downloadDailyAiPdf(${idx})">Télécharger PDF</button>

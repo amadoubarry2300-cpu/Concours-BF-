@@ -4,6 +4,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import PDFDocument from 'pdfkit';
 import { fileURLToPath } from 'url';
 
 const app = express();
@@ -980,7 +981,7 @@ function publicAiDailyDraft(row){
   return {
     id:row.id,
     date:row.date,
-    title:row.title,
+    title:safePdfTitle(row.title || 'QCM quotidien'),
     category:row.category,
     level:row.level,
     count:Number(row.count || row.questions?.length || 0),
@@ -1022,58 +1023,140 @@ function wrapPdfLine(text, width = 92){
   return lines.length ? lines : [''];
 }
 
-function buildQcmDraftPdf({ title, date, category, level, questions }){
-  const allLines = [];
-  allLines.push(title || 'QCM IA quotidien');
-  allLines.push(`Date: ${date || todayId()}  |  Module: ${category || ''}  |  Niveau: ${level || ''}`);
-  allLines.push('Statut: brouillon IA a relire avant publication');
-  allLines.push('');
-  (questions || []).forEach((q, idx) => {
-    allLines.push(`${idx + 1}. ${q.question_text || ''}`);
-    allLines.push(`A. ${q.option_a || ''}`);
-    allLines.push(`B. ${q.option_b || ''}`);
-    allLines.push(`C. ${q.option_c || ''}`);
-    allLines.push(`D. ${q.option_d || ''}`);
-    const label = ['A','B','C','D'][Number(q.correct_answer || 0)] || 'A';
-    allLines.push(`Bonne reponse: ${label}`);
-    allLines.push(`Correction: ${q.explanation || ''}`);
-    allLines.push('');
-  });
-  const wrapped = allLines.flatMap(line => line ? wrapPdfLine(line, 92) : ['']);
-  const pages = [];
-  const maxLines = 46;
-  for (let i=0; i<wrapped.length; i += maxLines) pages.push(wrapped.slice(i, i + maxLines));
-  if (!pages.length) pages.push(['Aucun QCM genere.']);
+function safePdfTitle(value){
+  return pdfCleanText(value || 'QCM quotidien')
+    .replace(/\bIA\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/QCM quotidien\s*[-—]\s*/i, 'QCM quotidien — ')
+    .trim();
+}
 
-  const objects = [];
-  const addObject = value => { objects.push(value); return objects.length; };
-  const catalogId = addObject('');
-  const pagesId = addObject('');
-  const fontId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
-  const pageIds = [];
-  for (const pageLines of pages){
-    let content = 'BT\n/F1 10.5 Tf\n50 800 Td\n14 TL\n';
-    content += pageLines.map(line => `(${pdfEscape(line)}) Tj`).join('\nT*\n');
-    content += '\nET';
-    const contentBuffer = Buffer.from(content, 'latin1');
-    const contentId = addObject(`<< /Length ${contentBuffer.length} >>\nstream\n${content}\nendstream`);
-    const pageId = addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`);
-    pageIds.push(pageId);
+function drawPdfHeader(doc, { date, title }){
+  const pageW = doc.page.width;
+  const pageH = doc.page.height;
+  const margin = 42;
+  doc.save();
+  doc.rect(0, 0, pageW, pageH).fill('#f6f8f7');
+  doc.roundedRect(margin - 10, 28, pageW - (margin - 10) * 2, 88, 24).fill('#064e3b');
+  doc.circle(pageW - 66, 48, 44).fillOpacity(0.16).fill('#fbbf24').fillOpacity(1);
+  doc.roundedRect(margin + 2, 43, 56, 56, 18).fill('#ffffff');
+  const logoPath = path.join(PUBLIC_DIR, 'img', 'logo.png');
+  if (fs.existsSync(logoPath)){
+    try{ doc.image(logoPath, margin + 7, 48, { fit:[46, 46] }); }catch{}
+  }else{
+    doc.fillColor('#057a55').font('Helvetica-Bold').fontSize(12).text('BF', margin + 21, 62, { width:28, align:'center' });
   }
-  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
-  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
+  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(19).text('Réussite', margin + 72, 48, { width:220 });
+  doc.fillColor('#d1fae5').font('Helvetica-Bold').fontSize(16).text('Concours BF', margin + 72, 70, { width:220 });
+  doc.roundedRect(pageW - 175, 51, 104, 28, 14).fill('#ecfdf5');
+  doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(10).text(formatDateForPdf(date), pageW - 165, 60, { width:84, align:'center' });
+  doc.fillColor('#6b7280').font('Helvetica').fontSize(8).text('Réussite Concours BF — Document de révision', margin, pageH - 34, { width:pageW - margin * 2, align:'center' });
+  doc.restore();
+  doc.y = 138;
+}
 
-  let pdf = '%PDF-1.4\n';
-  const offsets = [0];
-  objects.forEach((obj, i) => {
-    offsets.push(Buffer.byteLength(pdf, 'latin1'));
-    pdf += `${i + 1} 0 obj\n${obj}\nendobj\n`;
+function formatDateForPdf(value){
+  if (!value) return todayId();
+  try{
+    return new Intl.DateTimeFormat('fr-FR', { day:'2-digit', month:'long', year:'numeric', timeZone:'UTC' }).format(new Date(`${value}T00:00:00Z`));
+  }catch{
+    return String(value || todayId());
+  }
+}
+
+function answerLabel(index){
+  return ['A','B','C','D'][Number(index || 0)] || 'A';
+}
+
+async function buildQcmDraftPdf({ title, date, category, level, questions }){
+  return new Promise((resolve, reject) => {
+    const cleanTitle = safePdfTitle(title || `QCM quotidien — ${category || 'Module'} — ${level || 'Niveau'} — ${date || todayId()}`);
+    const doc = new PDFDocument({
+      size:'A4',
+      margin:42,
+      info:{
+        Title:cleanTitle,
+        Author:'Réussite Concours BF',
+        Subject:'QCM quotidien à vérifier avant publication'
+      }
+    });
+    const chunks = [];
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const margin = 42;
+    const pageW = doc.page.width;
+    const pageH = doc.page.height;
+    const contentW = pageW - margin * 2;
+    const bottomLimit = pageH - 62;
+
+    function newPage(){
+      doc.addPage();
+      drawPdfHeader(doc, { date, title:cleanTitle });
+    }
+    function ensureSpace(height){
+      if (doc.y + height > bottomLimit) newPage();
+    }
+    function chip(x, y, label, value, w){
+      doc.roundedRect(x, y, w, 25, 12).fill('#ecfdf5');
+      doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(7.5).text(pdfCleanText(label).toUpperCase(), x + 9, y + 5, { width:w - 18 });
+      doc.fillColor('#111827').font('Helvetica-Bold').fontSize(9.2).text(pdfCleanText(value), x + 9, y + 14, { width:w - 18, ellipsis:true });
+    }
+    function textHeight(text, width, font='Helvetica', size=10, options={}){
+      doc.font(font).fontSize(size);
+      return doc.heightOfString(pdfCleanText(text), { width, ...options });
+    }
+
+    drawPdfHeader(doc, { date, title:cleanTitle });
+    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(21).text(cleanTitle, margin, doc.y, { width:contentW - 4, lineGap:2 });
+    doc.moveDown(0.65);
+    const chipY = doc.y;
+    chip(margin, chipY, 'Date', formatDateForPdf(date), 128);
+    chip(margin + 138, chipY, 'Module', category || 'Module', 150);
+    chip(margin + 298, chipY, 'Niveau', level || 'Niveau', 104);
+    chip(margin + 412, chipY, 'QCM', String((questions || []).length || 0), 56);
+    doc.y = chipY + 42;
+    doc.roundedRect(margin, doc.y, contentW, 34, 13).fill('#fff7ed');
+    doc.fillColor('#92400e').font('Helvetica-Bold').fontSize(10).text('Document de relecture', margin + 14, doc.y + 8, { width:160 });
+    doc.fillColor('#78350f').font('Helvetica').fontSize(9.5).text('Vérifie les questions, les réponses et les corrections avant publication.', margin + 165, doc.y + 8, { width:contentW - 180 });
+    doc.y += 52;
+
+    (questions || []).forEach((q, idx) => {
+      const opts = [q.option_a, q.option_b, q.option_c, q.option_d].map(pdfCleanText);
+      const qText = pdfCleanText(q.question_text || 'Question');
+      const explanation = pdfCleanText(q.explanation || 'Correction à vérifier.');
+      const questionW = contentW - 68;
+      const qH = textHeight(qText, questionW, 'Helvetica-Bold', 11.2, { lineGap:2 });
+      const optH = opts.reduce((sum, opt) => sum + Math.max(17, textHeight(opt, contentW - 68, 'Helvetica', 9.7, { lineGap:1 }) + 3), 0);
+      const corrH = Math.max(38, textHeight(explanation, contentW - 46, 'Helvetica', 9.3, { lineGap:1 }) + 27);
+      const cardH = Math.min(360, Math.max(148, 52 + qH + optH + corrH));
+      ensureSpace(cardH + 14);
+      const y = doc.y;
+      doc.roundedRect(margin, y, contentW, cardH, 16).fill('#ffffff').strokeColor('#e5e7eb').lineWidth(1).stroke();
+      doc.circle(margin + 24, y + 26, 14).fill('#0e9f6e');
+      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(11).text(String(idx + 1), margin + 16, y + 21, { width:16, align:'center' });
+      doc.fillColor('#111827').font('Helvetica-Bold').fontSize(11.2).text(qText, margin + 48, y + 16, { width:questionW, lineGap:2 });
+      let cy = Math.max(y + 54, doc.y + 10);
+      opts.forEach((opt, optIdx) => {
+        const label = ['A','B','C','D'][optIdx];
+        const oh = Math.max(17, textHeight(opt, contentW - 68, 'Helvetica', 9.7, { lineGap:1 }) + 3);
+        doc.roundedRect(margin + 18, cy - 2, 22, 16, 8).fill('#f3f4f6');
+        doc.fillColor('#374151').font('Helvetica-Bold').fontSize(8.7).text(label, margin + 25, cy + 2, { width:8, align:'center' });
+        doc.fillColor('#1f2937').font('Helvetica').fontSize(9.7).text(opt, margin + 48, cy, { width:contentW - 68, lineGap:1 });
+        cy += oh;
+      });
+      const answer = answerLabel(q.correct_answer);
+      const corrY = Math.min(y + cardH - corrH - 12, cy + 8);
+      doc.roundedRect(margin + 14, corrY, contentW - 28, y + cardH - corrY - 12, 12).fill('#ecfdf5');
+      doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(9.2).text(`Bonne réponse : ${answer}`, margin + 28, corrY + 9, { width:130 });
+      doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(9.2).text('Correction', margin + 28, corrY + 23, { width:90 });
+      doc.fillColor('#064e3b').font('Helvetica').fontSize(9.3).text(explanation, margin + 106, corrY + 23, { width:contentW - 146, lineGap:1 });
+      doc.y = y + cardH + 14;
+    });
+
+    doc.end();
   });
-  const xrefOffset = Buffer.byteLength(pdf, 'latin1');
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (let i=1; i<offsets.length; i++) pdf += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
-  return Buffer.from(pdf, 'latin1');
 }
 
 async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
@@ -1086,9 +1169,9 @@ async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
   const prompt = `${aiQcmPrompt({ count:plan.count, category:plan.category, level:plan.level, theme:plan.theme })}\n\nImportant pour cette generation quotidienne: les corrections doivent etre detaillees mais concises pour tenir dans un PDF de relecture. Source: Brouillon IA quotidien a verifier.`;
   const ai = await callGeminiGenerate(prompt);
   const questions = normalizeAiQuestionList(ai.text, { category:plan.category, level:plan.level, is_premium:plan.is_premium }, plan.count);
-  if (!questions.length) throw Object.assign(new Error('Aucun QCM IA quotidien valide généré'), { status:502 });
-  const title = `QCM IA quotidien — ${plan.category} — ${plan.level} — ${plan.date}`;
-  const pdfBuffer = buildQcmDraftPdf({ title, date:plan.date, category:plan.category, level:plan.level, questions });
+  if (!questions.length) throw Object.assign(new Error('Aucun QCM quotidien valide généré'), { status:502 });
+  const title = `QCM quotidien — ${plan.category} — ${plan.level} — ${plan.date}`;
+  const pdfBuffer = await buildQcmDraftPdf({ title, date:plan.date, category:plan.category, level:plan.level, questions });
   const id = 'daily-' + plan.date.replace(/\D/g, '') + '-' + crypto.randomBytes(4).toString('hex');
   const fileName = safeFileName(`${title}.pdf`);
   const objectPath = `ai-daily/files/${plan.date.slice(0,4)}/${id}-${fileName}`;
@@ -2089,7 +2172,7 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
     if (!questions.length) return res.status(400).json({ message:'Aucun QCM à publier dans ce brouillon' });
     const payload = questions.map(q => adminQuestionPayload({
       ...q,
-      source:draft.title || q.source || 'QCM IA quotidien',
+      source:safePdfTitle(draft.title || q.source || 'QCM quotidien'),
       is_premium:Boolean(draft.is_premium),
       is_active:true
     }));

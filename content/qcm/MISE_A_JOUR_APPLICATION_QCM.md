@@ -333,3 +333,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Les PDF IA restent des brouillons à relire : rien n’est publié automatiquement côté candidat.
 - Après vérification, l’admin peut publier les QCM du PDF en Gratuit ou Premium.
 - Ajout d’une route cron quotidienne pour préparer automatiquement le PDF du jour si la clé IA et le stockage sont configurés.
+
+## 2026-09-24 — PDF QCM premium
+
+- Amélioration du PDF quotidien : design plus professionnel avec en-tête Réussite Concours BF, logo, date, module, niveau et cartes de questions.
+- Suppression des mentions IA dans le document PDF destiné à la relecture.
+- Correction de l’encodage des accents français dans le PDF.
