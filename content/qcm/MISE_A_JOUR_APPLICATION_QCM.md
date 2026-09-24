@@ -393,3 +393,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout d’un bouton **Supprimer chez candidat** dans l’historique des PDF quotidiens publiés.
 - Cette action retire le groupe de QCM de **Nouveaux QCM** et le PDF de **Documents & fichiers**.
 - Le PDF reste disponible dans l’administration pour correction, republication ou suppression complète.
+
+## 2026-09-24 — Niveau prioritaire et historique multi-PDF
+
+- Les matières proposées dépendent maintenant du niveau sélectionné : par exemple **CEP** ne propose plus **Physique-Chimie**.
+- La génération quotidienne garde plusieurs PDF le même jour si le niveau ou la matière change ; un nouveau PDF ne remplace plus les autres PDF du jour.
+- L’historique admin récupère aussi les PDF quotidiens déjà publiés qui existent dans Documents mais avaient disparu de la liste IA.

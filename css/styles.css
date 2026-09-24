@@ -661,7 +661,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 /* ---------- IA quotidienne PDF ---------- */
 .daily-ai-card{background:#f9fafb;border:1px solid var(--line);border-radius:20px;padding:14px;margin:12px 0 16px;box-shadow:var(--shadow)}
 .daily-ai-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.daily-ai-head h3{font-size:1rem;font-weight:1000;margin-bottom:2px}.daily-ai-head .mini-btn{box-shadow:var(--shadow);border:1px solid var(--line)}
-.daily-ai-draft{border-left:4px solid var(--green)}.daily-ai-draft.ai-published{border-left-color:var(--gold);background:#fffbeb}
+.daily-ai-draft{border-left:4px solid var(--green)}.daily-ai-draft.ai-published{border-left-color:var(--gold);background:#fffbeb}#aiDailyDraftList{max-height:min(70vh,740px);overflow-y:auto;padding-right:4px}
 @media(max-width:420px){.daily-ai-head{flex-direction:column}.daily-ai-head .mini-btn{width:100%}}
 
 /* ---------- vérification PDF dans l'application ---------- */

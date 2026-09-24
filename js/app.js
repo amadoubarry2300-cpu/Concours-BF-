@@ -19,6 +19,40 @@ const SUBSCRIPTION_PLANS = {
   }
 };
 
+
+function normalizeDailyLevel(level){
+  const raw = String(level || '').trim();
+  const key = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (key.includes('cep')) return 'CEP';
+  if (key.includes('bepc')) return 'BEPC';
+  if (key.includes('bac')) return 'BAC';
+  if (key.includes('licence')) return 'Licence';
+  if (key.includes('concours')) return 'Concours';
+  return raw || 'Concours';
+}
+
+function dailyAllowedCategories(level){
+  return DAILY_LEVEL_CATEGORY_RULES[normalizeDailyLevel(level)] || ALL_QCM_CATEGORIES;
+}
+
+function setDailyCategoryOptions(select, level, preferred='', includeRotation=false){
+  if (!select) return '';
+  const allowed = dailyAllowedCategories(level);
+  const current = preferred !== undefined && preferred !== null ? String(preferred) : select.value;
+  select.innerHTML = `${includeRotation ? '<option value="">Rotation automatique</option>' : ''}${allowed.map(cat=>`<option>${escapeHtml(cat)}</option>`).join('')}`;
+  if (current && allowed.includes(current)) select.value = current;
+  else select.value = includeRotation ? '' : (allowed[0] || 'Culture générale');
+  return select.value;
+}
+
+function refreshDailyCategoryOptions(preferred){
+  return setDailyCategoryOptions($('#aiDailyCategory'), $('#aiDailyLevel')?.value || 'Concours', (preferred ?? $('#aiDailyCategory')?.value ?? ''), true);
+}
+
+function refreshDailyPublishCategoryOptions(preferred){
+  return setDailyCategoryOptions($('#dailyPublishCategory'), $('#dailyPublishLevel')?.value || 'Concours', (preferred ?? $('#dailyPublishCategory')?.value ?? ''), false);
+}
+
 function subscriptionPlan(id){
   return SUBSCRIPTION_PLANS[id] || SUBSCRIPTION_PLANS.premium_monthly;
 }
@@ -36,6 +70,13 @@ const SUPABASE_CONFIG = window.REUSSITE_CONCOURS_BF_SUPABASE_CONFIG || {
 const ACCESS_OPEN_UNTIL_PAYMENT = false; // Premium réactivé : seules les catégories gratuites restent ouvertes sans paiement.
 const FREE_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo'];
 const ALL_QCM_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo', 'Mathématiques', 'Physique-Chimie', 'Psychotechnique', 'Français', 'SVT', 'Greffier / Droit'];
+const DAILY_LEVEL_CATEGORY_RULES = {
+  'CEP':['Français','Mathématiques','SVT','Histoire-Géo','Burkina Faso','Culture générale'],
+  'BEPC':['Français','Mathématiques','Physique-Chimie','SVT','Histoire-Géo','Burkina Faso','Culture générale'],
+  'BAC':['Français','Mathématiques','Physique-Chimie','SVT','Histoire-Géo','Burkina Faso','Culture générale'],
+  'Concours':['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Physique-Chimie','Psychotechnique','Français','SVT','Greffier / Droit'],
+  'Licence':['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Physique-Chimie','Psychotechnique','Français','SVT','Greffier / Droit']
+};
 const PAID_CATEGORIES = ALL_QCM_CATEGORIES.filter(cat => !FREE_CATEGORIES.includes(cat));
 function isFreeCategory(cat){ return FREE_CATEGORIES.includes(cat); }
 function isPaidCategory(cat){ return !isFreeCategory(cat); }
@@ -1329,6 +1370,7 @@ async function loadDailyAiDrafts(){
         <div><b>${data.configured ? 'Prêt' : 'À configurer'}</b><span>PDF</span></div>
         <div><b>${data.settings?.mode === 'niveau' ? 'Niveau' : 'Module'}</b><span>Rotation</span></div>`;
     }
+    refreshDailyCategoryOptions();
     renderDailyAiDrafts();
   }catch(err){
     if (status) status.innerHTML = `<div><b>Erreur</b><span>${escapeHtml(err.message)}</span></div>`;
@@ -1342,6 +1384,7 @@ async function runDailyAiQcm(){
   setButtonLoading(btn, true, 'Création du PDF...');
   if (result) result.innerHTML = '<div class="pay-note">L’IA prépare le PDF du jour. Cela peut prendre quelques secondes.</div>';
   try{
+    refreshDailyCategoryOptions();
     const payload = {
       count:50,
       mode:$('#aiDailyMode')?.value || 'module',
@@ -1395,9 +1438,9 @@ function renderDailyAiDrafts(){
       <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Télécharge le fichier, vérifie les questions et publie seulement après validation.'}</p>
       <div class="admin-q-actions">
         <button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>
-        <button class="pause" onclick="publishDailyAiDraft(${idx})">${d.status === 'published' ? 'Synchroniser' : `Publier les ${Number(d.count || 0)} QCM`}</button>
+        ${!d.orphanResource ? `<button class="pause" onclick="publishDailyAiDraft(${idx})">${d.status === 'published' ? 'Synchroniser' : `Publier les ${Number(d.count || 0)} QCM`}</button>` : ''}
         ${d.status === 'published' ? `<button class="delete" onclick="unpublishDailyAiDraft(${idx})">Supprimer chez candidat</button>` : ''}
-        <button class="delete" onclick="deleteDailyAiDraft(${idx})">${d.status === 'published' ? 'Retirer de l’admin' : 'Supprimer'}</button>
+        ${!d.orphanResource ? `<button class="delete" onclick="deleteDailyAiDraft(${idx})">${d.status === 'published' ? 'Retirer de l’admin' : 'Supprimer'}</button>` : ''}
       </div>
     </div>`).join('');
 }
@@ -1471,8 +1514,8 @@ async function openDailyAiPdf(index){
     currentDailyPdfIndex = index;
     $('#dailyPdfTitle') && ($('#dailyPdfTitle').textContent = d.title || 'QCM quotidien');
     $('#dailyPdfMeta') && ($('#dailyPdfMeta').textContent = `${d.date || ''} · ${d.category || ''} · ${d.level || ''} · ${Number(d.count || 0)} QCM`);
-    $('#dailyPublishCategory') && ($('#dailyPublishCategory').value = d.category || 'Culture générale');
     $('#dailyPublishLevel') && ($('#dailyPublishLevel').value = d.level || 'Concours');
+    refreshDailyPublishCategoryOptions(d.category || 'Culture générale');
     $('#dailyPublishPremium') && ($('#dailyPublishPremium').checked = Boolean(d.is_premium));
     renderDailyPdfHtml(d);
     show('pdfreview');
@@ -1523,8 +1566,9 @@ async function publishDailyAiDraft(index){
   const d = aiDailyDraftCache[index];
   if (!d) return;
   const reviewOpen = currentDailyPdfIndex === index && $('#pdfreview')?.classList.contains('active');
-  const category = reviewOpen ? ($('#dailyPublishCategory')?.value || d.category || 'Culture générale') : (d.category || 'Culture générale');
   const level = reviewOpen ? ($('#dailyPublishLevel')?.value || d.level || 'Concours') : (d.level || 'Concours');
+  if (reviewOpen) refreshDailyPublishCategoryOptions();
+  const category = reviewOpen ? ($('#dailyPublishCategory')?.value || d.category || 'Culture générale') : (d.category || 'Culture générale');
   const isPremium = reviewOpen ? Boolean($('#dailyPublishPremium')?.checked) : Boolean(d.is_premium);
   const destination = isPremium ? 'Premium' : 'Gratuit';
   const verb = d.status === 'published' ? 'Synchroniser' : 'Publier';

@@ -84,6 +84,45 @@ function parseEnvList(value, fallback){
   return rows.length ? rows : fallback;
 }
 
+const AI_LEVEL_CATEGORY_RULES = {
+  CEP:['Français','Mathématiques','SVT','Histoire-Géo','Burkina Faso','Culture générale'],
+  BEPC:['Français','Mathématiques','Physique-Chimie','SVT','Histoire-Géo','Burkina Faso','Culture générale'],
+  BAC:['Français','Mathématiques','Physique-Chimie','SVT','Histoire-Géo','Burkina Faso','Culture générale'],
+  Concours:['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Physique-Chimie','Psychotechnique','Français','SVT','Greffier / Droit'],
+  Licence:['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Physique-Chimie','Psychotechnique','Français','SVT','Greffier / Droit']
+};
+
+function normalizedLevelName(value){
+  const raw = String(value || '').trim();
+  const key = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (key.includes('cep')) return 'CEP';
+  if (key.includes('bepc')) return 'BEPC';
+  if (key.includes('bac')) return 'BAC';
+  if (key.includes('licence')) return 'Licence';
+  if (key.includes('concours')) return 'Concours';
+  return raw || 'Concours';
+}
+
+function levelCategoryMapForClient(){ return AI_LEVEL_CATEGORY_RULES; }
+
+function categoriesForLevel(level, sourceCategories = AI_DAILY_DEFAULT_CATEGORIES){
+  const normalized = normalizedLevelName(level);
+  const allowed = AI_LEVEL_CATEGORY_RULES[normalized] || sourceCategories || AI_DAILY_DEFAULT_CATEGORIES;
+  const source = (sourceCategories && sourceCategories.length ? sourceCategories : AI_DAILY_DEFAULT_CATEGORIES);
+  const filtered = source.filter(cat => allowed.includes(cat));
+  return filtered.length ? filtered : allowed;
+}
+
+function categoryAllowedForLevel(category, level){
+  return Boolean(category && categoriesForLevel(level, AI_DAILY_DEFAULT_CATEGORIES).includes(category));
+}
+
+function defaultCategoryForLevel(level, dateId = todayId(), sourceCategories = AI_DAILY_CATEGORIES){
+  const pool = categoriesForLevel(level, sourceCategories && sourceCategories.length ? sourceCategories : AI_DAILY_DEFAULT_CATEGORIES);
+  const day = daysSinceEpoch(dateId);
+  return pool[day % Math.max(1, pool.length)] || 'Culture générale';
+}
+
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf.toString('utf8'); } }));
 app.use(express.urlencoded({ extended: true }));
@@ -1222,11 +1261,15 @@ function daysSinceEpoch(dateId){
 
 function dailyAiPlan(dateId = todayId(), overrides = {}){
   const count = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(overrides.count || AI_DAILY_QCM_COUNT || 50)));
-  const categories = AI_DAILY_CATEGORIES.length ? AI_DAILY_CATEGORIES : AI_DAILY_DEFAULT_CATEGORIES;
+  const allCategories = AI_DAILY_CATEGORIES.length ? AI_DAILY_CATEGORIES : AI_DAILY_DEFAULT_CATEGORIES;
   const levels = AI_DAILY_LEVELS.length ? AI_DAILY_LEVELS : AI_DAILY_DEFAULT_LEVELS;
   const day = daysSinceEpoch(dateId);
-  const category = cleanText(overrides.category || categories[day % categories.length] || 'Culture générale', 80);
-  const level = cleanText(overrides.level || levels[Math.floor(day / Math.max(1, categories.length)) % levels.length] || 'Concours', 40);
+  const level = cleanText(overrides.level || levels[Math.floor(day / Math.max(1, allCategories.length)) % levels.length] || 'Concours', 40);
+  const allowedCategories = categoriesForLevel(level, allCategories);
+  const requestedCategory = cleanText(overrides.category || '', 80);
+  const category = requestedCategory && allowedCategories.includes(requestedCategory)
+    ? requestedCategory
+    : (allowedCategories[day % allowedCategories.length] || defaultCategoryForLevel(level, dateId, allCategories));
   const mode = ['module','niveau'].includes(String(overrides.mode || '').toLowerCase()) ? String(overrides.mode).toLowerCase() : AI_DAILY_GROUP_MODE;
   const isPremium = overrides.is_premium === undefined ? AI_DAILY_IS_PREMIUM : Boolean(overrides.is_premium);
   const theme = cleanText(overrides.theme || (mode === 'niveau'
@@ -1234,6 +1277,7 @@ function dailyAiPlan(dateId = todayId(), overrides = {}){
     : `Série quotidienne ${dateId} — module ${category}, niveau ${level}`), 220);
   return { date:dateId, count, category, level, mode, is_premium:isPremium, theme };
 }
+
 
 async function loadAiDailyIndex(){
   try{
@@ -1265,7 +1309,8 @@ function publicAiDailyDraft(row){
     fileName:row.file_name || '',
     created_at:row.created_at,
     published_at:row.published_at || '',
-    questions:Array.isArray(row.questions) ? row.questions : []
+    questions:Array.isArray(row.questions) ? row.questions : [],
+    orphanResource:Boolean(row.orphan_resource)
   };
 }
 
@@ -1359,6 +1404,50 @@ async function loadPublishedDailyPdfResources(){
     .map(dailyDraftPublicResource);
 }
 
+function parseDailyResourceTitle(resource){
+  const title = String(resource?.title || '');
+  const parts = title.split('—').map(p => p.trim()).filter(Boolean);
+  const dateMatch = title.match(/\b\d{4}-\d{2}-\d{2}\b/);
+  return {
+    category:parts.length >= 4 ? parts[1] : 'QCM',
+    level:parts.length >= 4 ? parts[2] : 'Concours',
+    date:dateMatch ? dateMatch[0] : String(resource?.created_at || todayId()).slice(0, 10)
+  };
+}
+
+async function loadOrphanDailyResourceDrafts(existingDrafts = []){
+  const existingIds = new Set((existingDrafts || []).flatMap(d => [d.id, d.resource_id]).filter(Boolean));
+  const resources = await loadResourceIndex().catch(() => []);
+  return (Array.isArray(resources) ? resources : [])
+    .filter(r => r.source_type === 'daily_qcm_pdf' || String(r.id || '').startsWith('daily-pdf-'))
+    .filter(r => !existingIds.has(r.source_draft_id) && !existingIds.has(r.id))
+    .map(r => {
+      const meta = parseDailyResourceTitle(r);
+      const count = Number((String(r.description || '').match(/(\d+)\s*QCM/i) || [])[1] || 0);
+      return {
+        id:r.source_draft_id || r.id,
+        date:meta.date,
+        title:r.title || `QCM quotidien — ${meta.category} — ${meta.level} — ${meta.date}`,
+        category:meta.category,
+        level:meta.level,
+        count,
+        is_premium:Boolean(r.is_premium),
+        status:'published',
+        model:'',
+        file_name:r.file_name || 'qcm-quotidien.pdf',
+        mime_type:r.mime_type || 'application/pdf',
+        size:Number(r.size || 0),
+        storage_path:r.storage_path,
+        resource_id:r.id,
+        orphan_resource:true,
+        questions:[],
+        created_at:r.created_at || '',
+        updated_at:r.updated_at || '',
+        published_at:r.created_at || r.updated_at || ''
+      };
+    });
+}
+
 function mergePublicResources(primary = [], secondary = []){
   const out = [];
   const seen = new Set();
@@ -1381,9 +1470,10 @@ async function deleteDailyDraftResource(draft){
     throw err;
   });
   const id = dailyDraftResourceId(draft);
-  const item = resources.find(r => r.id === id || r.source_draft_id === draft.id);
+  const ids = new Set([id, draft?.resource_id, draft?.id].filter(Boolean));
+  const item = resources.find(r => ids.has(r.id) || ids.has(r.source_draft_id));
   if (item?.storage_path) await deleteResourceObject(item.storage_path).catch(()=>{});
-  const next = resources.filter(r => r.id !== id && r.source_draft_id !== draft.id);
+  const next = resources.filter(r => !ids.has(r.id) && !ids.has(r.source_draft_id));
   if (next.length !== resources.length) await saveResourceIndex(next);
   return Boolean(item);
 }
@@ -1659,12 +1749,20 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
   });
 }
 
+function dailyDraftMatchesPlan(draft, plan){
+  return draft?.status !== 'deleted'
+    && String(draft.date || '') === String(plan.date || '')
+    && String(draft.category || '') === String(plan.category || '')
+    && String(draft.level || '') === String(plan.level || '')
+    && Boolean(draft.is_premium) === Boolean(plan.is_premium);
+}
+
 async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
   if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour garder les PDF IA quotidiens'), { status:503 });
   const plan = dailyAiPlan(todayId(), overrides);
   const drafts = await loadAiDailyIndex();
-  const existing = drafts.find(d => d.date === plan.date && d.status !== 'deleted');
+  const existing = drafts.find(d => dailyDraftMatchesPlan(d, plan));
   if (existing && !force) return { draft:existing, skipped:true, plan };
   const generated = await generateUniqueAiQuestions({
     count:plan.count,
@@ -1701,7 +1799,7 @@ async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
     created_at:new Date().toISOString(),
     updated_at:new Date().toISOString()
   };
-  const filtered = drafts.filter(d => d.id !== existing?.id && d.date !== plan.date);
+  const filtered = drafts.filter(d => d.id !== existing?.id);
   filtered.unshift(draft);
   await saveAiDailyIndex(filtered.slice(0, 90));
   return { draft, skipped:false, plan };
@@ -2362,7 +2460,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'candidate-delete-1',
+    build: 'level-history-fix-1',
     time: new Date().toISOString()
   });
 });
@@ -2797,6 +2895,10 @@ app.get('/api/admin/ai/daily', requireAdmin, async (_req, res, next) => {
       if (err.status === 503) return [];
       throw err;
     });
+    const orphanDrafts = await loadOrphanDailyResourceDrafts(drafts);
+    const allDrafts = [...drafts, ...orphanDrafts]
+      .filter(d => d.status !== 'deleted')
+      .sort((a, b) => String(b.updated_at || b.published_at || b.created_at || '').localeCompare(String(a.updated_at || a.published_at || a.created_at || '')));
     res.json({
       ok:true,
       configured:Boolean(GEMINI_API_KEY && supabaseReady()),
@@ -2805,10 +2907,11 @@ app.get('/api/admin/ai/daily', requireAdmin, async (_req, res, next) => {
         mode:AI_DAILY_GROUP_MODE,
         categories:AI_DAILY_CATEGORIES,
         levels:AI_DAILY_LEVELS,
+        levelCategories:levelCategoryMapForClient(),
         is_premium:AI_DAILY_IS_PREMIUM,
         cron:'/api/cron/ai-daily-qcm'
       },
-      drafts:drafts.slice(0, 30).map(publicAiDailyDraft)
+      drafts:allDrafts.map(publicAiDailyDraft)
     });
   }catch(err){ next(err); }
 });
@@ -2831,7 +2934,12 @@ app.post('/api/admin/ai/daily/run', requireAdmin, async (req, res, next) => {
 app.get('/api/admin/ai/daily/:id/pdf', requireAdmin, async (req, res, next) => {
   try{
     const drafts = await loadAiDailyIndex();
-    const draft = drafts.find(d => d.id === req.params.id && d.status !== 'deleted');
+    let draft = drafts.find(d => d.id === req.params.id && d.status !== 'deleted');
+    if (!draft?.storage_path){
+      const resources = await loadResourceIndex().catch(() => []);
+      const resource = (Array.isArray(resources) ? resources : []).find(r => r.id === req.params.id || r.source_draft_id === req.params.id);
+      if (resource?.storage_path) draft = { storage_path:resource.storage_path, file_name:resource.file_name, mime_type:resource.mime_type };
+    }
     if (!draft?.storage_path) return res.status(404).json({ message:'PDF IA introuvable' });
     const file = await downloadResourceObject(draft.storage_path);
     res.setHeader('Content-Type', 'application/pdf');
@@ -2850,8 +2958,9 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
     const draft = drafts[idx];
     const questions = Array.isArray(draft.questions) ? draft.questions : [];
     if (!questions.length) return res.status(400).json({ message:'Aucun QCM à publier dans ce brouillon' });
-    const publishCategory = cleanText(req.body?.category || draft.category || '', 80) || draft.category;
     const publishLevel = cleanText(req.body?.level || draft.level || '', 40) || draft.level;
+    const requestedPublishCategory = cleanText(req.body?.category || draft.category || '', 80) || draft.category;
+    const publishCategory = categoryAllowedForLevel(requestedPublishCategory, publishLevel) ? requestedPublishCategory : defaultCategoryForLevel(publishLevel, draft.date || todayId());
     const publishPremium = req.body?.is_premium === undefined ? Boolean(draft.is_premium) : Boolean(req.body?.is_premium);
     const existingPublishedRows = await findPublishedRowsForDailyDraft(draft, { category:publishCategory, level:publishLevel, is_premium:publishPremium });
     const alreadyHasQuestions = Array.isArray(existingPublishedRows) && existingPublishedRows.length > 0;
@@ -2898,21 +3007,39 @@ app.delete('/api/admin/ai/daily/:id/public', requireAdmin, async (req, res, next
   try{
     const drafts = await loadAiDailyIndex();
     const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
-    if (idx < 0) return res.status(404).json({ message:'PDF quotidien introuvable' });
-    const draft = drafts[idx];
+    let draft = idx >= 0 ? drafts[idx] : null;
+    if (!draft){
+      const resources = await loadResourceIndex().catch(() => []);
+      const resource = (Array.isArray(resources) ? resources : []).find(r => r.id === req.params.id || r.source_draft_id === req.params.id);
+      if (resource?.storage_path){
+        const meta = parseDailyResourceTitle(resource);
+        const count = Number((String(resource.description || '').match(/(\d+)\s*QCM/i) || [])[1] || 0);
+        draft = {
+          id:resource.source_draft_id || resource.id,
+          resource_id:resource.id,
+          title:resource.title,
+          date:meta.date,
+          category:meta.category,
+          level:meta.level,
+          count,
+          is_premium:Boolean(resource.is_premium),
+          status:'published',
+          storage_path:resource.storage_path,
+          file_name:resource.file_name,
+          mime_type:resource.mime_type
+        };
+      }
+    }
+    if (!draft) return res.status(404).json({ message:'PDF quotidien introuvable' });
     if (draft.status !== 'published') return res.status(400).json({ message:'Ce PDF n’est pas publié côté candidat.' });
     const removedQuestions = await deletePublishedDailyQuestions(draft, { category:draft.category, level:draft.level, is_premium:draft.is_premium });
     const removedResource = await deleteDailyDraftResource(draft);
-    drafts[idx] = {
-      ...draft,
-      status:'draft',
-      published_at:'',
-      published_count:0,
-      resource_id:'',
-      updated_at:new Date().toISOString()
-    };
-    await saveAiDailyIndex(drafts);
-    res.json({ ok:true, removedQuestions, removedResource, draft:publicAiDailyDraft(drafts[idx]) });
+    let responseDraft = { ...draft, status:'draft', published_at:'', published_count:0, resource_id:'', updated_at:new Date().toISOString() };
+    if (idx >= 0){
+      drafts[idx] = responseDraft;
+      await saveAiDailyIndex(drafts);
+    }
+    res.json({ ok:true, removedQuestions, removedResource, draft:publicAiDailyDraft(responseDraft) });
   }catch(err){ next(err); }
 });
 
