@@ -376,3 +376,8 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - La liste anti-répétition transmise au modèle est raccourcie pour éviter de saturer la génération.
 - Les QCM sont produits par lots plus efficaces avec contrôle interne demandé au modèle et contrôle local strict conservé.
 - Le mot “attention” n’est plus rejeté quand il fait partie d’un vrai thème, mais les commentaires internes du type “attention,” restent bloqués.
+
+## 2026-09-24 — Documents PDF quotidiens visibles
+
+- Les PDF quotidiens déjà publiés apparaissent automatiquement dans **Documents & fichiers**, même s’ils ont été publiés avant la synchronisation Documents.
+- Le téléchargement public des PDF quotidiens publiés utilise le stockage du brouillon validé si le document n’a pas encore été copié dans l’index Documents.

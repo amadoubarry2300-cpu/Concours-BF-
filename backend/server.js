@@ -1331,6 +1331,50 @@ async function findPublishedRowsForDailyDraft(draft, { category, level, is_premi
   return await supabaseRequest(query).catch(() => []);
 }
 
+function dailyDraftPublicResource(draft){
+  const category = cleanText(draft?.category || 'QCM', 80);
+  const level = cleanText(draft?.level || 'Concours', 40);
+  const date = cleanText(draft?.date || todayId(), 20);
+  return publicResource({
+    id:dailyDraftResourceId(draft),
+    title:safePdfTitle(`QCM quotidien — ${category} — ${level} — ${date}`),
+    category:'QCM quotidiens',
+    description:`${Number(draft?.count || draft?.questions?.length || 0)} QCM corrigés — ${category} · ${level}.`,
+    file_name:draft?.file_name || safeFileName(`QCM quotidien — ${category} — ${level} — ${date}.pdf`),
+    mime_type:draft?.mime_type || 'application/pdf',
+    kind:'pdf',
+    size:Number(draft?.size || 0),
+    storage_path:draft?.storage_path || '',
+    is_premium:Boolean(draft?.is_premium),
+    is_active:draft?.status === 'published',
+    created_at:draft?.published_at || draft?.created_at || '',
+    updated_at:draft?.updated_at || draft?.published_at || ''
+  });
+}
+
+async function loadPublishedDailyPdfResources(){
+  const drafts = await loadAiDailyIndex().catch(() => []);
+  return (Array.isArray(drafts) ? drafts : [])
+    .filter(d => d.status === 'published' && d.storage_path)
+    .map(dailyDraftPublicResource);
+}
+
+function mergePublicResources(primary = [], secondary = []){
+  const out = [];
+  const seen = new Set();
+  [...primary, ...secondary].forEach(item => {
+    if (!item?.id || seen.has(item.id)) return;
+    seen.add(item.id);
+    out.push(item);
+  });
+  return out.sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
+}
+
+async function findPublishedDailyDraftByResourceId(id){
+  const drafts = await loadAiDailyIndex().catch(() => []);
+  return (Array.isArray(drafts) ? drafts : []).find(d => d.status === 'published' && d.storage_path && dailyDraftResourceId(d) === id) || null;
+}
+
 function pdfCleanText(value){
   return String(value || '')
     .replace(/\u0000/g, '')
@@ -2291,7 +2335,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'publish-resource-1',
+    build: 'publish-resource-2',
     time: new Date().toISOString()
   });
 });
@@ -2991,7 +3035,8 @@ app.delete('/api/admin/questions/:id', requireAdmin, async (req, res, next) => {
 app.get('/api/admin/resources', requireAdmin, async (_req, res, next) => {
   try{
     const resources = await loadResourceIndex();
-    res.json({ ok:true, resources:resources.map(publicResource) });
+    const dailyResources = await loadPublishedDailyPdfResources();
+    res.json({ ok:true, resources:mergePublicResources(resources.map(publicResource), dailyResources) });
   }catch(err){ next(err); }
 });
 
@@ -3267,18 +3312,32 @@ app.get('/api/resources', async (req, res, next) => {
       if (err.status === 503 || /Stockage indisponible/i.test(err.message)) return [];
       throw err;
     });
-    const visible = resources
+    const indexed = resources
       .filter(r => r.is_active !== false)
       .filter(r => premiumAllowed || !r.is_premium)
       .map(publicResource);
-    res.json({ ok:true, premiumIncluded:premiumAllowed, resources:visible });
+    const dailyResources = (await loadPublishedDailyPdfResources())
+      .filter(r => r.is_active !== false)
+      .filter(r => premiumAllowed || !r.is_premium);
+    res.json({ ok:true, premiumIncluded:premiumAllowed, resources:mergePublicResources(indexed, dailyResources) });
   }catch(err){ next(err); }
 });
 
 app.get('/api/resources/:id/download', async (req, res, next) => {
   try{
     const resources = await loadResourceIndex();
-    const item = resources.find(r => r.id === req.params.id && r.is_active !== false);
+    let item = resources.find(r => r.id === req.params.id && r.is_active !== false);
+    const dailyDraft = item ? null : await findPublishedDailyDraftByResourceId(req.params.id);
+    if (!item && dailyDraft) item = {
+      id:dailyDraftResourceId(dailyDraft),
+      title:safePdfTitle(dailyDraft.title || 'QCM quotidien'),
+      file_name:dailyDraft.file_name || 'qcm-quotidien.pdf',
+      mime_type:dailyDraft.mime_type || 'application/pdf',
+      kind:'pdf',
+      storage_path:dailyDraft.storage_path,
+      is_premium:Boolean(dailyDraft.is_premium),
+      is_active:true
+    };
     if (!item) return res.status(404).json({ message:'Document introuvable' });
     if (item.is_premium){
       const premiumAllowed = await requestHasPremium(req);
