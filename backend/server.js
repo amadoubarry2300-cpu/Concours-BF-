@@ -1310,7 +1310,8 @@ function publicAiDailyDraft(row){
     created_at:row.created_at,
     published_at:row.published_at || '',
     questions:Array.isArray(row.questions) ? row.questions : [],
-    orphanResource:Boolean(row.orphan_resource)
+    orphanResource:Boolean(row.orphan_resource),
+    orphanQuestions:Boolean(row.orphan_questions)
   };
 }
 
@@ -1446,6 +1447,70 @@ async function loadOrphanDailyResourceDrafts(existingDrafts = []){
         published_at:r.created_at || r.updated_at || ''
       };
     });
+}
+
+function dailyQuestionsDraftId(key){
+  return 'daily-questions-' + crypto.createHash('sha1').update(String(key || '')).digest('hex').slice(0, 16);
+}
+
+function dailyQuestionSourceMatches(source){
+  return /^QCM\s+quotidien\s*[—-]/i.test(String(source || '').trim());
+}
+
+async function loadPublishedDailyQuestionDrafts(existingDrafts = []){
+  if (!supabaseReady()) return [];
+  const existingTitles = new Set((existingDrafts || []).map(d => safePdfTitle(d.title || d.source_title || '')).filter(Boolean));
+  const query = 'questions?select=id,source,category,level,is_premium,created_at,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation&source=ilike.' + encodeURIComponent('QCM quotidien*') + '&order=created_at.desc&limit=1000';
+  const rows = await supabaseRequest(query).catch(() => []);
+  const groups = new Map();
+  for (const row of (Array.isArray(rows) ? rows : [])){
+    if (!dailyQuestionSourceMatches(row.source)) continue;
+    const title = safePdfTitle(row.source || 'QCM quotidien');
+    const key = `${title}|${row.category || ''}|${row.level || ''}|${Boolean(row.is_premium)}`;
+    if (!groups.has(key)) groups.set(key, { key, title, rows:[] });
+    groups.get(key).rows.push(row);
+  }
+  return [...groups.values()]
+    .filter(group => group.rows.length && !existingTitles.has(group.title))
+    .map(group => {
+      const first = group.rows[0] || {};
+      const meta = parseDailyResourceTitle({ title:group.title, created_at:first.created_at });
+      const questions = group.rows.slice().reverse().map(q => ({
+        id:q.id,
+        question_text:q.question_text,
+        option_a:q.option_a,
+        option_b:q.option_b,
+        option_c:q.option_c,
+        option_d:q.option_d,
+        correct_answer:q.correct_answer,
+        explanation:q.explanation
+      }));
+      return {
+        id:dailyQuestionsDraftId(group.key),
+        date:meta.date,
+        title:group.title,
+        source_title:group.title,
+        category:first.category || meta.category,
+        level:first.level || meta.level,
+        count:questions.length,
+        is_premium:Boolean(first.is_premium),
+        status:'published',
+        model:'',
+        file_name:'qcm-quotidien.pdf',
+        storage_path:'',
+        resource_id:'',
+        orphan_questions:true,
+        questions,
+        created_at:first.created_at || '',
+        updated_at:first.created_at || '',
+        published_at:first.created_at || ''
+      };
+    });
+}
+
+async function loadPublishedDailyQuestionDraftById(id){
+  const drafts = await loadPublishedDailyQuestionDrafts([]);
+  return drafts.find(d => d.id === id) || null;
 }
 
 function mergePublicResources(primary = [], secondary = []){
@@ -2460,7 +2525,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'level-history-fix-1',
+    build: 'level-history-fix-2',
     time: new Date().toISOString()
   });
 });
@@ -2896,7 +2961,8 @@ app.get('/api/admin/ai/daily', requireAdmin, async (_req, res, next) => {
       throw err;
     });
     const orphanDrafts = await loadOrphanDailyResourceDrafts(drafts);
-    const allDrafts = [...drafts, ...orphanDrafts]
+    const orphanQuestionDrafts = await loadPublishedDailyQuestionDrafts([...drafts, ...orphanDrafts]);
+    const allDrafts = [...drafts, ...orphanDrafts, ...orphanQuestionDrafts]
       .filter(d => d.status !== 'deleted')
       .sort((a, b) => String(b.updated_at || b.published_at || b.created_at || '').localeCompare(String(a.updated_at || a.published_at || a.created_at || '')));
     res.json({
@@ -2940,7 +3006,17 @@ app.get('/api/admin/ai/daily/:id/pdf', requireAdmin, async (req, res, next) => {
       const resource = (Array.isArray(resources) ? resources : []).find(r => r.id === req.params.id || r.source_draft_id === req.params.id);
       if (resource?.storage_path) draft = { storage_path:resource.storage_path, file_name:resource.file_name, mime_type:resource.mime_type };
     }
-    if (!draft?.storage_path) return res.status(404).json({ message:'PDF IA introuvable' });
+    if (!draft?.storage_path){
+      const questionDraft = await loadPublishedDailyQuestionDraftById(req.params.id);
+      if (questionDraft?.questions?.length){
+        const pdf = await buildQcmDraftPdf({ title:questionDraft.title, date:questionDraft.date, category:questionDraft.category, level:questionDraft.level, questions:questionDraft.questions });
+        res.setHeader('Content-Type', 'application/pdf');
+        const disposition = req.query?.inline ? 'inline' : 'attachment';
+        res.setHeader('Content-Disposition', `${disposition}; filename="qcm-quotidien.pdf"`);
+        return res.send(pdf);
+      }
+      return res.status(404).json({ message:'PDF IA introuvable' });
+    }
     const file = await downloadResourceObject(draft.storage_path);
     res.setHeader('Content-Type', 'application/pdf');
     const disposition = req.query?.inline ? 'inline' : 'attachment';
@@ -3030,6 +3106,7 @@ app.delete('/api/admin/ai/daily/:id/public', requireAdmin, async (req, res, next
         };
       }
     }
+    if (!draft) draft = await loadPublishedDailyQuestionDraftById(req.params.id);
     if (!draft) return res.status(404).json({ message:'PDF quotidien introuvable' });
     if (draft.status !== 'published') return res.status(400).json({ message:'Ce PDF n’est pas publié côté candidat.' });
     const removedQuestions = await deletePublishedDailyQuestions(draft, { category:draft.category, level:draft.level, is_premium:draft.is_premium });
