@@ -364,3 +364,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - La mention “Document de révision à vérifier avant publication” a été retirée du document et remplacée par une formulation neutre de préparation.
 - La veille actualités consulte davantage de sources officielles du Burkina Faso, prépare des actualités masquées pour validation admin et tente de joindre automatiquement le communiqué PDF officiel quand il est disponible.
 - Ajout d’une route cron de veille officielle quotidienne pour préparer les communiqués récents sans publication automatique.
+
+## 2026-09-24 — Correctif génération 50 QCM
+
+- La génération quotidienne ne s’arrête plus après un lot partiellement validé.
+- Les 50 QCM sont préparés par petits lots mieux ciblés pour éviter les réponses tronquées et augmenter le nombre de QCM fiables.
+- Les anciennes questions de la même catégorie sont davantage prises en compte pour éviter les répétitions, sans bloquer abusivement les questions réellement différentes.

@@ -916,7 +916,7 @@ function isDuplicateQuestionText(text, index){
   for (const sample of index.samples){
     if (!sample?.tokens?.size) continue;
     if (Math.abs(sample.size - tokens.size) > Math.max(7, Math.ceil(Math.max(sample.size, tokens.size) * 0.45))) continue;
-    if (tokenSimilarity(tokens, sample.tokens) >= 0.84) return true;
+    if (tokenSimilarity(tokens, sample.tokens) >= 0.9) return true;
   }
   return false;
 }
@@ -1037,20 +1037,85 @@ function rotatingAvoidSample(texts, offset = 0, limit = 70){
   return rows;
 }
 
-async function collectExistingQcmTexts({ includeDaily = true } = {}){
-  const texts = [];
-  loadLocalQcmBank().forEach(q => { if (q?.question_text) texts.push(q.question_text); });
+async function collectExistingQcmRows({ includeDaily = true } = {}){
+  const rows = [];
+  loadLocalQcmBank().forEach(q => {
+    if (q?.question_text) rows.push({ question_text:q.question_text, category:q.category || '', level:q.level || '' });
+  });
   if (supabaseReady()){
-    const rows = await supabaseRequest('questions?select=question_text&limit=10000').catch(() => []);
-    if (Array.isArray(rows)) rows.forEach(q => { if (q?.question_text) texts.push(q.question_text); });
+    const extra = await supabaseRequest('questions?select=question_text,category,level&limit=10000').catch(() => []);
+    if (Array.isArray(extra)) extra.forEach(q => {
+      if (q?.question_text) rows.push({ question_text:q.question_text, category:q.category || '', level:q.level || '' });
+    });
   }
   if (includeDaily){
     const drafts = await loadAiDailyIndex().catch(() => []);
     if (Array.isArray(drafts)){
-      drafts.forEach(d => (Array.isArray(d.questions) ? d.questions : []).forEach(q => { if (q?.question_text) texts.push(q.question_text); }));
+      drafts.forEach(d => (Array.isArray(d.questions) ? d.questions : []).forEach(q => {
+        if (q?.question_text) rows.push({ question_text:q.question_text, category:q.category || d.category || '', level:q.level || d.level || '' });
+      }));
     }
   }
-  return Array.from(new Set(texts.map(t => strictCleanAiQcmText(t, 1200)).filter(Boolean)));
+  const seen = new Set();
+  return rows.filter(row => {
+    const text = strictCleanAiQcmText(row.question_text, 1200);
+    if (!text) return false;
+    const key = normalizeQuestionKey(text);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    row.question_text = text;
+    return true;
+  });
+}
+
+async function collectExistingQcmTexts(options = {}){
+  return (await collectExistingQcmRows(options)).map(row => row.question_text);
+}
+
+function relevantExistingQcmTexts(rows, category, level){
+  const catKey = normalizeQuestionKey(category);
+  const levelKey = normalizeQuestionKey(level);
+  return (rows || [])
+    .filter(row => {
+      const rowCat = normalizeQuestionKey(row.category || '');
+      const rowLevel = normalizeQuestionKey(row.level || '');
+      return (catKey && (rowCat.includes(catKey) || catKey.includes(rowCat))) || (levelKey && rowLevel && rowLevel === levelKey);
+    })
+    .map(row => row.question_text);
+}
+
+function qcmGenerationAngle(category, attempt){
+  const cat = normalizeQuestionKey(category);
+  const bfAngles = [
+    'institutions nationales, hiérarchie administrative et citoyenneté',
+    'histoire politique du Burkina Faso, repères chronologiques et acteurs',
+    'géographie administrative, régions, provinces, ressources et aménagement du territoire',
+    'économie, secteurs productifs, finances publiques et développement local',
+    'culture, langues nationales, patrimoine, cohésion sociale et symboles',
+    'droit public burkinabè, décentralisation, collectivités territoriales et services publics',
+    'actualité institutionnelle formulée de façon générale et durable, sans inventer de date récente',
+    'sécurité, environnement, santé publique, éducation et politiques publiques au Burkina Faso'
+  ];
+  const mathAngles = ['proportionnalité et pourcentages', 'équations et inéquations', 'géométrie plane', 'statistiques et probabilités', 'raisonnement logique numérique'];
+  const frenchAngles = ['grammaire', 'orthographe', 'vocabulaire', 'compréhension', 'conjugaison', 'syntaxe'];
+  const historyAngles = ['chronologie', 'cartographie', 'décolonisation', 'organisations régionales', 'relations internationales'];
+  const psychAngles = ['suites logiques', 'classements', 'analogies', 'raisonnement spatial', 'attention sélective'];
+  let angles = ['raisonnement appliqué', 'notions avancées', 'cas pratiques', 'pièges réalistes', 'analyse comparative'];
+  if (cat.includes('burkina')) angles = bfAngles;
+  else if (cat.includes('math')) angles = mathAngles;
+  else if (cat.includes('franc')) angles = frenchAngles;
+  else if (cat.includes('histoire') || cat.includes('geo')) angles = historyAngles;
+  else if (cat.includes('psych')) angles = psychAngles;
+  return angles[attempt % angles.length];
+}
+
+function buildAvoidQuestions(existingRows, existingTexts, category, level, questions, attempt){
+  const relevant = relevantExistingQcmTexts(existingRows, category, level);
+  const avoid = [];
+  avoid.push(...rotatingAvoidSample(relevant, attempt * 17, 65));
+  avoid.push(...rotatingAvoidSample(existingTexts, attempt * 53, 25));
+  avoid.push(...questions.map(q => q.question_text));
+  return Array.from(new Set(avoid.map(q => strictCleanAiQcmText(q, 220)).filter(Boolean))).slice(0, 100);
 }
 
 async function validateQuestionsForPublication(questions){
@@ -1072,17 +1137,20 @@ async function validateQuestionsForPublication(questions){
 
 async function generateUniqueAiQuestions({ count, category, level, theme, fromPdf = false, extraParts = [], is_premium = false }){
   const target = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(count || 1)));
-  const existingTexts = await collectExistingQcmTexts();
+  const existingRows = await collectExistingQcmRows();
+  const existingTexts = existingRows.map(row => row.question_text);
   const dedupeIndex = createQuestionDedupeIndex(existingTexts);
   const questions = [];
   let model = '';
   const defaults = { category, level, is_premium, source:'Réussite Concours BF' };
-  const maxAttempts = Math.max(3, Math.ceil(target / 18) + 2);
+  // Lots plus petits + plus nombreux: cela évite les réponses tronquées et permet de compléter vraiment jusqu'à 50.
+  const maxAttempts = Math.max(fromPdf ? 10 : 14, Math.ceil(target / 5) + 8);
   for (let attempt = 0; questions.length < target && attempt < maxAttempts; attempt++){
     const remaining = target - questions.length;
-    const batchCount = Math.min(AI_QCM_MAX_COUNT, Math.max(10, Math.min(25, remaining + 8)));
-    const avoidQuestions = rotatingAvoidSample(existingTexts, attempt * 53, 55).concat(questions.map(q => q.question_text));
-    const batchTheme = `${theme || category}. Lot ${attempt + 1}: produire uniquement des questions nouvelles, différentes des lots précédents.`;
+    const batchCount = Math.min(14, Math.max(6, Math.min(14, remaining + 4)));
+    const angle = qcmGenerationAngle(category, attempt);
+    const avoidQuestions = buildAvoidQuestions(existingRows, existingTexts, category, level, questions, attempt);
+    const batchTheme = `${theme || category}. Angle obligatoire du lot ${attempt + 1}: ${angle}. Produire uniquement des questions nouvelles, sans reprendre les questions déjà listées.`;
     const prompt = aiQcmPrompt({ count:batchCount, category, level, theme:batchTheme, fromPdf, avoidQuestions, existingCount:existingTexts.length });
     const ai = extraParts.length
       ? await callGeminiGenerateParts([{ text:prompt }, ...extraParts])
@@ -1095,16 +1163,23 @@ async function generateUniqueAiQuestions({ count, category, level, theme, fromPd
       preliminary = [];
     }
     if (!preliminary.length) continue;
-    let verifiedText = JSON.stringify({ questions:questionRowsForVerification(preliminary) });
+
+    let accepted = [];
     try{
-      const verified = await verifyAiQuestionsWithGemini(preliminary, { category, level, theme, count:batchCount });
-      verifiedText = verified.text || verifiedText;
+      const verified = await verifyAiQuestionsWithGemini(preliminary, { category, level, theme:batchTheme, count:batchCount });
       model = verified.model || model;
+      accepted = normalizeAiQuestionList(verified.text || '', defaults, remaining, { dedupeIndex });
     }catch(err){
       console.warn('Vérification IA QCM ignorée:', err.message);
     }
-    const accepted = normalizeAiQuestionList(verifiedText, defaults, remaining, { dedupeIndex });
-    questions.push(...accepted);
+
+    // Si le vérificateur renvoie trop peu de questions, on ne bloque pas tout le PDF:
+    // on complète avec les questions préliminaires qui passent encore les contrôles stricts.
+    if (accepted.length < remaining){
+      const fallback = normalizeAiQuestionRows(preliminary, defaults, remaining - accepted.length, { dedupeIndex });
+      accepted.push(...fallback);
+    }
+    questions.push(...accepted.slice(0, remaining));
   }
   return { questions:questions.slice(0, target), model, existingCount:existingTexts.length };
 }
