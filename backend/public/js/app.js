@@ -1030,6 +1030,7 @@ let adminQuestionCache = [];
 let adminResourceCache = [];
 let adminNewsCache = [];
 let aiDraftCache = [];
+let aiDailyDraftCache = [];
 let aiNewsDraftCache = [];
 let resourceCache = [];
 let newsCache = [];
@@ -1307,6 +1308,129 @@ async function loadAiStatus(){
   }catch(err){
     wrap.innerHTML = `<div><b>Erreur</b><span>${escapeHtml(err.message)}</span></div>`;
   }
+  loadDailyAiDrafts();
+}
+
+async function loadDailyAiDrafts(){
+  const status = $('#aiDailyStatus');
+  const list = $('#aiDailyDraftList');
+  if (!list) return;
+  list.innerHTML = '<div class="empty">Chargement des PDF IA...</div>';
+  try{
+    const data = await adminFetch('/api/admin/ai/daily');
+    aiDailyDraftCache = data.drafts || [];
+    if (status){
+      status.innerHTML = `
+        <div><b>${data.settings?.count || 20}</b><span>QCM / jour</span></div>
+        <div><b>${data.configured ? 'Prêt' : 'À configurer'}</b><span>PDF IA</span></div>
+        <div><b>${data.settings?.mode === 'niveau' ? 'Niveau' : 'Module'}</b><span>Rotation</span></div>`;
+    }
+    renderDailyAiDrafts();
+  }catch(err){
+    if (status) status.innerHTML = `<div><b>Erreur</b><span>${escapeHtml(err.message)}</span></div>`;
+    list.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function runDailyAiQcm(){
+  const btn = $('#aiDailyRunBtn');
+  const result = $('#aiDailyResult');
+  setButtonLoading(btn, true, 'Création du PDF...');
+  if (result) result.innerHTML = '<div class="pay-note">L’IA prépare le PDF du jour. Cela peut prendre quelques secondes.</div>';
+  try{
+    const payload = {
+      count:20,
+      category:$('#aiDailyCategory')?.value || '',
+      level:$('#aiDailyLevel')?.value || '',
+      is_premium:Boolean($('#aiDailyPremium')?.checked),
+      force:Boolean($('#aiDailyForce')?.checked)
+    };
+    const data = await adminFetch('/api/admin/ai/daily/run', { method:'POST', body:JSON.stringify(payload) });
+    if (result){
+      result.innerHTML = data.skipped
+        ? '<div class="pay-note warn">Le PDF du jour existe déjà. Coche “Régénérer aujourd’hui” si tu veux le refaire.</div>'
+        : `<div class="pay-note success">PDF IA prêt ✅ ${data.draft?.count || 0} QCM à relire avant publication.</div>`;
+    }
+    await loadDailyAiDrafts();
+  }catch(err){
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
+  }finally{
+    setButtonLoading(btn, false);
+  }
+}
+
+function renderDailyAiDrafts(){
+  const wrap = $('#aiDailyDraftList');
+  if (!wrap) return;
+  if (!aiDailyDraftCache.length){
+    wrap.innerHTML = '<div class="empty">Aucun PDF IA quotidien pour le moment. Clique sur “Créer le PDF du jour maintenant”.</div>';
+    return;
+  }
+  wrap.innerHTML = aiDailyDraftCache.map((d, idx)=>`
+    <div class="admin-q-item daily-ai-draft ${d.status === 'published' ? 'ai-published' : ''}">
+      <div class="admin-q-meta">
+        <span>${escapeHtml(d.date || '')}</span>
+        <span>${escapeHtml(d.category || 'Module')}</span>
+        <span>${escapeHtml(d.level || 'Niveau')}</span>
+        ${d.is_premium ? '<span class="premium">Premium</span>' : '<span class="free">Gratuit</span>'}
+        ${d.status === 'published' ? '<span class="active">Publié</span>' : '<span>PDF à relire</span>'}
+      </div>
+      <h4>${escapeHtml(d.title || 'QCM IA quotidien')}</h4>
+      <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. Télécharge le fichier, vérifie les questions et publie seulement après validation.</p>
+      <div class="admin-q-actions">
+        <button class="edit" onclick="downloadDailyAiPdf(${idx})">Télécharger PDF</button>
+        <button class="pause" onclick="publishDailyAiDraft(${idx})" ${d.status === 'published' ? 'disabled' : ''}>Publier les ${Number(d.count || 0)} QCM</button>
+        <button class="delete" onclick="deleteDailyAiDraft(${idx})">Supprimer</button>
+      </div>
+    </div>`).join('');
+}
+
+async function downloadDailyAiPdf(index){
+  const d = aiDailyDraftCache[index];
+  if (!d) return;
+  try{
+    const res = await fetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/pdf', { headers:authHeaders({}) });
+    if (!res.ok){
+      const data = await res.json().catch(()=>({}));
+      throw new Error(data.message || 'PDF indisponible');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = d.fileName || 'qcm-ia-quotidien.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1200);
+  }catch(err){ toast(err.message); }
+}
+
+async function publishDailyAiDraft(index){
+  const d = aiDailyDraftCache[index];
+  if (!d || d.status === 'published') return;
+  if (!confirm(`Publier les ${Number(d.count || 0)} QCM de ce PDF après vérification ?`)) return;
+  try{
+    const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/publish', { method:'POST', body:JSON.stringify({}) });
+    const result = $('#aiDailyResult');
+    if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM publiés ✅</div>`;
+    await loadDailyAiDrafts();
+    await loadAdminQuestions();
+    await loadSupabaseQuestions();
+    renderFormations(currentFormFilter);
+    toast('QCM quotidiens publiés ✅');
+  }catch(err){ toast(err.message); }
+}
+
+async function deleteDailyAiDraft(index){
+  const d = aiDailyDraftCache[index];
+  if (!d) return;
+  if (!confirm('Supprimer ce PDF IA quotidien ?')) return;
+  try{
+    await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id), { method:'DELETE' });
+    await loadDailyAiDrafts();
+    toast('PDF IA supprimé');
+  }catch(err){ toast(err.message); }
 }
 
 async function generateAiQcm(){

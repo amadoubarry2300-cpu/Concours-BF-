@@ -657,3 +657,9 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
   @keyframes softGlow{0%,100%{box-shadow:0 8px 20px rgba(14,159,110,.28)}50%{box-shadow:0 14px 30px rgba(14,159,110,.40)}}
   @keyframes heroKenBurns{from{transform:scale(1)}to{transform:scale(1.055) translate3d(-6px,-4px,0)}}
 }
+
+/* ---------- IA quotidienne PDF ---------- */
+.daily-ai-card{background:#f9fafb;border:1px solid var(--line);border-radius:20px;padding:14px;margin:12px 0 16px;box-shadow:var(--shadow)}
+.daily-ai-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.daily-ai-head h3{font-size:1rem;font-weight:1000;margin-bottom:2px}.daily-ai-head .mini-btn{box-shadow:var(--shadow);border:1px solid var(--line)}
+.daily-ai-draft{border-left:4px solid var(--green)}.daily-ai-draft.ai-published{border-left-color:var(--gold);background:#fffbeb}
+@media(max-width:420px){.daily-ai-head{flex-direction:column}.daily-ai-head .mini-btn{width:100%}}

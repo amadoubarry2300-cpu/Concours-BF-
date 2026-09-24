@@ -325,3 +325,11 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Quand un candidat est connecté, l’onglet **Accueil** devient **Mon espace**.
 - Les blocs publics de présentation sont masqués pour le candidat connecté afin que l’écran commence directement par son tableau de bord et ses outils.
 - Le contenu public reste inchangé pour les visiteurs non connectés.
+
+## 2026-09-24 — IA quotidienne QCM PDF
+
+- Ajout d’un bloc admin **QCM PDF quotidiens** dans l’espace IA.
+- L’admin peut créer un PDF du jour avec 20 QCM générés par IA, par module ou par niveau selon la rotation configurée.
+- Les PDF IA restent des brouillons à relire : rien n’est publié automatiquement côté candidat.
+- Après vérification, l’admin peut publier les QCM du PDF en Gratuit ou Premium.
+- Ajout d’une route cron quotidienne pour préparer automatiquement le PDF du jour si la clé IA et le stockage sont configurés.

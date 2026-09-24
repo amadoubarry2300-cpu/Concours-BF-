@@ -60,6 +60,15 @@ const TWILIO_FROM = process.env.TWILIO_FROM || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 const OFFICIAL_NEWS_SOURCES = process.env.OFFICIAL_NEWS_SOURCES || '';
+const AI_DAILY_INDEX_PATH = 'ai-daily/index.json';
+const AI_DAILY_DEFAULT_CATEGORIES = ['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Psychotechnique','Français','SVT','Greffier / Droit'];
+const AI_DAILY_DEFAULT_LEVELS = ['Concours','BEPC','BAC','CEP','Licence'];
+const AI_DAILY_QCM_COUNT = Math.min(20, Math.max(1, Number(process.env.AI_DAILY_QCM_COUNT || 20)));
+const AI_DAILY_GROUP_MODE = ['module','niveau'].includes(String(process.env.AI_DAILY_GROUP_MODE || '').toLowerCase()) ? String(process.env.AI_DAILY_GROUP_MODE).toLowerCase() : 'module';
+const AI_DAILY_CATEGORIES = parseEnvList(process.env.AI_DAILY_QCM_CATEGORIES, AI_DAILY_DEFAULT_CATEGORIES);
+const AI_DAILY_LEVELS = parseEnvList(process.env.AI_DAILY_QCM_LEVELS, AI_DAILY_DEFAULT_LEVELS);
+const AI_DAILY_IS_PREMIUM = /^true|1|yes|oui$/i.test(String(process.env.AI_DAILY_QCM_PREMIUM || 'false'));
+const AI_DAILY_CRON_SECRET = process.env.AI_DAILY_CRON_SECRET || process.env.CRON_SECRET || '';
 const premiumNotificationTxSent = new Set();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -67,6 +76,11 @@ const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const LOCAL_QCM_BANK_PATH = path.join(__dirname, 'data', 'qcm_bank_5000_v1.json');
 let localQcmBankCache = null;
+
+function parseEnvList(value, fallback){
+  const rows = String(value || '').split(/[,;\n]+/).map(v => v.trim()).filter(Boolean);
+  return rows.length ? rows : fallback;
+}
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf.toString('utf8'); } }));
@@ -920,6 +934,195 @@ async function callGeminiGenerateParts(parts){
 
 async function callGeminiGenerate(prompt){
   return callGeminiGenerateParts([{ text:prompt }]);
+}
+
+function todayId(date = new Date()){
+  return date.toISOString().slice(0, 10);
+}
+
+function daysSinceEpoch(dateId){
+  const t = Date.parse(`${dateId}T00:00:00Z`);
+  return Number.isFinite(t) ? Math.floor(t / 864e5) : Math.floor(Date.now() / 864e5);
+}
+
+function dailyAiPlan(dateId = todayId(), overrides = {}){
+  const count = Math.min(20, Math.max(1, Number(overrides.count || AI_DAILY_QCM_COUNT || 20)));
+  const categories = AI_DAILY_CATEGORIES.length ? AI_DAILY_CATEGORIES : AI_DAILY_DEFAULT_CATEGORIES;
+  const levels = AI_DAILY_LEVELS.length ? AI_DAILY_LEVELS : AI_DAILY_DEFAULT_LEVELS;
+  const day = daysSinceEpoch(dateId);
+  const category = cleanText(overrides.category || categories[day % categories.length] || 'Culture générale', 80);
+  const level = cleanText(overrides.level || levels[Math.floor(day / Math.max(1, categories.length)) % levels.length] || 'Concours', 40);
+  const mode = ['module','niveau'].includes(String(overrides.mode || '').toLowerCase()) ? String(overrides.mode).toLowerCase() : AI_DAILY_GROUP_MODE;
+  const isPremium = overrides.is_premium === undefined ? AI_DAILY_IS_PREMIUM : Boolean(overrides.is_premium);
+  const theme = cleanText(overrides.theme || (mode === 'niveau'
+    ? `Série quotidienne ${dateId} — niveau ${level}, module ${category}`
+    : `Série quotidienne ${dateId} — module ${category}, niveau ${level}`), 220);
+  return { date:dateId, count, category, level, mode, is_premium:isPremium, theme };
+}
+
+async function loadAiDailyIndex(){
+  try{
+    const file = await downloadResourceObject(AI_DAILY_INDEX_PATH);
+    const data = JSON.parse(file.buffer.toString('utf8') || '[]');
+    return Array.isArray(data) ? data : [];
+  }catch(err){
+    if (err.status === 404 || /Fichier introuvable|not found|does not exist|object.*not/i.test(String(err.message || err.details?.message || ''))) return [];
+    throw err;
+  }
+}
+
+async function saveAiDailyIndex(rows){
+  const body = Buffer.from(JSON.stringify(rows || [], null, 2), 'utf8');
+  await uploadResourceObject(AI_DAILY_INDEX_PATH, body, 'application/json; charset=utf-8');
+}
+
+function publicAiDailyDraft(row){
+  return {
+    id:row.id,
+    date:row.date,
+    title:row.title,
+    category:row.category,
+    level:row.level,
+    count:Number(row.count || row.questions?.length || 0),
+    is_premium:Boolean(row.is_premium),
+    status:row.status || 'draft',
+    model:row.model || '',
+    fileName:row.file_name || '',
+    created_at:row.created_at,
+    published_at:row.published_at || '',
+    questions:Array.isArray(row.questions) ? row.questions : []
+  };
+}
+
+function pdfCleanText(value){
+  return String(value || '')
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/[•●]/g, '-')
+    .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, '')
+    .trim();
+}
+
+function pdfEscape(value){
+  return pdfCleanText(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+function wrapPdfLine(text, width = 92){
+  const words = pdfCleanText(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const word of words){
+    const next = line ? `${line} ${word}` : word;
+    if (next.length > width && line){ lines.push(line); line = word; }
+    else line = next;
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [''];
+}
+
+function buildQcmDraftPdf({ title, date, category, level, questions }){
+  const allLines = [];
+  allLines.push(title || 'QCM IA quotidien');
+  allLines.push(`Date: ${date || todayId()}  |  Module: ${category || ''}  |  Niveau: ${level || ''}`);
+  allLines.push('Statut: brouillon IA a relire avant publication');
+  allLines.push('');
+  (questions || []).forEach((q, idx) => {
+    allLines.push(`${idx + 1}. ${q.question_text || ''}`);
+    allLines.push(`A. ${q.option_a || ''}`);
+    allLines.push(`B. ${q.option_b || ''}`);
+    allLines.push(`C. ${q.option_c || ''}`);
+    allLines.push(`D. ${q.option_d || ''}`);
+    const label = ['A','B','C','D'][Number(q.correct_answer || 0)] || 'A';
+    allLines.push(`Bonne reponse: ${label}`);
+    allLines.push(`Correction: ${q.explanation || ''}`);
+    allLines.push('');
+  });
+  const wrapped = allLines.flatMap(line => line ? wrapPdfLine(line, 92) : ['']);
+  const pages = [];
+  const maxLines = 46;
+  for (let i=0; i<wrapped.length; i += maxLines) pages.push(wrapped.slice(i, i + maxLines));
+  if (!pages.length) pages.push(['Aucun QCM genere.']);
+
+  const objects = [];
+  const addObject = value => { objects.push(value); return objects.length; };
+  const catalogId = addObject('');
+  const pagesId = addObject('');
+  const fontId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  const pageIds = [];
+  for (const pageLines of pages){
+    let content = 'BT\n/F1 10.5 Tf\n50 800 Td\n14 TL\n';
+    content += pageLines.map(line => `(${pdfEscape(line)}) Tj`).join('\nT*\n');
+    content += '\nET';
+    const contentBuffer = Buffer.from(content, 'latin1');
+    const contentId = addObject(`<< /Length ${contentBuffer.length} >>\nstream\n${content}\nendstream`);
+    const pageId = addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`);
+    pageIds.push(pageId);
+  }
+  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
+  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  objects.forEach((obj, i) => {
+    offsets.push(Buffer.byteLength(pdf, 'latin1'));
+    pdf += `${i + 1} 0 obj\n${obj}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(pdf, 'latin1');
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let i=1; i<offsets.length; i++) pdf += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(pdf, 'latin1');
+}
+
+async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
+  if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
+  if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour garder les PDF IA quotidiens'), { status:503 });
+  const plan = dailyAiPlan(todayId(), overrides);
+  const drafts = await loadAiDailyIndex();
+  const existing = drafts.find(d => d.date === plan.date && d.status !== 'deleted');
+  if (existing && !force) return { draft:existing, skipped:true, plan };
+  const prompt = `${aiQcmPrompt({ count:plan.count, category:plan.category, level:plan.level, theme:plan.theme })}\n\nImportant pour cette generation quotidienne: les corrections doivent etre detaillees mais concises pour tenir dans un PDF de relecture. Source: Brouillon IA quotidien a verifier.`;
+  const ai = await callGeminiGenerate(prompt);
+  const questions = normalizeAiQuestionList(ai.text, { category:plan.category, level:plan.level, is_premium:plan.is_premium }, plan.count);
+  if (!questions.length) throw Object.assign(new Error('Aucun QCM IA quotidien valide généré'), { status:502 });
+  const title = `QCM IA quotidien — ${plan.category} — ${plan.level} — ${plan.date}`;
+  const pdfBuffer = buildQcmDraftPdf({ title, date:plan.date, category:plan.category, level:plan.level, questions });
+  const id = 'daily-' + plan.date.replace(/\D/g, '') + '-' + crypto.randomBytes(4).toString('hex');
+  const fileName = safeFileName(`${title}.pdf`);
+  const objectPath = `ai-daily/files/${plan.date.slice(0,4)}/${id}-${fileName}`;
+  await uploadResourceObject(objectPath, pdfBuffer, 'application/pdf');
+  const draft = {
+    id,
+    date:plan.date,
+    title,
+    category:plan.category,
+    level:plan.level,
+    count:questions.length,
+    is_premium:plan.is_premium,
+    status:'draft',
+    model:ai.model,
+    file_name:fileName,
+    mime_type:'application/pdf',
+    size:pdfBuffer.length,
+    storage_path:objectPath,
+    questions,
+    created_at:new Date().toISOString(),
+    updated_at:new Date().toISOString()
+  };
+  const filtered = drafts.filter(d => d.id !== existing?.id && d.date !== plan.date);
+  filtered.unshift(draft);
+  await saveAiDailyIndex(filtered.slice(0, 90));
+  return { draft, skipped:false, plan };
+}
+
+function cronAuthorized(req){
+  const expected = AI_DAILY_CRON_SECRET;
+  const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  const querySecret = String(req.query?.secret || '').trim();
+  if (expected) return auth === expected || querySecret === expected;
+  return /vercel-cron/i.test(String(req.headers['user-agent'] || ''));
 }
 
 
@@ -1824,6 +2027,102 @@ app.get('/api/admin/summary', requireAdmin, async (_req, res, next) => {
 
 app.get('/api/admin/ai/status', requireAdmin, async (_req, res) => {
   res.json({ ok:true, configured:Boolean(GEMINI_API_KEY), model:GEMINI_MODEL });
+});
+
+app.get('/api/admin/ai/daily', requireAdmin, async (_req, res, next) => {
+  try{
+    const drafts = await loadAiDailyIndex().catch(err => {
+      if (err.status === 503) return [];
+      throw err;
+    });
+    res.json({
+      ok:true,
+      configured:Boolean(GEMINI_API_KEY && supabaseReady()),
+      settings:{
+        count:AI_DAILY_QCM_COUNT,
+        mode:AI_DAILY_GROUP_MODE,
+        categories:AI_DAILY_CATEGORIES,
+        levels:AI_DAILY_LEVELS,
+        is_premium:AI_DAILY_IS_PREMIUM,
+        cron:'/api/cron/ai-daily-qcm'
+      },
+      drafts:drafts.slice(0, 30).map(publicAiDailyDraft)
+    });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/ai/daily/run', requireAdmin, async (req, res, next) => {
+  try{
+    const overrides = {
+      count:req.body?.count,
+      category:req.body?.category,
+      level:req.body?.level,
+      mode:req.body?.mode,
+      theme:req.body?.theme,
+      is_premium:req.body?.is_premium
+    };
+    const result = await generateDailyAiQcmDraft({ force:Boolean(req.body?.force), overrides });
+    res.json({ ok:true, skipped:result.skipped, plan:result.plan, draft:publicAiDailyDraft(result.draft) });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/admin/ai/daily/:id/pdf', requireAdmin, async (req, res, next) => {
+  try{
+    const drafts = await loadAiDailyIndex();
+    const draft = drafts.find(d => d.id === req.params.id && d.status !== 'deleted');
+    if (!draft?.storage_path) return res.status(404).json({ message:'PDF IA introuvable' });
+    const file = await downloadResourceObject(draft.storage_path);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFileName(draft.file_name || 'qcm-ia-quotidien.pdf')}"`);
+    res.send(file.buffer);
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next) => {
+  try{
+    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    const drafts = await loadAiDailyIndex();
+    const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
+    if (idx < 0) return res.status(404).json({ message:'Brouillon IA introuvable' });
+    const draft = drafts[idx];
+    const questions = Array.isArray(draft.questions) ? draft.questions : [];
+    if (!questions.length) return res.status(400).json({ message:'Aucun QCM à publier dans ce brouillon' });
+    const payload = questions.map(q => adminQuestionPayload({
+      ...q,
+      source:draft.title || q.source || 'QCM IA quotidien',
+      is_premium:Boolean(draft.is_premium),
+      is_active:true
+    }));
+    const rows = await supabaseRequest('questions?select=*', {
+      method:'POST',
+      prefer:'return=representation',
+      body:payload
+    });
+    drafts[idx] = { ...draft, status:'published', published_at:new Date().toISOString(), updated_at:new Date().toISOString(), published_count:Array.isArray(rows) ? rows.length : payload.length };
+    await saveAiDailyIndex(drafts);
+    res.json({ ok:true, published:Array.isArray(rows) ? rows.length : payload.length, draft:publicAiDailyDraft(drafts[idx]) });
+  }catch(err){ next(err); }
+});
+
+app.delete('/api/admin/ai/daily/:id', requireAdmin, async (req, res, next) => {
+  try{
+    const drafts = await loadAiDailyIndex();
+    const idx = drafts.findIndex(d => d.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ message:'Brouillon IA introuvable' });
+    const draft = drafts[idx];
+    if (draft.storage_path) await deleteResourceObject(draft.storage_path).catch(()=>{});
+    drafts.splice(idx, 1);
+    await saveAiDailyIndex(drafts);
+    res.json({ ok:true });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/cron/ai-daily-qcm', async (req, res, next) => {
+  try{
+    if (!cronAuthorized(req)) return res.status(401).json({ ok:false, message:'Cron IA non autorisé' });
+    const result = await generateDailyAiQcmDraft({ force:false });
+    res.json({ ok:true, skipped:result.skipped, draft:publicAiDailyDraft(result.draft), plan:result.plan });
+  }catch(err){ next(err); }
 });
 
 app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
