@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=premium-pdf-design-1">
+<link rel="stylesheet" href="css/styles.css?v=pdf-review-design-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -1117,6 +1117,31 @@
     </div>
   </section>
 
+  <!-- ================= VÉRIFICATION PDF IA ================= -->
+  <section class="screen" id="pdfreview">
+    <div class="quiz-top">
+      <button class="quiz-close" onclick="closeDailyPdfReview()">✕</button>
+      <h2 style="font-size:1.05rem;font-weight:900">Vérification du PDF</h2>
+    </div>
+    <div class="pdf-review-page">
+      <div class="pdf-review-head">
+        <div>
+          <span>Document du jour</span>
+          <h3 id="dailyPdfTitle">QCM quotidien</h3>
+          <p id="dailyPdfMeta">Relis le PDF, puis publie les QCM si tout est correct.</p>
+        </div>
+      </div>
+      <div class="pdf-frame-wrap">
+        <iframe id="dailyPdfFrame" title="PDF QCM à vérifier"></iframe>
+      </div>
+      <div class="pdf-review-actions">
+        <button class="btn btn-green btn-block" onclick="publishCurrentDailyPdf()">Publier les QCM vérifiés</button>
+        <button class="btn btn-ghost btn-block" onclick="downloadCurrentDailyPdf()">Télécharger le PDF</button>
+        <button class="btn btn-ghost btn-block" onclick="closeDailyPdfReview()">Retour à l’administration</button>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== bottom nav ===== -->
   <nav class="bottom-nav" id="bottomNav">
     <button class="nav-btn on" data-target="home" onclick="show('home')"><span class="ni" id="homeNavIcon">🏠</span><span class="nav-label" id="homeNavLabel">Accueil</span></button>
@@ -1149,7 +1174,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=premium-pdf-design-1"></script>
-<script src="js/app.js?v=premium-pdf-design-1"></script>
+<script src="js/questions.js?v=pdf-review-design-1"></script>
+<script src="js/app.js?v=pdf-review-design-1"></script>
 </body>
 </html>

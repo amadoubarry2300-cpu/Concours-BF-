@@ -997,12 +997,10 @@ function publicAiDailyDraft(row){
 
 function pdfCleanText(value){
   return String(value || '')
-    .replace(/[’‘]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/[–—]/g, '-')
-    .replace(/…/g, '...')
-    .replace(/[•●]/g, '-')
-    .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, '')
+    .replace(/\u0000/g, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[\t ]+/g, ' ')
+    .replace(/\s+\n/g, '\n')
     .trim();
 }
 
@@ -1031,30 +1029,6 @@ function safePdfTitle(value){
     .trim();
 }
 
-function drawPdfHeader(doc, { date, title }){
-  const pageW = doc.page.width;
-  const pageH = doc.page.height;
-  const margin = 42;
-  doc.save();
-  doc.rect(0, 0, pageW, pageH).fill('#f6f8f7');
-  doc.roundedRect(margin - 10, 28, pageW - (margin - 10) * 2, 88, 24).fill('#064e3b');
-  doc.circle(pageW - 66, 48, 44).fillOpacity(0.16).fill('#fbbf24').fillOpacity(1);
-  doc.roundedRect(margin + 2, 43, 56, 56, 18).fill('#ffffff');
-  const logoPath = path.join(PUBLIC_DIR, 'img', 'logo.png');
-  if (fs.existsSync(logoPath)){
-    try{ doc.image(logoPath, margin + 7, 48, { fit:[46, 46] }); }catch{}
-  }else{
-    doc.fillColor('#057a55').font('Helvetica-Bold').fontSize(12).text('BF', margin + 21, 62, { width:28, align:'center' });
-  }
-  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(19).text('Réussite', margin + 72, 48, { width:220 });
-  doc.fillColor('#d1fae5').font('Helvetica-Bold').fontSize(16).text('Concours BF', margin + 72, 70, { width:220 });
-  doc.roundedRect(pageW - 175, 51, 104, 28, 14).fill('#ecfdf5');
-  doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(10).text(formatDateForPdf(date), pageW - 165, 60, { width:84, align:'center' });
-  doc.fillColor('#6b7280').font('Helvetica').fontSize(8).text('Réussite Concours BF — Document de révision', margin, pageH - 34, { width:pageW - margin * 2, align:'center' });
-  doc.restore();
-  doc.y = 138;
-}
-
 function formatDateForPdf(value){
   if (!value) return todayId();
   try{
@@ -1068,93 +1042,212 @@ function answerLabel(index){
   return ['A','B','C','D'][Number(index || 0)] || 'A';
 }
 
+function pdfYear(value){
+  const raw = String(value || todayId()).slice(0, 4);
+  return /^\d{4}$/.test(raw) ? raw : String(new Date().getFullYear());
+}
+
+function subjectNumber(date){
+  const day = daysSinceEpoch(date || todayId());
+  return String((day % 99) + 1).padStart(2, '0');
+}
+
+function setupPdfFonts(doc){
+  const candidates = [
+    ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf'],
+    ['/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf', '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf', '/usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf']
+  ];
+  for (const [regular, bold, italic] of candidates){
+    if (fs.existsSync(regular) && fs.existsSync(bold)){
+      doc.registerFont('RCBF-Regular', regular);
+      doc.registerFont('RCBF-Bold', bold);
+      if (fs.existsSync(italic)) doc.registerFont('RCBF-Italic', italic);
+      return { regular:'RCBF-Regular', bold:'RCBF-Bold', italic:fs.existsSync(italic) ? 'RCBF-Italic' : 'RCBF-Regular' };
+    }
+  }
+  return { regular:'Helvetica', bold:'Helvetica-Bold', italic:'Helvetica-Oblique' };
+}
+
 async function buildQcmDraftPdf({ title, date, category, level, questions }){
   return new Promise((resolve, reject) => {
     const cleanTitle = safePdfTitle(title || `QCM quotidien — ${category || 'Module'} — ${level || 'Niveau'} — ${date || todayId()}`);
     const doc = new PDFDocument({
       size:'A4',
-      margin:42,
+      margin:40,
+      bufferPages:true,
       info:{
         Title:cleanTitle,
         Author:'Réussite Concours BF',
         Subject:'QCM quotidien à vérifier avant publication'
       }
     });
+    const fonts = setupPdfFonts(doc);
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const margin = 42;
+    const margin = 40;
     const pageW = doc.page.width;
     const pageH = doc.page.height;
     const contentW = pageW - margin * 2;
-    const bottomLimit = pageH - 62;
+    const logoPath = path.join(PUBLIC_DIR, 'img', 'logo.png');
+    const formattedDate = formatDateForPdf(date);
+    const year = pdfYear(date);
+    const qCount = (questions || []).length || 0;
+    const moduleName = pdfCleanText(category || 'Module');
+    const levelName = pdfCleanText(level || 'Niveau');
 
-    function newPage(){
-      doc.addPage();
-      drawPdfHeader(doc, { date, title:cleanTitle });
-    }
-    function ensureSpace(height){
-      if (doc.y + height > bottomLimit) newPage();
-    }
-    function chip(x, y, label, value, w){
-      doc.roundedRect(x, y, w, 25, 12).fill('#ecfdf5');
-      doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(7.5).text(pdfCleanText(label).toUpperCase(), x + 9, y + 5, { width:w - 18 });
-      doc.fillColor('#111827').font('Helvetica-Bold').fontSize(9.2).text(pdfCleanText(value), x + 9, y + 14, { width:w - 18, ellipsis:true });
-    }
-    function textHeight(text, width, font='Helvetica', size=10, options={}){
-      doc.font(font).fontSize(size);
-      return doc.heightOfString(pdfCleanText(text), { width, ...options });
+    const font = (kind='regular', size=10, color) => {
+      doc.font(fonts[kind] || fonts.regular).fontSize(size);
+      if (color) doc.fillColor(color);
+      return doc;
+    };
+    const textH = (value, width, kind='regular', size=10, options={}) => {
+      doc.font(fonts[kind] || fonts.regular).fontSize(size);
+      return doc.heightOfString(pdfCleanText(value), { width, ...options });
+    };
+    const pill = (x, y, w, h, label, fill, color='#ffffff', size=10) => {
+      doc.roundedRect(x, y, w, h, h / 2).fill(fill);
+      font('bold', size, color).text(pdfCleanText(label), x + 8, y + (h - size) / 2 - 1, { width:w - 16, align:'center', ellipsis:true });
+    };
+    const decorativeDots = (x, y, color='#e5e7eb') => {
+      doc.save().fillColor(color).opacity(0.45);
+      for (let r=0; r<8; r++){
+        for (let c=0; c<9; c++) doc.circle(x + c * 9, y + r * 9, 1.35).fill();
+      }
+      doc.restore();
+    };
+    const appLogo = (x, y, size=54) => {
+      doc.roundedRect(x, y, size, size, 16).fill('#ffffff');
+      if (fs.existsSync(logoPath)){
+        try{ doc.image(logoPath, x + 4, y + 4, { fit:[size - 8, size - 8] }); return; }catch{}
+      }
+      font('bold', size * 0.22, '#057a55').text('RCBF', x + 4, y + size * 0.38, { width:size - 8, align:'center' });
+    };
+
+    function drawCover(){
+      doc.rect(0, 0, pageW, pageH).fill('#ffffff');
+      // Grandes courbes colorées, inspirées de documents de formation sans copie exacte.
+      doc.save();
+      doc.moveTo(0, 0).lineTo(0, 138).bezierCurveTo(120, 70, 205, 40, 345, 0).closePath().fill('#003b7a');
+      doc.moveTo(pageW, 0).lineTo(pageW, pageH).lineTo(pageW - 76, pageH).bezierCurveTo(pageW - 20, 610, pageW - 42, 270, pageW, 90).closePath().fill('#003b7a');
+      doc.moveTo(pageW - 18, 12).bezierCurveTo(pageW - 86, 150, pageW - 88, 332, pageW - 36, 475).lineWidth(6).stroke('#f5a623');
+      doc.moveTo(0, pageH - 52).bezierCurveTo(120, pageH - 12, 245, pageH - 92, 390, pageH - 44).lineWidth(18).stroke('#d71920');
+      doc.moveTo(0, pageH - 22).bezierCurveTo(142, pageH + 8, 294, pageH - 70, 462, pageH - 24).lineWidth(20).stroke('#0e9f6e');
+      doc.restore();
+      decorativeDots(pageW - 118, 30, '#9ca3af');
+      decorativeDots(256, 410, '#d1d5db');
+
+      doc.roundedRect(36, 38, 248, 76, 22).fillOpacity(0.96).fill('#ffffff').fillOpacity(1).strokeColor('#e5e7eb').lineWidth(0.8).stroke();
+      appLogo(50, 50, 52);
+      font('bold', 19, '#003b7a').text('Réussite', 112, 55, { width:160 });
+      font('bold', 20, '#0e9f6e').text('Concours BF', 112, 79, { width:165 });
+      pill(pageW - 190, 54, 120, 30, 'BURKINA FASO', '#ffffff', '#003b7a', 9);
+
+      font('bold', 46, '#003b7a').text('PRÉPARATION', 118, 146, { width:420, align:'center' });
+      doc.save();
+      doc.moveTo(150, 210).lineTo(450, 210).lineTo(432, 256).lineTo(132, 256).closePath().fill('#d71920');
+      font('bold', 31, '#ffffff').text('INTENSIVE', 154, 216, { width:276, align:'center' });
+      doc.restore();
+      font('bold', 47, '#0b7f2a').text('CONCOURS', 126, 272, { width:390, align:'center' });
+
+      // Illustration simple : livres + diplôme + cible.
+      const bx = 66, by = 260;
+      const bookColors = ['#003b7a','#0e9f6e','#f97316','#d71920','#6d28d9'];
+      bookColors.forEach((c, i) => {
+        doc.roundedRect(bx, by + i * 28, 148, 24, 5).fill(c);
+        font('bold', 8.5, '#ffffff').text(['CULTURE GÉNÉRALE','MATHÉMATIQUES','HISTOIRE-GÉO','FRANÇAIS','INSTITUTIONS'][i], bx + 15, by + i * 28 + 7, { width:118, align:'center' });
+      });
+      doc.roundedRect(74, by + 150, 122, 34, 8).fill('#fef3c7').strokeColor('#f5a623').stroke();
+      font('bold', 8, '#92400e').text('QCM CORRIGÉS', 83, by + 161, { width:104, align:'center' });
+      doc.circle(382, 379, 30).lineWidth(8).stroke('#d71920');
+      doc.circle(382, 379, 18).lineWidth(5).stroke('#003b7a');
+      doc.moveTo(382,379).lineTo(416,350).lineWidth(3).stroke('#0e9f6e');
+
+      doc.roundedRect(206, 326, 318, 106, 16).fill('#003b7a');
+      font('bold', 72, '#ffffff').text(year, 222, 326, { width:286, align:'center' });
+      font('bold', 13, '#003b7a').text('UNE PRÉPARATION AUJOURD’HUI,', 212, 454, { width:292, align:'center' });
+      font('bold', 15, '#d71920').text('VOTRE RÉUSSITE DEMAIN !', 212, 473, { width:292, align:'center' });
+      doc.moveTo(225, 496).lineTo(495, 496).lineWidth(1.5).stroke('#003b7a');
+
+      const cardY = 548;
+      doc.roundedRect(54, cardY, 218, 78, 10).fill('#ffffff').strokeColor('#003b7a').lineWidth(1.2).stroke();
+      doc.rect(54, cardY + 43, 218, 35).fill('#0e9f6e');
+      font('bold', 12, '#0e9f6e').text('DATE DU SUJET', 86, cardY + 15, { width:160 });
+      font('bold', 14.5, '#ffffff').text(formattedDate.toUpperCase(), 66, cardY + 53, { width:194, align:'center', lineBreak:false });
+
+      doc.roundedRect(322, cardY, 218, 78, 10).fill('#ffffff').strokeColor('#d71920').lineWidth(1.2).stroke();
+      doc.rect(322, cardY + 43, 218, 35).fill('#d71920');
+      font('bold', 12, '#d71920').text('SUJET', 354, cardY + 15, { width:160 });
+      font('bold', 17, '#ffffff').text(`N° ${subjectNumber(date)}  •  ${qCount} QCM`, 334, cardY + 53, { width:194, align:'center', lineBreak:false });
+
+      doc.roundedRect(66, 646, 462, 42, 12).fill('#003b7a');
+      font('bold', 13, '#ffffff').text(`MODULE : ${moduleName.toUpperCase()}`, 86, 657, { width:215, align:'left', ellipsis:true });
+      font('bold', 13, '#fbbf24').text(`NIVEAU : ${levelName.toUpperCase()}`, 304, 657, { width:198, align:'right', ellipsis:true });
+
+      doc.roundedRect(72, 710, 450, 39, 12).fill('#ecfdf5').strokeColor('#0e9f6e').lineWidth(1).stroke();
+      font('bold', 14, '#065f46').text('Document de révision à vérifier avant publication', 88, 721, { width:418, align:'center' });
+      font('bold', 13.5, '#d71920').text('BURKINA FASO', 54, pageH - 72, { width:220, align:'center', lineBreak:false });
+      font('regular', 9.2, '#057a55').text('Ouagadougou • reussiteconcoursbf@yahoo.com', 300, pageH - 69, { width:236, align:'left', lineBreak:false });
     }
 
-    drawPdfHeader(doc, { date, title:cleanTitle });
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(21).text(cleanTitle, margin, doc.y, { width:contentW - 4, lineGap:2 });
-    doc.moveDown(0.65);
-    const chipY = doc.y;
-    chip(margin, chipY, 'Date', formatDateForPdf(date), 128);
-    chip(margin + 138, chipY, 'Module', category || 'Module', 150);
-    chip(margin + 298, chipY, 'Niveau', level || 'Niveau', 104);
-    chip(margin + 412, chipY, 'QCM', String((questions || []).length || 0), 56);
-    doc.y = chipY + 42;
-    doc.roundedRect(margin, doc.y, contentW, 34, 13).fill('#fff7ed');
-    doc.fillColor('#92400e').font('Helvetica-Bold').fontSize(10).text('Document de relecture', margin + 14, doc.y + 8, { width:160 });
-    doc.fillColor('#78350f').font('Helvetica').fontSize(9.5).text('Vérifie les questions, les réponses et les corrections avant publication.', margin + 165, doc.y + 8, { width:contentW - 180 });
-    doc.y += 52;
+    function drawPageFrame(){
+      doc.rect(0, 0, pageW, pageH).fill('#ffffff');
+      doc.rect(0, 0, pageW, 58).fill('#003b7a');
+      doc.rect(0, 58, pageW, 5).fill('#0e9f6e');
+      appLogo(40, 14, 34);
+      font('bold', 12, '#ffffff').text('Réussite Concours BF', 84, 18, { width:180 });
+      font('regular', 8.5, '#dbeafe').text(`${moduleName} • ${levelName} • ${formattedDate}`, 84, 35, { width:280, ellipsis:true });
+      pill(pageW - 152, 18, 112, 24, `Sujet N° ${subjectNumber(date)}`, '#ffffff', '#003b7a', 8.5);
+      doc.moveTo(margin, pageH - 62).lineTo(pageW - margin, pageH - 62).lineWidth(0.6).stroke('#e5e7eb');
+      font('regular', 8, '#6b7280').text('Réussite Concours BF — Préparation aux examens et concours', margin, pageH - 54, { width:contentW, align:'center', lineBreak:false });
+      doc.y = 86;
+    }
 
-    (questions || []).forEach((q, idx) => {
+    function questionBlock(q, idx){
       const opts = [q.option_a, q.option_b, q.option_c, q.option_d].map(pdfCleanText);
       const qText = pdfCleanText(q.question_text || 'Question');
       const explanation = pdfCleanText(q.explanation || 'Correction à vérifier.');
-      const questionW = contentW - 68;
-      const qH = textHeight(qText, questionW, 'Helvetica-Bold', 11.2, { lineGap:2 });
-      const optH = opts.reduce((sum, opt) => sum + Math.max(17, textHeight(opt, contentW - 68, 'Helvetica', 9.7, { lineGap:1 }) + 3), 0);
-      const corrH = Math.max(38, textHeight(explanation, contentW - 46, 'Helvetica', 9.3, { lineGap:1 }) + 27);
-      const cardH = Math.min(360, Math.max(148, 52 + qH + optH + corrH));
-      ensureSpace(cardH + 14);
-      const y = doc.y;
-      doc.roundedRect(margin, y, contentW, cardH, 16).fill('#ffffff').strokeColor('#e5e7eb').lineWidth(1).stroke();
-      doc.circle(margin + 24, y + 26, 14).fill('#0e9f6e');
-      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(11).text(String(idx + 1), margin + 16, y + 21, { width:16, align:'center' });
-      doc.fillColor('#111827').font('Helvetica-Bold').fontSize(11.2).text(qText, margin + 48, y + 16, { width:questionW, lineGap:2 });
-      let cy = Math.max(y + 54, doc.y + 10);
+      const answer = answerLabel(q.correct_answer);
+      const qW = contentW - 54;
+      const qH = textH(qText, qW, 'bold', 13.5, { lineGap:2 });
+      const optH = opts.reduce((sum, opt) => sum + Math.max(21, textH(opt, contentW - 82, 'regular', 12, { lineGap:1 }) + 6), 0);
+      const corrH = Math.max(44, textH(explanation, contentW - 74, 'regular', 9.5, { lineGap:1 }) + 28);
+      return Math.max(154, 46 + qH + optH + corrH);
+    }
+
+    function drawQuestion(q, idx){
+      const blockH = questionBlock(q, idx);
+      if (doc.y + blockH > pageH - 82){ doc.addPage(); drawPageFrame(); }
+      const startY = doc.y;
+      const numW = 36;
+      font('bold', 18, '#111827').text(`${idx + 1}.`, margin, startY + 2, { width:numW, align:'right' });
+      font('bold', 13.5, '#111827').text(pdfCleanText(q.question_text || 'Question'), margin + 52, startY, { width:contentW - 56, lineGap:2 });
+      let y = Math.max(startY + 34, doc.y + 8);
+      const opts = [q.option_a, q.option_b, q.option_c, q.option_d].map(pdfCleanText);
       opts.forEach((opt, optIdx) => {
         const label = ['A','B','C','D'][optIdx];
-        const oh = Math.max(17, textHeight(opt, contentW - 68, 'Helvetica', 9.7, { lineGap:1 }) + 3);
-        doc.roundedRect(margin + 18, cy - 2, 22, 16, 8).fill('#f3f4f6');
-        doc.fillColor('#374151').font('Helvetica-Bold').fontSize(8.7).text(label, margin + 25, cy + 2, { width:8, align:'center' });
-        doc.fillColor('#1f2937').font('Helvetica').fontSize(9.7).text(opt, margin + 48, cy, { width:contentW - 68, lineGap:1 });
-        cy += oh;
+        const h = Math.max(21, textH(opt, contentW - 82, 'regular', 12, { lineGap:1 }) + 6);
+        font('bold', 12, '#111827').text(`${label}.`, margin + 54, y, { width:24 });
+        font('regular', 12, '#111827').text(opt, margin + 82, y, { width:contentW - 88, lineGap:1 });
+        y += h;
       });
       const answer = answerLabel(q.correct_answer);
-      const corrY = Math.min(y + cardH - corrH - 12, cy + 8);
-      doc.roundedRect(margin + 14, corrY, contentW - 28, y + cardH - corrY - 12, 12).fill('#ecfdf5');
-      doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(9.2).text(`Bonne réponse : ${answer}`, margin + 28, corrY + 9, { width:130 });
-      doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(9.2).text('Correction', margin + 28, corrY + 23, { width:90 });
-      doc.fillColor('#064e3b').font('Helvetica').fontSize(9.3).text(explanation, margin + 106, corrY + 23, { width:contentW - 146, lineGap:1 });
-      doc.y = y + cardH + 14;
-    });
+      const corrY = y + 6;
+      doc.roundedRect(margin + 52, corrY, contentW - 58, Math.max(42, blockH - (corrY - startY) - 10), 12).fill('#f0fdf4').strokeColor('#bbf7d0').lineWidth(0.6).stroke();
+      font('bold', 9.5, '#065f46').text(`Réponse : ${answer}`, margin + 66, corrY + 9, { width:90 });
+      font('bold', 9.5, '#065f46').text('Correction', margin + 66, corrY + 23, { width:82 });
+      font('regular', 9.5, '#064e3b').text(pdfCleanText(q.explanation || ''), margin + 148, corrY + 23, { width:contentW - 168, lineGap:1 });
+      doc.y = startY + blockH + 14;
+    }
 
+    drawCover();
+    doc.addPage();
+    drawPageFrame();
+    font('bold', 21, '#003b7a').text('Questions à choix multiple', margin, doc.y, { width:contentW, align:'center' });
+    doc.y += 24;
+    (questions || []).forEach((q, idx) => drawQuestion(q, idx));
     doc.end();
   });
 }
@@ -2156,7 +2249,8 @@ app.get('/api/admin/ai/daily/:id/pdf', requireAdmin, async (req, res, next) => {
     if (!draft?.storage_path) return res.status(404).json({ message:'PDF IA introuvable' });
     const file = await downloadResourceObject(draft.storage_path);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeFileName(draft.file_name || 'qcm-ia-quotidien.pdf')}"`);
+    const disposition = req.query?.inline ? 'inline' : 'attachment';
+    res.setHeader('Content-Disposition', `${disposition}; filename="${safeFileName(draft.file_name || 'qcm-quotidien.pdf')}"`);
     res.send(file.buffer);
   }catch(err){ next(err); }
 });

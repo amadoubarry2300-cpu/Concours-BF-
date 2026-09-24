@@ -339,3 +339,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Amélioration du PDF quotidien : design plus professionnel avec en-tête Réussite Concours BF, logo, date, module, niveau et cartes de questions.
 - Suppression des mentions IA dans le document PDF destiné à la relecture.
 - Correction de l’encodage des accents français dans le PDF.
+
+## 2026-09-24 — PDF premium et vérification intégrée
+
+- Nouveau modèle PDF quotidien inspiré des supports de formation : couverture colorée, logo, titre, date, module, niveau et nombre de QCM.
+- Les pages QCM sont mieux structurées pour la relecture avec questions, réponses proposées, bonne réponse et correction.
+- Le document PDF ne mentionne plus l’IA.
+- Ajout d’un écran de vérification PDF dans l’application pour ouvrir le PDF, le relire, le télécharger ou publier les QCM validés.

@@ -1031,6 +1031,8 @@ let adminResourceCache = [];
 let adminNewsCache = [];
 let aiDraftCache = [];
 let aiDailyDraftCache = [];
+let currentDailyPdfIndex = -1;
+let currentDailyPdfUrl = '';
 let aiNewsDraftCache = [];
 let resourceCache = [];
 let newsCache = [];
@@ -1378,32 +1380,72 @@ function renderDailyAiDrafts(){
       <h4>${escapeHtml(d.title || 'QCM quotidien')}</h4>
       <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. Télécharge le fichier, vérifie les questions et publie seulement après validation.</p>
       <div class="admin-q-actions">
-        <button class="edit" onclick="downloadDailyAiPdf(${idx})">Télécharger PDF</button>
+        <button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>
         <button class="pause" onclick="publishDailyAiDraft(${idx})" ${d.status === 'published' ? 'disabled' : ''}>Publier les ${Number(d.count || 0)} QCM</button>
         <button class="delete" onclick="deleteDailyAiDraft(${idx})">Supprimer</button>
       </div>
     </div>`).join('');
 }
 
+async function fetchDailyAiPdfBlob(index){
+  const d = aiDailyDraftCache[index];
+  if (!d) throw new Error('PDF introuvable');
+  const res = await fetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/pdf?inline=1', { headers:authHeaders({}) });
+  if (!res.ok){
+    const data = await res.json().catch(()=>({}));
+    throw new Error(data.message || 'PDF indisponible');
+  }
+  return await res.blob();
+}
+
+async function openDailyAiPdf(index){
+  const d = aiDailyDraftCache[index];
+  if (!d) return;
+  try{
+    const blob = await fetchDailyAiPdfBlob(index);
+    if (currentDailyPdfUrl) URL.revokeObjectURL(currentDailyPdfUrl);
+    currentDailyPdfUrl = URL.createObjectURL(blob);
+    currentDailyPdfIndex = index;
+    $('#dailyPdfTitle') && ($('#dailyPdfTitle').textContent = d.title || 'QCM quotidien');
+    $('#dailyPdfMeta') && ($('#dailyPdfMeta').textContent = `${d.date || ''} · ${d.category || ''} · ${d.level || ''} · ${Number(d.count || 0)} QCM`);
+    const frame = $('#dailyPdfFrame');
+    if (frame) frame.src = currentDailyPdfUrl;
+    show('pdfreview');
+  }catch(err){ toast(err.message); }
+}
+
+function closeDailyPdfReview(){
+  const frame = $('#dailyPdfFrame');
+  if (frame) frame.src = 'about:blank';
+  if (currentDailyPdfUrl){ URL.revokeObjectURL(currentDailyPdfUrl); currentDailyPdfUrl = ''; }
+  show('admin');
+  setAdminTab('ai');
+}
+
 async function downloadDailyAiPdf(index){
   const d = aiDailyDraftCache[index];
   if (!d) return;
   try{
-    const res = await fetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/pdf', { headers:authHeaders({}) });
-    if (!res.ok){
-      const data = await res.json().catch(()=>({}));
-      throw new Error(data.message || 'PDF indisponible');
-    }
-    const blob = await res.blob();
+    const blob = await fetchDailyAiPdfBlob(index);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = d.fileName || 'qcm-ia-quotidien.pdf';
+    a.download = d.fileName || 'qcm-quotidien.pdf';
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(()=>URL.revokeObjectURL(url), 1200);
   }catch(err){ toast(err.message); }
+}
+
+function downloadCurrentDailyPdf(){
+  if (currentDailyPdfIndex < 0) return;
+  downloadDailyAiPdf(currentDailyPdfIndex);
+}
+
+function publishCurrentDailyPdf(){
+  if (currentDailyPdfIndex < 0) return;
+  publishDailyAiDraft(currentDailyPdfIndex);
 }
 
 async function publishDailyAiDraft(index){
@@ -1415,6 +1457,7 @@ async function publishDailyAiDraft(index){
     const result = $('#aiDailyResult');
     if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM publiés ✅</div>`;
     await loadDailyAiDrafts();
+    if (currentDailyPdfIndex === index && $('#pdfreview')?.classList.contains('active')) closeDailyPdfReview();
     await loadAdminQuestions();
     await loadSupabaseQuestions();
     renderFormations(currentFormFilter);
