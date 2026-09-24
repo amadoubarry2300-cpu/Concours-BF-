@@ -890,7 +890,7 @@ function aiQcmPrompt({ count, category, level, theme, fromPdf = false }){
   const sourceLine = fromPdf
     ? `Lis le PDF joint et génère exactement ${count} QCM en français à partir de son contenu. Si une information n'est pas clairement présente dans le PDF, ne l'invente pas.`
     : `Génère exactement ${count} QCM en français.`;
-  return `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\n${sourceLine}\nCatégorie: ${category}. Niveau: ${level}. Thème: ${theme}.\nContraintes importantes:\n- chaque QCM doit être factuel, clair, non ambigu, adapté au Burkina Faso si pertinent;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse;\n- correction détaillée et pédagogique;\n- éviter les affirmations incertaines ou inventées;\n- si le thème concerne un fait officiel récent, rester général et mentionner qu'il faut vérifier la source officielle;\n- les QCM générés doivent être relus par l'administrateur avant publication.\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Créé avec l’aide de l’IA"}]}`;
+  return `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\n${sourceLine}\nCatégorie: ${category}. Niveau: ${level}. Thème: ${theme}.\nContraintes importantes:\n- chaque QCM doit être factuel, clair, non ambigu, adapté au Burkina Faso si pertinent;\n- niveau exigeant pour une vraie préparation de concours: éviter les questions trop évidentes, les réponses faciles et les généralités;\n- privilégier les situations de raisonnement, les détails utiles, les pièges réalistes et les distracteurs plausibles;\n- pour Burkina Faso, éviter les questions basiques répétitives comme capitale/monnaie sauf si le thème l'exige;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse;\n- correction détaillée et pédagogique;\n- éviter les affirmations incertaines ou inventées;\n- si le thème concerne un fait officiel récent, rester général et mentionner qu'il faut vérifier la source officielle;\n- les QCM générés doivent être relus par l'administrateur avant publication.\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Créé avec l’aide de l’IA"}]}`;
 }
 
 async function callGeminiGenerateParts(parts){
@@ -1211,10 +1211,10 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
       const explanation = pdfCleanText(q.explanation || 'Correction à vérifier.');
       const answer = answerLabel(q.correct_answer);
       const qW = contentW - 54;
-      const qH = textH(qText, qW, 'bold', 13.5, { lineGap:2 });
-      const optH = opts.reduce((sum, opt) => sum + Math.max(21, textH(opt, contentW - 82, 'regular', 12, { lineGap:1 }) + 6), 0);
-      const corrH = Math.max(44, textH(explanation, contentW - 74, 'regular', 9.5, { lineGap:1 }) + 28);
-      return Math.max(154, 46 + qH + optH + corrH);
+      const qH = textH(qText, qW, 'bold', 17.5, { lineGap:3 });
+      const optH = opts.reduce((sum, opt) => sum + Math.max(28, textH(opt, contentW - 82, 'regular', 15.2, { lineGap:2 }) + 8), 0);
+      const corrH = Math.max(52, textH(explanation, contentW - 74, 'regular', 11.2, { lineGap:1.5 }) + 31);
+      return Math.max(188, 54 + qH + optH + corrH);
     }
 
     function drawQuestion(q, idx){
@@ -1222,30 +1222,30 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
       if (doc.y + blockH > pageH - 82){ doc.addPage(); drawPageFrame(); }
       const startY = doc.y;
       const numW = 36;
-      font('bold', 18, '#111827').text(`${idx + 1}.`, margin, startY + 2, { width:numW, align:'right' });
-      font('bold', 13.5, '#111827').text(pdfCleanText(q.question_text || 'Question'), margin + 52, startY, { width:contentW - 56, lineGap:2 });
-      let y = Math.max(startY + 34, doc.y + 8);
+      font('bold', 21, '#111827').text(`${idx + 1}.`, margin, startY + 1, { width:numW, align:'right' });
+      font('bold', 17.5, '#111827').text(pdfCleanText(q.question_text || 'Question'), margin + 52, startY, { width:contentW - 56, lineGap:3 });
+      let y = Math.max(startY + 44, doc.y + 10);
       const opts = [q.option_a, q.option_b, q.option_c, q.option_d].map(pdfCleanText);
       opts.forEach((opt, optIdx) => {
         const label = ['A','B','C','D'][optIdx];
-        const h = Math.max(21, textH(opt, contentW - 82, 'regular', 12, { lineGap:1 }) + 6);
-        font('bold', 12, '#111827').text(`${label}.`, margin + 54, y, { width:24 });
-        font('regular', 12, '#111827').text(opt, margin + 82, y, { width:contentW - 88, lineGap:1 });
+        const h = Math.max(28, textH(opt, contentW - 82, 'regular', 15.2, { lineGap:2 }) + 8);
+        font('bold', 15.2, '#111827').text(`${label}.`, margin + 54, y, { width:26 });
+        font('regular', 15.2, '#111827').text(opt, margin + 86, y, { width:contentW - 92, lineGap:2 });
         y += h;
       });
       const answer = answerLabel(q.correct_answer);
       const corrY = y + 6;
       doc.roundedRect(margin + 52, corrY, contentW - 58, Math.max(42, blockH - (corrY - startY) - 10), 12).fill('#f0fdf4').strokeColor('#bbf7d0').lineWidth(0.6).stroke();
-      font('bold', 9.5, '#065f46').text(`Réponse : ${answer}`, margin + 66, corrY + 9, { width:90 });
-      font('bold', 9.5, '#065f46').text('Correction', margin + 66, corrY + 23, { width:82 });
-      font('regular', 9.5, '#064e3b').text(pdfCleanText(q.explanation || ''), margin + 148, corrY + 23, { width:contentW - 168, lineGap:1 });
+      font('bold', 11.2, '#065f46').text(`Réponse : ${answer}`, margin + 66, corrY + 10, { width:112 });
+      font('bold', 11.2, '#065f46').text('Correction', margin + 66, corrY + 28, { width:90 });
+      font('regular', 11.2, '#064e3b').text(pdfCleanText(q.explanation || ''), margin + 162, corrY + 28, { width:contentW - 182, lineGap:1.5 });
       doc.y = startY + blockH + 14;
     }
 
     drawCover();
     doc.addPage();
     drawPageFrame();
-    font('bold', 21, '#003b7a').text('Questions à choix multiple', margin, doc.y, { width:contentW, align:'center' });
+    font('bold', 24, '#003b7a').text('Questions à choix multiple', margin, doc.y, { width:contentW, align:'center' });
     doc.y += 24;
     (questions || []).forEach((q, idx) => drawQuestion(q, idx));
     doc.end();
@@ -1259,7 +1259,7 @@ async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
   const drafts = await loadAiDailyIndex();
   const existing = drafts.find(d => d.date === plan.date && d.status !== 'deleted');
   if (existing && !force) return { draft:existing, skipped:true, plan };
-  const prompt = `${aiQcmPrompt({ count:plan.count, category:plan.category, level:plan.level, theme:plan.theme })}\n\nImportant pour cette generation quotidienne: les corrections doivent etre detaillees mais concises pour tenir dans un PDF de relecture. Source: Brouillon IA quotidien a verifier.`;
+  const prompt = `${aiQcmPrompt({ count:plan.count, category:plan.category, level:plan.level, theme:plan.theme })}\n\nImportant pour cette generation quotidienne: produire un sujet exigeant, de haut niveau, utile pour une vraie preparation. Evite les questions trop simples ou scolaires. Les corrections doivent etre detaillees mais concises pour tenir dans un PDF de relecture. Source: Brouillon quotidien a verifier.`;
   const ai = await callGeminiGenerate(prompt);
   const questions = normalizeAiQuestionList(ai.text, { category:plan.category, level:plan.level, is_premium:plan.is_premium }, plan.count);
   if (!questions.length) throw Object.assign(new Error('Aucun QCM quotidien valide généré'), { status:502 });
@@ -2264,10 +2264,15 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
     const draft = drafts[idx];
     const questions = Array.isArray(draft.questions) ? draft.questions : [];
     if (!questions.length) return res.status(400).json({ message:'Aucun QCM à publier dans ce brouillon' });
+    const publishCategory = cleanText(req.body?.category || draft.category || '', 80) || draft.category;
+    const publishLevel = cleanText(req.body?.level || draft.level || '', 40) || draft.level;
+    const publishPremium = req.body?.is_premium === undefined ? Boolean(draft.is_premium) : Boolean(req.body?.is_premium);
     const payload = questions.map(q => adminQuestionPayload({
       ...q,
+      category:publishCategory || q.category,
+      level:publishLevel || q.level,
       source:safePdfTitle(draft.title || q.source || 'QCM quotidien'),
-      is_premium:Boolean(draft.is_premium),
+      is_premium:publishPremium,
       is_active:true
     }));
     const rows = await supabaseRequest('questions?select=*', {
@@ -2275,7 +2280,7 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
       prefer:'return=representation',
       body:payload
     });
-    drafts[idx] = { ...draft, status:'published', published_at:new Date().toISOString(), updated_at:new Date().toISOString(), published_count:Array.isArray(rows) ? rows.length : payload.length };
+    drafts[idx] = { ...draft, category:publishCategory, level:publishLevel, is_premium:publishPremium, status:'published', published_at:new Date().toISOString(), updated_at:new Date().toISOString(), published_count:Array.isArray(rows) ? rows.length : payload.length };
     await saveAiDailyIndex(drafts);
     res.json({ ok:true, published:Array.isArray(rows) ? rows.length : payload.length, draft:publicAiDailyDraft(drafts[idx]) });
   }catch(err){ next(err); }

@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=pdf-review-design-1">
+<link rel="stylesheet" href="css/styles.css?v=pdf-review-fix-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -814,9 +814,14 @@
               <div><b>PDF</b><span>À vérifier</span></div>
               <div><b>Admin</b><span>Publication</span></div>
             </div>
+            <label class="field-label" for="aiDailyMode">Organisation du sujet</label>
+            <select class="input" id="aiDailyMode">
+              <option value="module" selected>Par module</option>
+              <option value="niveau">Par niveau</option>
+            </select>
             <div class="admin-options-grid">
               <div>
-                <label class="field-label" for="aiDailyCategory">Module du jour</label>
+                <label class="field-label" for="aiDailyCategory">Catégorie / module</label>
                 <select class="input" id="aiDailyCategory">
                   <option value="">Rotation automatique</option>
                   <option>Burkina Faso</option><option>Culture générale</option><option>Histoire-Géo</option><option>Mathématiques</option><option>Psychotechnique</option><option>Français</option><option>SVT</option><option>Greffier / Droit</option>
@@ -1131,11 +1136,31 @@
           <p id="dailyPdfMeta">Relis le PDF, puis publie les QCM si tout est correct.</p>
         </div>
       </div>
-      <div class="pdf-frame-wrap">
-        <iframe id="dailyPdfFrame" title="PDF QCM à vérifier"></iframe>
+      <div class="pdf-html-preview" id="dailyPdfHtmlPreview"></div>
+      <div class="pdf-publish-box">
+        <h3>Où publier ces QCM ?</h3>
+        <p>Choisis la catégorie et le niveau avant de publier.</p>
+        <div class="admin-options-grid">
+          <div>
+            <label class="field-label" for="dailyPublishCategory">Catégorie</label>
+            <select class="input" id="dailyPublishCategory">
+              <option>Burkina Faso</option><option>Culture générale</option><option>Histoire-Géo</option><option>Mathématiques</option><option>Psychotechnique</option><option>Français</option><option>SVT</option><option>Greffier / Droit</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="dailyPublishLevel">Niveau</label>
+            <select class="input" id="dailyPublishLevel">
+              <option>Concours</option><option>BEPC</option><option>BAC</option><option>CEP</option><option>Licence</option>
+            </select>
+          </div>
+        </div>
+        <div class="admin-switch-row" style="margin-top:0">
+          <label><input type="checkbox" id="dailyPublishPremium"> Publier en Premium <small>(sinon Gratuit)</small></label>
+        </div>
       </div>
       <div class="pdf-review-actions">
         <button class="btn btn-green btn-block" onclick="publishCurrentDailyPdf()">Publier les QCM vérifiés</button>
+        <button class="btn btn-ghost btn-block" onclick="openCurrentDailyPdfFull()">Ouvrir le PDF</button>
         <button class="btn btn-ghost btn-block" onclick="downloadCurrentDailyPdf()">Télécharger le PDF</button>
         <button class="btn btn-ghost btn-block" onclick="closeDailyPdfReview()">Retour à l’administration</button>
       </div>
@@ -1174,7 +1199,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=pdf-review-design-1"></script>
-<script src="js/app.js?v=pdf-review-design-1"></script>
+<script src="js/questions.js?v=pdf-review-fix-1"></script>
+<script src="js/app.js?v=pdf-review-fix-1"></script>
 </body>
 </html>

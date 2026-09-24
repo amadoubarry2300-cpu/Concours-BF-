@@ -346,3 +346,11 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Les pages QCM sont mieux structurées pour la relecture avec questions, réponses proposées, bonne réponse et correction.
 - Le document PDF ne mentionne plus l’IA.
 - Ajout d’un écran de vérification PDF dans l’application pour ouvrir le PDF, le relire, le télécharger ou publier les QCM validés.
+
+## 2026-09-24 — Correction aperçu PDF et publication ciblée
+
+- L’aperçu du PDF ne dépend plus du lecteur PDF du navigateur : un aperçu intégré lisible s’ouvre directement dans l’application.
+- Ajout d’un bouton séparé **Ouvrir le PDF** pour afficher le fichier complet si le navigateur le permet.
+- Agrandissement des écritures dans les pages QCM pour se rapprocher du format du PDF de référence.
+- Renforcement du prompt : les QCM quotidiens doivent être de haut niveau, avec raisonnement et pièges réalistes.
+- Avant publication, l’admin choisit maintenant la catégorie, le niveau et Gratuit/Premium.

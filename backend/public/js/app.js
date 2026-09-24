@@ -1317,14 +1317,14 @@ async function loadDailyAiDrafts(){
   const status = $('#aiDailyStatus');
   const list = $('#aiDailyDraftList');
   if (!list) return;
-  list.innerHTML = '<div class="empty">Chargement des PDF IA...</div>';
+  list.innerHTML = '<div class="empty">Chargement des PDF...</div>';
   try{
     const data = await adminFetch('/api/admin/ai/daily');
     aiDailyDraftCache = data.drafts || [];
     if (status){
       status.innerHTML = `
         <div><b>${data.settings?.count || 20}</b><span>QCM / jour</span></div>
-        <div><b>${data.configured ? 'Prêt' : 'À configurer'}</b><span>PDF IA</span></div>
+        <div><b>${data.configured ? 'Prêt' : 'À configurer'}</b><span>PDF</span></div>
         <div><b>${data.settings?.mode === 'niveau' ? 'Niveau' : 'Module'}</b><span>Rotation</span></div>`;
     }
     renderDailyAiDrafts();
@@ -1342,6 +1342,7 @@ async function runDailyAiQcm(){
   try{
     const payload = {
       count:20,
+      mode:$('#aiDailyMode')?.value || 'module',
       category:$('#aiDailyCategory')?.value || '',
       level:$('#aiDailyLevel')?.value || '',
       is_premium:Boolean($('#aiDailyPremium')?.checked),
@@ -1351,7 +1352,7 @@ async function runDailyAiQcm(){
     if (result){
       result.innerHTML = data.skipped
         ? '<div class="pay-note warn">Le PDF du jour existe déjà. Coche “Régénérer aujourd’hui” si tu veux le refaire.</div>'
-        : `<div class="pay-note success">PDF IA prêt ✅ ${data.draft?.count || 0} QCM à relire avant publication.</div>`;
+        : `<div class="pay-note success">PDF prêt ✅ ${data.draft?.count || 0} QCM à relire avant publication.</div>`;
     }
     await loadDailyAiDrafts();
   }catch(err){
@@ -1398,25 +1399,74 @@ async function fetchDailyAiPdfBlob(index){
   return await res.blob();
 }
 
+function dailyAnswerLabel(index){ return ['A','B','C','D'][Number(index || 0)] || 'A'; }
+
+function renderDailyPdfHtml(d){
+  const wrap = $('#dailyPdfHtmlPreview');
+  if (!wrap || !d) return;
+  const questions = Array.isArray(d.questions) ? d.questions : [];
+  wrap.innerHTML = `
+    <div class="pdf-cover-preview">
+      <div class="pdf-brand-line">
+        <img src="img/logo.png" alt="Réussite Concours BF">
+        <div><b>Réussite</b><strong>Concours BF</strong></div>
+      </div>
+      <span class="pdf-country">BURKINA FASO</span>
+      <h1>PRÉPARATION</h1>
+      <h2>INTENSIVE</h2>
+      <h3>CONCOURS</h3>
+      <div class="pdf-year">${new Date().getFullYear()}</div>
+      <div class="pdf-preview-grid">
+        <div><span>DATE DU SUJET</span><b>${escapeHtml(d.date || '')}</b></div>
+        <div><span>SUJET</span><b>${Number(d.count || questions.length || 0)} QCM</b></div>
+      </div>
+      <div class="pdf-module-line"><b>MODULE : ${escapeHtml(d.category || 'Module')}</b><b>NIVEAU : ${escapeHtml(d.level || 'Niveau')}</b></div>
+      <p>Document de révision à vérifier avant publication</p>
+    </div>
+    <div class="pdf-question-preview">
+      <h2>Questions à choix multiple</h2>
+      ${questions.map((q, idx)=>`
+        <article class="pdf-preview-question">
+          <div class="pdf-q-num">${idx + 1}.</div>
+          <div class="pdf-q-body">
+            <h3>${escapeHtml(q.question_text || '')}</h3>
+            <p><b>A.</b> ${escapeHtml(q.option_a || '')}</p>
+            <p><b>B.</b> ${escapeHtml(q.option_b || '')}</p>
+            <p><b>C.</b> ${escapeHtml(q.option_c || '')}</p>
+            <p><b>D.</b> ${escapeHtml(q.option_d || '')}</p>
+            <div class="pdf-preview-correction"><b>Réponse : ${dailyAnswerLabel(q.correct_answer)}</b><span>${escapeHtml(q.explanation || '')}</span></div>
+          </div>
+        </article>`).join('')}
+    </div>`;
+}
+
+async function ensureCurrentPdfBlob(){
+  if (currentDailyPdfUrl) return currentDailyPdfUrl;
+  if (currentDailyPdfIndex < 0) throw new Error('PDF introuvable');
+  const blob = await fetchDailyAiPdfBlob(currentDailyPdfIndex);
+  currentDailyPdfUrl = URL.createObjectURL(blob);
+  return currentDailyPdfUrl;
+}
+
 async function openDailyAiPdf(index){
   const d = aiDailyDraftCache[index];
   if (!d) return;
   try{
-    const blob = await fetchDailyAiPdfBlob(index);
     if (currentDailyPdfUrl) URL.revokeObjectURL(currentDailyPdfUrl);
-    currentDailyPdfUrl = URL.createObjectURL(blob);
+    currentDailyPdfUrl = '';
     currentDailyPdfIndex = index;
     $('#dailyPdfTitle') && ($('#dailyPdfTitle').textContent = d.title || 'QCM quotidien');
     $('#dailyPdfMeta') && ($('#dailyPdfMeta').textContent = `${d.date || ''} · ${d.category || ''} · ${d.level || ''} · ${Number(d.count || 0)} QCM`);
-    const frame = $('#dailyPdfFrame');
-    if (frame) frame.src = currentDailyPdfUrl;
+    $('#dailyPublishCategory') && ($('#dailyPublishCategory').value = d.category || 'Culture générale');
+    $('#dailyPublishLevel') && ($('#dailyPublishLevel').value = d.level || 'Concours');
+    $('#dailyPublishPremium') && ($('#dailyPublishPremium').checked = Boolean(d.is_premium));
+    renderDailyPdfHtml(d);
     show('pdfreview');
+    ensureCurrentPdfBlob().catch(()=>{});
   }catch(err){ toast(err.message); }
 }
 
 function closeDailyPdfReview(){
-  const frame = $('#dailyPdfFrame');
-  if (frame) frame.src = 'about:blank';
   if (currentDailyPdfUrl){ URL.revokeObjectURL(currentDailyPdfUrl); currentDailyPdfUrl = ''; }
   show('admin');
   setAdminTab('ai');
@@ -1443,6 +1493,13 @@ function downloadCurrentDailyPdf(){
   downloadDailyAiPdf(currentDailyPdfIndex);
 }
 
+async function openCurrentDailyPdfFull(){
+  try{
+    const url = await ensureCurrentPdfBlob();
+    window.open(url, '_blank', 'noopener');
+  }catch(err){ toast(err.message); }
+}
+
 function publishCurrentDailyPdf(){
   if (currentDailyPdfIndex < 0) return;
   publishDailyAiDraft(currentDailyPdfIndex);
@@ -1451,11 +1508,18 @@ function publishCurrentDailyPdf(){
 async function publishDailyAiDraft(index){
   const d = aiDailyDraftCache[index];
   if (!d || d.status === 'published') return;
-  if (!confirm(`Publier les ${Number(d.count || 0)} QCM de ce PDF après vérification ?`)) return;
+  const category = $('#dailyPublishCategory')?.value || d.category || 'Culture générale';
+  const level = $('#dailyPublishLevel')?.value || d.level || 'Concours';
+  const isPremium = Boolean($('#dailyPublishPremium')?.checked);
+  const destination = isPremium ? 'Premium' : 'Gratuit';
+  if (!confirm(`Publier les ${Number(d.count || 0)} QCM dans ${category} · ${level} · ${destination} ?`)) return;
   try{
-    const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/publish', { method:'POST', body:JSON.stringify({}) });
+    const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/publish', {
+      method:'POST',
+      body:JSON.stringify({ category, level, is_premium:isPremium })
+    });
     const result = $('#aiDailyResult');
-    if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM publiés ✅</div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM publiés dans <b>${escapeHtml(category)} · ${escapeHtml(level)} · ${destination}</b> ✅</div>`;
     await loadDailyAiDrafts();
     if (currentDailyPdfIndex === index && $('#pdfreview')?.classList.contains('active')) closeDailyPdfReview();
     await loadAdminQuestions();
@@ -1468,11 +1532,11 @@ async function publishDailyAiDraft(index){
 async function deleteDailyAiDraft(index){
   const d = aiDailyDraftCache[index];
   if (!d) return;
-  if (!confirm('Supprimer ce PDF IA quotidien ?')) return;
+  if (!confirm('Supprimer ce PDF quotidien ?')) return;
   try{
     await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id), { method:'DELETE' });
     await loadDailyAiDrafts();
-    toast('PDF IA supprimé');
+    toast('PDF supprimé');
   }catch(err){ toast(err.message); }
 }
 
