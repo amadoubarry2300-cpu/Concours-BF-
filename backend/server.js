@@ -819,18 +819,52 @@ function cleanText(value, max=4000){
   return String(value || '').trim().slice(0, max);
 }
 
+function toSuperscriptText(value){
+  const map = { '0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻','−':'⁻','=':'⁼','(':'⁽',')':'⁾','n':'ⁿ','i':'ⁱ','x':'ˣ' };
+  const raw = String(value || '');
+  let out = '';
+  for (const ch of raw) out += map[ch] || ch;
+  return out;
+}
+
+function normalizeMathNotationText(value){
+  return String(value || '')
+    .replace(/\\times/g, '×')
+    .replace(/\\cdot/g, '·')
+    .replace(/<=/g, '≤')
+    .replace(/>=/g, '≥')
+    .replace(/!=/g, '≠')
+    .replace(/\bplus ou moins\b/gi, '±')
+    .replace(/\bsigma\b/gi, 'σ')
+    .replace(/\bDelta\b/g, 'Δ')
+    .replace(/\bpi\b/g, 'π')
+    .replace(/\b([A-Za-z])''(?=[\s)=,+\-−]|$)/g, '$1″')
+    .replace(/\b([A-Za-z])'(?=[\s()=,+\-−]|$)/g, '$1′')
+    .replace(/(?:\\sqrt|sqrt)\s*\(([^\n]{1,160}?)\)(?=[\s.,;:!?]|$)/gi, '√($1)')
+    .replace(/\^\{([^{}]{1,24})\}/g, (_, exp) => toSuperscriptText(exp))
+    .replace(/\^\(([^()]{1,24})\)/g, (_, exp) => toSuperscriptText(exp))
+    .replace(/\^([+\-−]?\d+(?:[a-zA-Z])?|[a-zA-Z])/g, (_, exp) => toSuperscriptText(exp))
+    .replace(/\s+-\s+/g, ' − ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanEducationalText(value, max=4000){
+  return normalizeMathNotationText(cleanText(value, max));
+}
+
 function adminQuestionPayload(body){
   const options = Array.isArray(body?.options) ? body.options : [body?.option_a, body?.option_b, body?.option_c, body?.option_d];
   const payload = {
     category: cleanText(body?.category, 80),
     level: cleanText(body?.level || 'BEPC', 40),
-    question_text: cleanText(body?.question_text || body?.question, 1200),
-    option_a: cleanText(options[0], 500),
-    option_b: cleanText(options[1], 500),
-    option_c: cleanText(options[2], 500),
-    option_d: cleanText(options[3], 500),
+    question_text: cleanEducationalText(body?.question_text || body?.question, 1200),
+    option_a: cleanEducationalText(options[0], 500),
+    option_b: cleanEducationalText(options[1], 500),
+    option_c: cleanEducationalText(options[2], 500),
+    option_d: cleanEducationalText(options[3], 500),
     correct_answer: Number(body?.correct_answer),
-    explanation: cleanText(body?.explanation, 3000),
+    explanation: cleanEducationalText(body?.explanation, 3000),
     is_premium: Boolean(body?.is_premium),
     is_active: body?.is_active === undefined ? true : Boolean(body?.is_active),
     source: cleanText(body?.source || 'Ajout administrateur', 500)
@@ -1043,13 +1077,13 @@ function promptAvoidBlock(avoidQuestions = [], existingCount = 0){
   return `${header}\nQuestions déjà présentes ou déjà préparées à NE PAS répéter ni reformuler:\n${rows.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
 }
 
-function aiQcmPrompt({ count, category, level, theme, fromPdf = false, avoidQuestions = [], existingCount = 0 }){
+function aiQcmPrompt({ count, category, level, theme, publicationName = '', fromPdf = false, avoidQuestions = [], existingCount = 0 }){
   const sourceLine = fromPdf
     ? `Lis le PDF joint et génère exactement ${count} QCM en français à partir de son contenu. Si une information n'est pas clairement présente dans le PDF, ne l'invente pas: remplace par une autre question appuyée par le document.`
     : `Génère exactement ${count} QCM en français.`;
-  return `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\n${sourceLine}\nCatégorie: ${category}. Niveau: ${level}. Thème: ${theme}.\nContraintes strictes:\n- chaque QCM doit être factuel, clair, non ambigu et adapté au Burkina Faso si pertinent;\n- vérifie la bonne réponse avant de l'écrire: si tu as un doute, remplace entièrement la question;\n- ne mélange jamais deux questions en une seule;\n- niveau exigeant pour une vraie préparation de concours: éviter les questions trop évidentes, les réponses faciles et les généralités;\n- privilégier le raisonnement, les détails utiles, les pièges réalistes et les distracteurs plausibles;\n- pour Burkina Faso, éviter les questions basiques répétitives comme capitale/monnaie sauf si le thème l'exige;\n- aucune remarque interne dans les questions, options ou corrections: ne jamais écrire "attention", "à vérifier", "brouillon", "IA", "je ne peux pas", ni une parenthèse qui corrige la consigne;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse, cohérente avec la correction;\n- correction détaillée, pédagogique, concise et affirmative;\n- éviter toute affirmation incertaine ou inventée;\n- aucun doublon et aucune reformulation d'une question existante.\n${promptAvoidBlock(avoidQuestions, existingCount)}\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Réussite Concours BF"}]}`;
+  const nameLine = publicationName ? `Nom du QCM demandé: ${publicationName}.` : '';
+  return `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\n${sourceLine}\nCatégorie choisie par l'admin: ${category}. Niveau choisi par l'admin: ${level}. Sujet/thème choisi par l'admin: ${theme}. ${nameLine}\nContraintes strictes:\n- respecte d'abord le formulaire admin: catégorie, niveau, thème et nom du QCM doivent guider le contenu; ne pars pas sur un autre sujet;\n- adapte réellement la difficulté et le vocabulaire au niveau ${level};\n- chaque QCM doit être factuel, clair, non ambigu et adapté au Burkina Faso si pertinent;\n- vérifie la bonne réponse avant de l'écrire: si tu as un doute, remplace entièrement la question;\n- ne mélange jamais deux questions en une seule;\n- niveau exigeant pour une vraie préparation de concours: éviter les questions trop évidentes, les réponses faciles et les généralités;\n- privilégier le raisonnement, les détails utiles, les pièges réalistes et les distracteurs plausibles;\n- pour les mathématiques, statistiques, physique-chimie ou SVT, écris les formules avec une notation lisible: x², y′, √(...), σ, Δ, ≤, ≥, ±, ×; pour les fractions complexes tu peux utiliser \\frac{numérateur}{dénominateur}; évite les écritures brutes comme sqrt(...), r^2 ou e^{2x} quand un symbole lisible existe;\n- pour Burkina Faso, éviter les questions basiques répétitives comme capitale/monnaie sauf si le thème l'exige;\n- aucune remarque interne dans les questions, options ou corrections: ne jamais écrire "attention", "à vérifier", "brouillon", "IA", "je ne peux pas", ni une parenthèse qui corrige la consigne;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse, cohérente avec la correction;\n- correction détaillée, pédagogique, concise et affirmative;\n- éviter toute affirmation incertaine ou inventée;\n- aucun doublon et aucune reformulation d'une question existante.\n${promptAvoidBlock(avoidQuestions, existingCount)}\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Réussite Concours BF"}]}`;
 }
-
 function questionRowsForVerification(questions){
   return (questions || []).map(q => ({
     category:q.category,
@@ -1064,7 +1098,7 @@ function questionRowsForVerification(questions){
 
 async function verifyAiQuestionsWithGemini(questions, { category, level, theme, count }){
   if (!GEMINI_API_KEY || !Array.isArray(questions) || !questions.length) return { text:JSON.stringify({ questions:questionRowsForVerification(questions) }), model:'' };
-  const prompt = `Tu es vérificateur pédagogique pour des QCM de concours au Burkina Faso. Vérifie factuellement chaque question, la bonne réponse et la correction. Supprime ou corrige toute question fausse, ambiguë, trop facile, répétitive ou contenant une remarque interne. N'écris jamais "attention", "à vérifier", "IA", "brouillon" ou un commentaire de doute. Si une question n'est pas sûre, remplace-la par une question fiable du même thème. Retourne au maximum ${count} QCM validés. Catégorie: ${category}. Niveau: ${level}. Thème: ${theme}. Réponds uniquement en JSON valide: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Réussite Concours BF"}]}\n\nQCM à contrôler:\n${JSON.stringify(questionRowsForVerification(questions))}`;
+  const prompt = `Tu es vérificateur pédagogique pour des QCM de concours au Burkina Faso. Vérifie factuellement chaque question, la bonne réponse et la correction. Supprime ou corrige toute question fausse, ambiguë, trop facile, répétitive ou contenant une remarque interne. N'écris jamais "attention", "à vérifier", "IA", "brouillon" ou un commentaire de doute. Si une question n'est pas sûre, remplace-la par une question fiable du même thème. Retourne au maximum ${count} QCM validés. Respecte strictement le formulaire admin. Catégorie: ${category}. Niveau: ${level}. Thème: ${theme}. En mathématiques/sciences, garde une notation lisible: x², y′, √(...), σ, Δ, fractions claires, ≤, ≥, ±, ×. Réponds uniquement en JSON valide: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Réussite Concours BF"}]}\n\nQCM à contrôler:\n${JSON.stringify(questionRowsForVerification(questions))}`;
   return callGeminiGenerate(prompt);
 }
 
@@ -1174,7 +1208,7 @@ async function validateQuestionsForPublication(questions){
   return { accepted, rejected, existingCount:existingTexts.length };
 }
 
-async function generateUniqueAiQuestions({ count, category, level, theme, fromPdf = false, extraParts = [], is_premium = false }){
+async function generateUniqueAiQuestions({ count, category, level, theme, publicationName = '', fromPdf = false, extraParts = [], is_premium = false }){
   const target = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(count || 1)));
   const existingRows = await collectExistingQcmRows();
   const existingTexts = existingRows.map(row => row.question_text);
@@ -1190,7 +1224,7 @@ async function generateUniqueAiQuestions({ count, category, level, theme, fromPd
     const angle = qcmGenerationAngle(category, attempt);
     const avoidQuestions = buildAvoidQuestions(existingRows, existingTexts, category, level, questions, attempt);
     const batchTheme = `${theme || category}. Angle obligatoire du lot ${attempt + 1}: ${angle}. Avant de répondre, contrôle intérieurement chaque bonne réponse et chaque correction. Retourne seulement des QCM validés, nouveaux et différents.`;
-    const prompt = aiQcmPrompt({ count:batchCount, category, level, theme:batchTheme, fromPdf, avoidQuestions, existingCount:existingTexts.length });
+    const prompt = aiQcmPrompt({ count:batchCount, category, level, theme:batchTheme, publicationName, fromPdf, avoidQuestions, existingCount:existingTexts.length });
     const ai = extraParts.length
       ? await callGeminiGenerateParts([{ text:prompt }, ...extraParts])
       : await callGeminiGenerate(prompt);
@@ -2533,7 +2567,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'level-history-fix-3',
+    build: 'math-render-fix-1',
     time: new Date().toISOString()
   });
 });
@@ -3155,12 +3189,14 @@ app.get('/api/cron/ai-daily-qcm', async (req, res, next) => {
 app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
   try{
     if (!GEMINI_API_KEY) return res.status(503).json({ message:'Service IA indisponible pour le moment. Réessaie plus tard.' });
-    const category = cleanText(req.body?.category || 'Culture générale', 80);
     const level = cleanText(req.body?.level || 'Concours', 40);
-    const theme = cleanText(req.body?.theme || category, 200);
+    const requestedCategory = cleanText(req.body?.category || 'Culture générale', 80);
+    const category = categoryAllowedForLevel(requestedCategory, level) ? requestedCategory : defaultCategoryForLevel(level);
+    const theme = cleanText(req.body?.theme || req.body?.publication_name || category, 240);
+    const publicationName = cleanText(req.body?.publication_name || '', 180);
     const count = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(req.body?.count || 5)));
     const isPremiumDraft = Boolean(req.body?.is_premium);
-    const generated = await generateUniqueAiQuestions({ count, category, level, theme, is_premium:isPremiumDraft });
+    const generated = await generateUniqueAiQuestions({ count, category, level, theme, publicationName, is_premium:isPremiumDraft });
     const questions = generated.questions;
     if (questions.length < count) return res.status(502).json({ message:`Seulement ${questions.length}/${count} QCM fiables et non répétitifs ont été validés. Précise le thème ou relance.` });
     res.json({ ok:true, model:generated.model, existingCount:generated.existingCount, questions });
@@ -3177,9 +3213,11 @@ app.post('/api/admin/ai/qcm-pdf', requireAdmin, express.raw({ type:() => true, l
     if (buffer.length > MAX_RESOURCE_FILE_BYTES) return res.status(413).json({ message:`PDF trop lourd. Maximum ${Math.round(MAX_RESOURCE_FILE_BYTES/1024/1024)} Mo.` });
     if (!isPdfFile(fileName, mimeType)) return res.status(400).json({ message:'Seuls les fichiers PDF sont acceptés pour cette option IA.' });
 
-    const category = headerText(req, 'x-ai-category', 80) || 'Culture générale';
     const level = headerText(req, 'x-ai-level', 40) || 'Concours';
-    const theme = headerText(req, 'x-ai-theme', 200) || `PDF ${fileName}`;
+    const requestedCategory = headerText(req, 'x-ai-category', 80) || 'Culture générale';
+    const category = categoryAllowedForLevel(requestedCategory, level) ? requestedCategory : defaultCategoryForLevel(level);
+    const publicationName = headerText(req, 'x-ai-publication-name', 180) || '';
+    const theme = headerText(req, 'x-ai-theme', 220) || publicationName || `PDF ${fileName}`;
     const count = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(req.headers['x-ai-count'] || 5)));
     const isPremiumDraft = String(req.headers['x-ai-is-premium'] || '').toLowerCase() === 'true';
     const generated = await generateUniqueAiQuestions({
@@ -3187,6 +3225,7 @@ app.post('/api/admin/ai/qcm-pdf', requireAdmin, express.raw({ type:() => true, l
       category,
       level,
       theme,
+      publicationName,
       fromPdf:true,
       is_premium:isPremiumDraft,
       extraParts:[{ inline_data:{ mime_type:mimeType || 'application/pdf', data:buffer.toString('base64') } }]

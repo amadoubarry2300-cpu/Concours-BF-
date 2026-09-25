@@ -399,3 +399,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Les matières proposées dépendent maintenant du niveau sélectionné : par exemple **CEP** ne propose plus **Physique-Chimie**.
 - La génération quotidienne garde plusieurs PDF le même jour si le niveau ou la matière change ; un nouveau PDF ne remplace plus les autres PDF du jour.
 - L’historique admin et Documents récupèrent aussi les PDF quotidiens déjà publiés qui existent dans Documents ou dans les QCM publiés mais avaient disparu de la liste IA.
+
+## 2026-09-25 — Formules lisibles et IA mieux ciblée
+
+- Les QCM affichent maintenant les puissances, racines, fractions et symboles mathématiques/scientifiques de façon lisible dans l’application.
+- Les textes techniques inutiles comme **Destination après validation** ont été retirés des propositions IA.
+- Le formulaire IA est mieux respecté : nom du QCM, thème, catégorie et niveau guident davantage la génération.
+- Les actions publier/supprimer mettent à jour l’écran plus rapidement, puis rechargent les listes en arrière-plan.
