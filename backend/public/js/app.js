@@ -1228,7 +1228,8 @@ function adminFormPayload(){
     explanation: $('#adminExplanation')?.value || '',
     source: $('#adminSource')?.value || defaultQcmPublicationName(),
     is_premium: Boolean($('#adminPremium')?.checked),
-    is_active: Boolean($('#adminActive')?.checked)
+    is_active: true,
+    admin_visible: Boolean($('#adminActive')?.checked)
   };
 }
 
@@ -1242,8 +1243,11 @@ async function saveAdminQuestion(){
     const method = id ? 'PATCH' : 'POST';
     const url = id ? '/api/admin/questions/' + encodeURIComponent(id) : '/api/admin/questions';
     const data = await adminFetch(url, { method, body:JSON.stringify(payload) });
+    const savedId = data.question?.id || id;
+    if (savedId) await adminFetch('/api/admin/questions/' + encodeURIComponent(savedId) + '/status', { method:'PATCH', body:JSON.stringify({ is_active:Boolean(payload.admin_visible) }) });
     const destination = payload.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
-    if (result) result.innerHTML = `<div class="pay-note success">QCM enregistré dans <b>${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
+    const adminNote = payload.admin_visible ? '' : '<br>Rangé dans <b>Archives admin</b>, mais visible chez le candidat.';
+    if (result) result.innerHTML = `<div class="pay-note success">QCM enregistré dans <b>${destination}</b> ✅${adminNote}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
     resetAdminForm(false);
     await loadAdminQuestions();
     await loadSupabaseQuestions();
@@ -1456,7 +1460,7 @@ function editAdminQuestion(index){
   $('#adminExplanation') && ($('#adminExplanation').value=q.explanation || '');
   $('#adminSource') && ($('#adminSource').value=q.source || 'Ajout administrateur');
   $('#adminPremium') && ($('#adminPremium').checked=Boolean(q.is_premium));
-  $('#adminActive') && ($('#adminActive').checked=Boolean(q.is_active));
+  $('#adminActive') && ($('#adminActive').checked=!isAdminQuestionArchived(q));
   $('#adminFormTitle') && ($('#adminFormTitle').textContent='Modifier le QCM');
   $('#adminSaveBtn') && ($('#adminSaveBtn').textContent='Enregistrer les modifications');
 }
@@ -2410,12 +2414,14 @@ async function uploadAdminResource(){
       'X-Category': encodeURIComponent($('#adminResourceCategory')?.value || 'Documents'),
       'X-Description': encodeURIComponent($('#adminResourceDescription')?.value || ''),
       'X-Is-Premium': String(Boolean($('#adminResourcePremium')?.checked)),
-      'X-Is-Active': String(Boolean($('#adminResourceActive')?.checked))
+      'X-Is-Active': 'true',
+      'X-Admin-Archived': String(!Boolean($('#adminResourceActive')?.checked))
     });
     const res = await fetch('/api/admin/resources/upload', { method:'POST', headers, body:file });
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Publication impossible');
-    if (result) result.innerHTML = '<div class="pay-note success">Document publié avec succès ✅</div>';
+    const adminNote = $('#adminResourceActive')?.checked ? '' : '<br>Rangé dans <b>Archives admin</b>, mais visible chez le candidat.';
+    if (result) result.innerHTML = `<div class="pay-note success">Document publié avec succès ✅${adminNote}</div>`;
     clearAdminResourceForm();
     await loadAdminResources();
     await loadResources();

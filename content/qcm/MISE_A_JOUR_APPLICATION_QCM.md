@@ -446,3 +446,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Les documents et QCM archivés restent visibles et ouverts côté candidat.
 - Supprimer reste l’unique action qui retire le contenu côté candidat et côté admin.
 - Les anciens contenus passés en inactif par erreur sont remis visibles côté candidat lors du chargement admin, puis rangés dans l’archive admin.
+
+## 2026-09-26 — Formulaires admin alignés avec l’archive
+
+- Les cases des formulaires QCM et Documents signifient maintenant “Afficher dans la liste admin”.
+- Même décoché, le contenu reste visible chez le candidat et part seulement en Archives admin.
+- Les anciennes lignes QCM inactives sont aussi servies côté candidat ; la suppression reste le seul retrait public.

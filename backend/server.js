@@ -916,7 +916,7 @@ function adminQuestionPayload(body){
     correct_answer: Number(body?.correct_answer),
     explanation: cleanEducationalText(body?.explanation, 3000),
     is_premium: Boolean(body?.is_premium),
-    is_active: body?.is_active === undefined ? true : Boolean(body?.is_active),
+    is_active: true,
     source: cleanText(body?.source || 'Ajout administrateur', 500)
   };
   if (!payload.category) throw Object.assign(new Error('Catégorie requise'), { status:400 });
@@ -2758,7 +2758,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'archive-admin-fix-1',
+    build: 'archive-admin-form-fix-1',
     time: new Date().toISOString()
   });
 });
@@ -3602,7 +3602,8 @@ app.post('/api/admin/resources/upload', requireAdmin, express.raw({ type:() => t
     const category = headerText(req, 'x-category', 80) || 'Documents';
     const description = headerText(req, 'x-description', 1000);
     const isPremiumResource = String(req.headers['x-is-premium'] || '').toLowerCase() === 'true';
-    const isActiveResource = String(req.headers['x-is-active'] || 'true').toLowerCase() !== 'false';
+    const adminArchivedResource = String(req.headers['x-admin-archived'] || '').toLowerCase() === 'true' || String(req.headers['x-is-active'] || 'true').toLowerCase() === 'false';
+    const isActiveResource = true;
 
     if (!buffer.length) return res.status(400).json({ message:'Choisis un fichier à publier' });
     if (buffer.length > MAX_RESOURCE_FILE_BYTES) return res.status(413).json({ message:`Fichier trop lourd. Maximum ${Math.round(MAX_RESOURCE_FILE_BYTES/1024/1024)} Mo.` });
@@ -3627,6 +3628,7 @@ app.post('/api/admin/resources/upload', requireAdmin, express.raw({ type:() => t
       storage_path:objectPath,
       is_premium:isPremiumResource,
       is_active:isActiveResource,
+      admin_archived:adminArchivedResource,
       author_phone:req.phone,
       created_at:now,
       updated_at:now
@@ -3894,10 +3896,20 @@ app.post('/api/admin/notifications/test', requireAdmin, async (req, res) => {
 app.get('/api/resources', async (req, res, next) => {
   try{
     const premiumAllowed = await requestHasPremium(req);
-    const resources = await loadResourceIndex().catch(err => {
+    let resources = await loadResourceIndex().catch(err => {
       if (err.status === 503 || /Stockage indisponible/i.test(err.message)) return [];
       throw err;
     });
+    let changed = false;
+    const now = new Date().toISOString();
+    resources = resources.map(r => {
+      if (r && !r.is_deleted && r.is_active === false){
+        changed = true;
+        return { ...r, is_active:true, admin_archived:true, updated_at:now };
+      }
+      return r;
+    });
+    if (changed) await saveResourceIndex(resources).catch(err => console.warn('Migration archive documents public:', err.message));
     const indexed = visibleResourceRows(resources)
       .filter(r => r.is_active !== false)
       .filter(r => premiumAllowed || !r.is_premium)
@@ -3994,7 +4006,7 @@ app.get('/api/qcm-publications', async (req, res, next) => {
   try{
     if (!supabaseReady()) return res.json({ ok:true, publications:[], premiumIncluded:false });
     const premiumAllowed = await premiumAllowedForRequest(req);
-    const rows = await supabaseRequest('questions?is_active=eq.true&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.desc&limit=800').catch(()=>[]);
+    const rows = await supabaseRequest('questions?select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.desc&limit=800').catch(()=>[]);
     const groups = new Map();
     for (const row of (Array.isArray(rows) ? rows : [])){
       const date = String(row.created_at || new Date().toISOString()).slice(0, 10);
@@ -4032,7 +4044,7 @@ app.get('/api/questions', async (req, res, next) => {
       const questions = filtered.map(safeLocalQuestion);
       if (supabaseReady()){
         const premiumFilter = premiumAllowed ? '' : '&is_premium=eq.false';
-        const extraRows = await supabaseRequest(`questions?is_active=eq.true${premiumFilter}&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.desc`).catch(()=>[]);
+        const extraRows = await supabaseRequest(`questions?${premiumFilter ? premiumFilter.slice(1) + '&' : ''}select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.desc`).catch(()=>[]);
         const seen = new Set(questions.map(q => String(q.question_text || '').toLowerCase().trim()));
         if (Array.isArray(extraRows)){
           extraRows.map(safeQuestion).forEach(q => {
@@ -4054,7 +4066,7 @@ app.get('/api/questions', async (req, res, next) => {
 
     if (!supabaseReady()) return res.status(503).json({ message:'Stockage indisponible pour le moment.' });
     const premiumFilter = premiumAllowed ? '' : '&is_premium=eq.false';
-    const rows = await supabaseRequest(`questions?is_active=eq.true${premiumFilter}&select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.asc`);
+    const rows = await supabaseRequest(`questions?${premiumFilter ? premiumFilter.slice(1) + '&' : ''}select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.asc`);
     res.json({ ok:true, source:'supabase', premiumIncluded:premiumAllowed, questions:Array.isArray(rows) ? rows.map(safeQuestion) : [] });
   }catch(err){ next(err); }
 });
