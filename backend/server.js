@@ -433,7 +433,6 @@ function publicResource(row){
 async function requestHasPremium(req){
   const sessionData = await getSessionFromRequest(req).catch(() => null);
   if (!sessionData?.profile?.phone) return false;
-  if (isAdminProfile(sessionData.profile)) return true;
   const sub = await getActiveSubscription(sessionData.profile.phone);
   return Boolean(sub);
 }
