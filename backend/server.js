@@ -2758,7 +2758,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'archive-admin-form-fix-1',
+    build: 'published-history-fix-1',
     time: new Date().toISOString()
   });
 });
@@ -3602,7 +3602,7 @@ app.post('/api/admin/resources/upload', requireAdmin, express.raw({ type:() => t
     const category = headerText(req, 'x-category', 80) || 'Documents';
     const description = headerText(req, 'x-description', 1000);
     const isPremiumResource = String(req.headers['x-is-premium'] || '').toLowerCase() === 'true';
-    const adminArchivedResource = String(req.headers['x-admin-archived'] || '').toLowerCase() === 'true' || String(req.headers['x-is-active'] || 'true').toLowerCase() === 'false';
+    const adminArchivedResource = String(req.headers['x-admin-archived'] || 'true').toLowerCase() !== 'false';
     const isActiveResource = true;
 
     if (!buffer.length) return res.status(400).json({ message:'Choisis un fichier à publier' });

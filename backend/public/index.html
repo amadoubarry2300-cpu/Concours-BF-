@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=archive-admin-form-fix-1">
+<link rel="stylesheet" href="css/styles.css?v=published-history-fix-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -649,7 +649,6 @@
 
           <div class="admin-switch-row">
             <label><input type="checkbox" id="adminPremium"> Publier dans Premium <small>(sinon Gratuit)</small></label>
-            <label><input type="checkbox" id="adminActive" checked> Afficher dans la liste admin</label>
           </div>
 
           <button class="btn btn-green btn-block" id="adminSaveBtn" onclick="saveAdminQuestion()">Publier le QCM</button>
@@ -666,11 +665,11 @@
             <div class="admin-zone-card free"><b>✅ Gratuit</b><span>Visible par tous</span></div>
             <div class="admin-zone-card premium"><b>⭐ Premium</b><span>Visible après abonnement</span></div>
           </div>
+          <div id="adminQuestionHistoryControls" class="admin-filter-row"></div>
           <div class="admin-filter-row" id="adminQuestionFilterRow">
-            <button class="chip on" onclick="setAdminQuestionFilter('all', this)">Liste admin</button>
+            <button class="chip on" onclick="setAdminQuestionFilter('all', this)">Tout l’historique</button>
             <button class="chip" onclick="setAdminQuestionFilter('free', this)">Gratuit</button>
             <button class="chip" onclick="setAdminQuestionFilter('premium', this)">Premium</button>
-            <button class="chip" onclick="setAdminQuestionFilter('hidden', this)">Archives admin</button>
           </div>
           <div id="adminQuestionSummary" class="admin-qcm-summary"></div>
           <div class="admin-search-row">
@@ -711,7 +710,6 @@
 
           <div class="admin-switch-row">
             <label><input type="checkbox" id="adminResourcePremium"> Document Premium</label>
-            <label><input type="checkbox" id="adminResourceActive" checked> Afficher dans la liste admin</label>
           </div>
 
           <button class="btn btn-green btn-block" id="adminResourceSaveBtn" onclick="uploadAdminResource()">Publier le document</button>
@@ -719,12 +717,8 @@
 
           <hr class="soft-separator">
           <h3>Mes documents</h3>
-          <p class="admin-help">Masquer archive seulement le document dans l’admin pour alléger la liste. Le candidat le voit toujours. Supprimer l’enlève côté candidat et côté admin.</p>
-          <div class="admin-filter-row" id="adminResourceFilterRow">
-            <button class="chip on" onclick="setAdminResourceFilter('all', this)">Historique admin</button>
-            <button class="chip" onclick="setAdminResourceFilter('published', this)">Publiés</button>
-            <button class="chip" onclick="setAdminResourceFilter('hidden', this)">Archives admin</button>
-          </div>
+          <p class="admin-help">Après publication, les documents sont rangés automatiquement dans l’historique publié. Ils restent visibles chez le candidat. Supprimer les retire partout.</p>
+          <div id="adminResourceHistoryControls" class="admin-filter-row"></div>
           <div id="adminResourceSummary" class="admin-qcm-summary"></div>
           <div id="adminResourceList" class="admin-list"></div>
         </div>
@@ -1211,7 +1205,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=archive-admin-form-fix-1"></script>
-<script src="js/app.js?v=archive-admin-form-fix-1"></script>
+<script src="js/questions.js?v=published-history-fix-1"></script>
+<script src="js/app.js?v=published-history-fix-1"></script>
 </body>
 </html>

@@ -1123,8 +1123,9 @@ function logoutUser(){
 /* ---------- administration ---------- */
 let adminQuestionCache = [];
 let adminQuestionSelectedIds = new Set();
+let showAdminQuestionHistory = false;
 let adminResourceCache = [];
-let adminResourceFilter = 'all';
+let showAdminResourceHistory = false;
 let adminNewsCache = [];
 let aiDraftCache = [];
 let aiDraftSelectedIndexes = new Set();
@@ -1229,7 +1230,7 @@ function adminFormPayload(){
     source: $('#adminSource')?.value || defaultQcmPublicationName(),
     is_premium: Boolean($('#adminPremium')?.checked),
     is_active: true,
-    admin_visible: Boolean($('#adminActive')?.checked)
+    admin_visible: false
   };
 }
 
@@ -1246,8 +1247,7 @@ async function saveAdminQuestion(){
     const savedId = data.question?.id || id;
     if (savedId) await adminFetch('/api/admin/questions/' + encodeURIComponent(savedId) + '/status', { method:'PATCH', body:JSON.stringify({ is_active:Boolean(payload.admin_visible) }) });
     const destination = payload.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
-    const adminNote = payload.admin_visible ? '' : '<br>Rangé dans <b>Archives admin</b>, mais visible chez le candidat.';
-    if (result) result.innerHTML = `<div class="pay-note success">QCM enregistré dans <b>${destination}</b> ✅${adminNote}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>${destination}</b> ✅<br>Il est rangé dans <b>Voir historique publié</b> et reste visible chez le candidat.<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
     resetAdminForm(false);
     await loadAdminQuestions();
     await loadSupabaseQuestions();
@@ -1279,36 +1279,49 @@ function isAdminQuestionArchived(q){
   return Boolean(q?.admin_archived);
 }
 
+function toggleAdminQuestionHistory(){
+  showAdminQuestionHistory = !showAdminQuestionHistory;
+  adminQuestionSelectedIds.clear();
+  renderAdminQuestionListFromCache();
+}
+
 function setAdminQuestionFilter(filter, el){
   adminQuestionFilter = filter || 'all';
   adminQuestionSelectedIds.clear();
   $$('#adminQuestionFilterRow .chip').forEach(c=>c.classList.remove('on'));
   if (el) el.classList.add('on');
-  loadAdminQuestions();
+  renderAdminQuestionListFromCache();
+}
+
+function adminQuestionHistoryItems(){
+  return adminQuestionCache.map((q, idx)=>({q, idx}));
 }
 
 function adminQuestionItemsForFilter(){
-  const allItems = adminQuestionCache.map((q, idx)=>({q, idx}));
-  if (adminQuestionFilter === 'free') return allItems.filter(item => !item.q.is_premium && !isAdminQuestionArchived(item.q));
-  if (adminQuestionFilter === 'premium') return allItems.filter(item => item.q.is_premium && !isAdminQuestionArchived(item.q));
-  if (adminQuestionFilter === 'hidden') return allItems.filter(item => isAdminQuestionArchived(item.q));
-  return allItems.filter(item => !isAdminQuestionArchived(item.q));
+  const allItems = showAdminQuestionHistory ? adminQuestionHistoryItems() : [];
+  if (adminQuestionFilter === 'free') return allItems.filter(item => !item.q.is_premium);
+  if (adminQuestionFilter === 'premium') return allItems.filter(item => item.q.is_premium);
+  return allItems;
 }
 
 function selectedAdminQuestions(){
   return adminQuestionCache.filter(q => adminQuestionSelectedIds.has(q.id));
 }
 
+function renderAdminHistoryButton(count, visible){
+  if (!count) return '';
+  return `<button class="mini-btn" onclick="toggleAdminQuestionHistory()">${visible ? 'Masquer l’historique publié' : `Voir historique publié (${count})`}</button>`;
+}
+
 function renderAdminBulkBar(visibleItems){
   const selectedCount = selectedAdminQuestions().length;
   const visibleIds = (visibleItems || []).map(item => item.q.id).filter(Boolean);
   const allVisibleSelected = visibleIds.length && visibleIds.every(id => adminQuestionSelectedIds.has(id));
+  if (!showAdminQuestionHistory) return '';
   return `
     <div class="admin-bulk-bar">
       <label><input type="checkbox" ${allVisibleSelected ? 'checked' : ''} onchange="toggleAdminVisibleSelection(this.checked)"> Sélectionner cette liste</label>
       <span><b>${selectedCount}</b> sélectionné${selectedCount>1?'s':''}</span>
-      <button class="mini-btn" onclick="bulkAdminQuestions('publish')" ${selectedCount ? '' : 'disabled'}>Remettre admin</button>
-      <button class="mini-btn" onclick="bulkAdminQuestions('hide')" ${selectedCount ? '' : 'disabled'}>Archiver admin</button>
       <button class="mini-btn danger" onclick="bulkAdminQuestions('delete')" ${selectedCount ? '' : 'disabled'}>Supprimer</button>
       ${selectedCount ? '<button class="mini-btn" onclick="clearAdminQuestionSelection()">Annuler</button>' : ''}
     </div>`;
@@ -1318,32 +1331,37 @@ function renderAdminQuestionListFromCache(){
   const wrap = $('#adminQuestionList');
   if (!wrap) return;
   adminQuestionSelectedIds = new Set([...adminQuestionSelectedIds].filter(id => adminQuestionCache.some(q => q.id === id)));
-  const allItems = adminQuestionCache.map((q, idx)=>({q, idx}));
-  const freeItems = allItems.filter(item => !item.q.is_premium && !isAdminQuestionArchived(item.q));
-  const premiumItems = allItems.filter(item => item.q.is_premium && !isAdminQuestionArchived(item.q));
-  const hiddenItems = allItems.filter(item => isAdminQuestionArchived(item.q));
+  const allItems = adminQuestionHistoryItems();
+  const freeItems = allItems.filter(item => !item.q.is_premium);
+  const premiumItems = allItems.filter(item => item.q.is_premium);
+  const historyCount = allItems.length;
   const summary = $('#adminQuestionSummary');
   if (summary){
     summary.innerHTML = `
-      <div><b>${freeItems.length}</b><span>Gratuits admin</span></div>
-      <div><b>${premiumItems.length}</b><span>Premium admin</span></div>
-      <div><b>${hiddenItems.length}</b><span>Archivés admin</span></div>`;
+      <div><b>${freeItems.length}</b><span>Gratuit</span></div>
+      <div><b>${premiumItems.length}</b><span>Premium</span></div>
+      <div><b>${historyCount}</b><span>Historique publié</span></div>`;
   }
-  if (!adminQuestionCache.length){
-    wrap.innerHTML = '<div class="empty">Aucun QCM ajouté pour le moment.</div>';
+  const controls = $('#adminQuestionHistoryControls');
+  if (controls) controls.innerHTML = renderAdminHistoryButton(historyCount, showAdminQuestionHistory);
+  const filterRow = $('#adminQuestionFilterRow');
+  if (filterRow) filterRow.style.display = showAdminQuestionHistory ? 'flex' : 'none';
+  if (!historyCount){
+    wrap.innerHTML = '<div class="empty">Aucun QCM publié pour le moment.</div>';
+    return;
+  }
+  if (!showAdminQuestionHistory){
+    wrap.innerHTML = '<div class="empty">Les QCM publiés sont rangés dans l’historique pour garder cet espace léger.</div>';
     return;
   }
   let html = '';
   if (adminQuestionFilter === 'free'){
-    html = renderAdminQuestionGroup('QCM gratuits', 'Ces questions sont visibles par tous les candidats.', freeItems, 'free');
+    html = renderAdminQuestionGroup('QCM gratuits publiés', 'Visibles par tous les candidats.', freeItems, 'free');
   }else if (adminQuestionFilter === 'premium'){
-    html = renderAdminQuestionGroup('QCM Premium', 'Ces questions sont réservées aux abonnés Premium.', premiumItems, 'premium');
-  }else if (adminQuestionFilter === 'hidden'){
-    html = renderAdminQuestionGroup('QCM archivés dans l’admin', 'Ces questions restent visibles chez les candidats, mais elles sont rangées ici pour alléger l’administration.', hiddenItems, 'hidden');
+    html = renderAdminQuestionGroup('QCM Premium publiés', 'Visibles par les abonnés Premium.', premiumItems, 'premium');
   }else{
-    html = renderAdminQuestionGroup('QCM gratuits', 'Visible par tous les candidats.', freeItems, 'free')
-      + renderAdminQuestionGroup('QCM Premium', 'Visible uniquement après abonnement Premium.', premiumItems, 'premium')
-      + (hiddenItems.length ? `<div class="pay-note">${hiddenItems.length} QCM archivé${hiddenItems.length>1?'s':''} côté admin. Ils restent visibles chez les candidats. Utilise le filtre <b>Archives admin</b> pour les remettre dans la liste admin ou les supprimer.</div>` : '');
+    html = renderAdminQuestionGroup('QCM gratuits publiés', 'Visibles par tous les candidats.', freeItems, 'free')
+      + renderAdminQuestionGroup('QCM Premium publiés', 'Visibles par les abonnés Premium.', premiumItems, 'premium');
   }
   const visibleItems = adminQuestionItemsForFilter();
   wrap.innerHTML = renderAdminBulkBar(visibleItems) + (html || '<div class="empty">Aucun QCM dans ce filtre.</div>');
@@ -1372,7 +1390,7 @@ function clearAdminQuestionSelection(){
 async function bulkAdminQuestions(action){
   const ids = [...adminQuestionSelectedIds];
   if (!ids.length) return toast('Sélectionne au moins un QCM');
-  const label = action === 'publish' ? 'remettre dans l’admin' : (action === 'hide' ? 'archiver dans l’admin' : 'supprimer');
+  const label = 'supprimer';
   if (action === 'delete' && !confirm(`Supprimer définitivement ${ids.length} QCM sélectionné${ids.length>1?'s':''} ?`)) return;
   try{
     toast(`${ids.length} QCM : ${label}...`);
@@ -1390,7 +1408,7 @@ async function bulkAdminQuestions(action){
     }
     adminQuestionSelectedIds.clear();
     renderAdminQuestionListFromCache();
-    toast(action === 'delete' ? `${Number(data.deleted || ids.length)} QCM supprimé${Number(data.deleted || ids.length)>1?'s':''} ✅` : (action === 'publish' ? `${Number(data.updated || ids.length)} QCM remis dans l’admin ✅` : `${Number(data.updated || ids.length)} QCM archivé${Number(data.updated || ids.length)>1?'s':''} côté admin ✅ — toujours visible candidat`));
+    toast(`${Number(data.deleted || ids.length)} QCM supprimé${Number(data.deleted || ids.length)>1?'s':''} ✅`);
     setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 300);
   }catch(err){ toast(err.message); }
 }
@@ -1405,7 +1423,7 @@ function renderAdminQuestionCards(items){
       <div class="admin-q-meta">
         <span>${escapeHtml(q.category || 'Catégorie')}</span>
         <span>${escapeHtml(q.level || '')}</span>
-        <span class="${!isAdminQuestionArchived(q) ? 'active' : ''}">${isAdminQuestionArchived(q) ? 'Archivé admin' : 'Visible candidat'}</span>
+        <span class="active">Publié</span>
         ${q.is_premium ? '<span class="premium">Premium abonnés</span>' : '<span class="free">Gratuit</span>'}
       </div>
       <h4>${renderMathText(q.question_text || '')}</h4>
@@ -1414,7 +1432,6 @@ function renderAdminQuestionCards(items){
       <div class="admin-q-actions">
         <button class="edit" onclick="openPublishedQcmFromAdmin()">Ouvrir le quiz</button>
         <button class="edit" onclick="editAdminQuestion(${idx})">Modifier</button>
-        <button class="pause" onclick="toggleAdminQuestion(${idx})">${isAdminQuestionArchived(q) ? 'Remettre dans admin' : 'Masquer dans admin'}</button>
         <button class="delete" onclick="deleteAdminQuestion(${idx})">Supprimer</button>
       </div>
     </div>`).join('');
@@ -1460,8 +1477,7 @@ function editAdminQuestion(index){
   $('#adminExplanation') && ($('#adminExplanation').value=q.explanation || '');
   $('#adminSource') && ($('#adminSource').value=q.source || 'Ajout administrateur');
   $('#adminPremium') && ($('#adminPremium').checked=Boolean(q.is_premium));
-  $('#adminActive') && ($('#adminActive').checked=!isAdminQuestionArchived(q));
-  $('#adminFormTitle') && ($('#adminFormTitle').textContent='Modifier le QCM');
+    $('#adminFormTitle') && ($('#adminFormTitle').textContent='Modifier le QCM');
   $('#adminSaveBtn') && ($('#adminSaveBtn').textContent='Enregistrer les modifications');
 }
 
@@ -1474,7 +1490,7 @@ async function toggleAdminQuestion(index){
     adminQuestionCache[index] = data.question || { ...q, is_active:true, admin_archived:!restoreInAdmin };
     renderAdminQuestionListFromCache();
     setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 250);
-    toast(restoreInAdmin ? 'QCM remis dans l’administration ✅' : 'QCM archivé côté admin ✅ — toujours visible candidat');
+    toast(restoreInAdmin ? 'QCM remis dans l’administration ✅' : 'QCM rangé dans l’historique publié ✅');
   }catch(err){ toast(err.message); }
 }
 
@@ -1586,7 +1602,7 @@ function renderDailyAiDrafts(){
     wrap.innerHTML = `<div class="empty">Aucun PDF en attente de vérification.${publishedCount ? '<br>Les PDF déjà publiés sont rangés dans l’historique admin et restent visibles côté candidat.' : '<br>Clique sur “Créer le PDF du jour maintenant”.'}<br>${historyButton}</div>`;
     return;
   }
-  wrap.innerHTML = `${historyButton ? `<div class="pay-note">${showPublishedDailyDrafts ? 'Historique affiché : les PDF publiés restent dans Nouveaux QCM et Documents.' : 'Les PDF déjà publiés sont masqués ici pour garder l’administration propre.'} ${historyButton}</div>` : ''}` + visibleEntries.map(({d, idx})=>`
+  wrap.innerHTML = `${historyButton ? `<div class="pay-note">${showPublishedDailyDrafts ? 'Historique affiché : les PDF publiés restent dans Nouveaux QCM et Documents.' : 'Les PDF déjà publiés sont rangés dans l’historique pour garder cet espace léger.'} ${historyButton}</div>` : ''}` + visibleEntries.map(({d, idx})=>`
     <div class="admin-q-item daily-ai-draft ${d.status === 'published' ? 'ai-published' : ''}">
       <div class="admin-q-meta">
         <span>${escapeHtml(d.date || '')}</span>
@@ -1857,9 +1873,10 @@ async function generateAiQcm(){
 function renderAiDrafts(){
   const wrap = $('#aiDraftList');
   if (!wrap) return;
-  if (!aiDraftCache.length){ wrap.innerHTML = ''; return; }
+  const visibleDrafts = aiDraftCache.map((q, idx)=>({q, idx})).filter(item => !item.q._published);
+  if (!aiDraftCache.length || !visibleDrafts.length){ wrap.innerHTML = ''; return; }
   aiDraftSelectedIndexes = new Set([...aiDraftSelectedIndexes].filter(idx => aiDraftCache[idx] && !aiDraftCache[idx]._published));
-  const pendingIndexes = aiDraftCache.map((q, idx)=>q._published ? -1 : idx).filter(idx => idx >= 0);
+  const pendingIndexes = visibleDrafts.map(item => item.idx);
   const selectedCount = aiDraftSelectedIndexes.size;
   const allPendingSelected = pendingIndexes.length && pendingIndexes.every(idx => aiDraftSelectedIndexes.has(idx));
   const publishAll = aiDraftCache.some(q => !q._published)
@@ -1873,7 +1890,7 @@ function renderAiDrafts(){
       <button class="mini-btn danger" onclick="bulkAiDrafts('remove')" ${selectedCount ? '' : 'disabled'}>Retirer sélection</button>
       ${selectedCount ? '<button class="mini-btn" onclick="clearAiDraftSelection()">Annuler</button>' : ''}
     </div>`;
-  wrap.innerHTML = publishAll + bulkBar + aiDraftCache.map((q, idx)=>`
+  wrap.innerHTML = publishAll + bulkBar + visibleDrafts.map(({q, idx})=>`
     <div class="admin-q-item ${q._published ? 'ai-published' : ''} ${aiDraftSelectedIndexes.has(idx) ? 'selected' : ''}">
       ${!q._published ? `<label class="admin-select-line"><input type="checkbox" ${aiDraftSelectedIndexes.has(idx) ? 'checked' : ''} onchange="toggleAiDraftSelection(${idx}, this.checked)"><span>Sélectionner</span></label>` : ''}
       <div class="admin-q-meta">
@@ -1977,7 +1994,7 @@ async function publishAiDraft(index){
     renderAiDrafts();
     const destination = qcmDestinationText(q);
     const result = $('#aiResult');
-    if (result) result.innerHTML = `<div class="pay-note success">QCM ajouté dans <b>Mes QCM → ${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>${destination}</b> ✅<br>Il est rangé dans <b>Mes QCM → Voir historique publié</b><br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
     toast('QCM publié dans ' + destination + ' ✅');
     setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 250);
   }catch(err){ toast(err.message); }
@@ -2415,13 +2432,12 @@ async function uploadAdminResource(){
       'X-Description': encodeURIComponent($('#adminResourceDescription')?.value || ''),
       'X-Is-Premium': String(Boolean($('#adminResourcePremium')?.checked)),
       'X-Is-Active': 'true',
-      'X-Admin-Archived': String(!Boolean($('#adminResourceActive')?.checked))
+      'X-Admin-Archived': 'true'
     });
     const res = await fetch('/api/admin/resources/upload', { method:'POST', headers, body:file });
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Publication impossible');
-    const adminNote = $('#adminResourceActive')?.checked ? '' : '<br>Rangé dans <b>Archives admin</b>, mais visible chez le candidat.';
-    if (result) result.innerHTML = `<div class="pay-note success">Document publié avec succès ✅${adminNote}</div>`;
+    if (result) result.innerHTML = '<div class="pay-note success">Document publié avec succès ✅<br>Il est rangé dans <b>Voir historique publié</b> et reste visible chez le candidat.</div>';
     clearAdminResourceForm();
     await loadAdminResources();
     await loadResources();
@@ -2433,35 +2449,36 @@ async function uploadAdminResource(){
   }
 }
 
+function toggleAdminResourceHistory(){
+  showAdminResourceHistory = !showAdminResourceHistory;
+  renderAdminResourcesFromCache();
+}
+
 function setAdminResourceFilter(filter, el){
-  adminResourceFilter = filter || 'all';
+  showAdminResourceHistory = filter !== 'current';
   $$('#adminResourceFilterRow .chip').forEach(c=>c.classList.remove('on'));
   if (el) el.classList.add('on');
   renderAdminResourcesFromCache();
 }
 
-function adminResourceItemsForFilter(){
-  const all = adminResourceCache.map((r, idx)=>({r, idx}));
-  if (adminResourceFilter === 'published') return all.filter(item => !isAdminResourceArchived(item.r));
-  if (adminResourceFilter === 'hidden') return all.filter(item => isAdminResourceArchived(item.r));
-  return all;
+function adminResourceHistoryItems(){
+  return adminResourceCache.map((r, idx)=>({r, idx}));
 }
 
 function renderAdminResourceCards(items){
   if (!items.length) return '';
   return items.map(({r, idx})=>`
-      <div class="admin-q-item ${isAdminResourceArchived(r) ? 'is-hidden' : ''}">
+      <div class="admin-q-item">
         <div class="admin-q-meta">
           <span>${resourceIcon(r.kind)} ${escapeHtml(r.kind || 'document')}</span>
           <span>${escapeHtml(r.category || 'Documents')}</span>
-          <span class="${!isAdminResourceArchived(r) ? 'active' : ''}">${isAdminResourceArchived(r) ? 'Archivé admin' : 'Visible candidat'}</span>
+          <span class="active">Publié</span>
           ${r.is_premium ? '<span class="premium">Premium</span>' : '<span>Gratuit</span>'}
         </div>
         <h4>${escapeHtml(r.title || r.fileName || 'Document')}</h4>
         <p class="admin-help">${escapeHtml(r.description || r.fileName || '')} · ${formatBytes(r.size)}</p>
         <div class="admin-q-actions">
           <button class="edit" onclick="openResource('${escapeHtml(r.id)}')">Ouvrir</button>
-          <button class="pause" onclick="toggleAdminResource(${idx})">${isAdminResourceArchived(r) ? 'Remettre dans admin' : 'Masquer dans admin'}</button>
           <button class="delete" onclick="deleteAdminResource(${idx})">Supprimer</button>
         </div>
       </div>`).join('');
@@ -2470,26 +2487,28 @@ function renderAdminResourceCards(items){
 function renderAdminResourcesFromCache(){
   const wrap = $('#adminResourceList');
   if (!wrap) return;
-  const allItems = adminResourceCache.map((r, idx)=>({r, idx}));
-  const published = allItems.filter(item => !isAdminResourceArchived(item.r));
-  const hidden = allItems.filter(item => isAdminResourceArchived(item.r));
+  const historyItems = adminResourceHistoryItems();
+  const historyCount = historyItems.length;
   const summary = $('#adminResourceSummary');
   if (summary){
     summary.innerHTML = `
-      <div><b>${published.length}</b><span>Liste admin</span></div>
-      <div><b>${hidden.length}</b><span>Archivés admin</span></div>
-      <div><b>${allItems.length}</b><span>Historique admin</span></div>`;
+      <div><b>${historyCount}</b><span>Historique publié</span></div>
+      <div><b>${historyItems.filter(item => !item.r.is_premium).length}</b><span>Gratuit</span></div>
+      <div><b>${historyItems.filter(item => item.r.is_premium).length}</b><span>Premium</span></div>`;
   }
-  if (!adminResourceCache.length){
-    wrap.innerHTML = '<div class="empty">Aucun document disponible pour le moment.</div>';
+  const controls = $('#adminResourceHistoryControls');
+  if (controls){
+    controls.innerHTML = historyCount ? `<button class="mini-btn" onclick="toggleAdminResourceHistory()">${showAdminResourceHistory ? 'Masquer l’historique publié' : `Voir historique publié (${historyCount})`}</button>` : '';
+  }
+  if (!historyCount){
+    wrap.innerHTML = '<div class="empty">Aucun document publié pour le moment.</div>';
     return;
   }
-  const filtered = adminResourceItemsForFilter();
-  if (adminResourceFilter === 'all'){
-    wrap.innerHTML = `${published.length ? '<h4 class="admin-section-title">Documents dans l’admin</h4>' + renderAdminResourceCards(published) : ''}${hidden.length ? '<h4 class="admin-section-title">Documents archivés dans l’admin</h4>' + renderAdminResourceCards(hidden) : ''}` || '<div class="empty">Aucun document dans cet historique.</div>';
+  if (!showAdminResourceHistory){
+    wrap.innerHTML = '<div class="empty">Les documents publiés sont rangés dans l’historique pour garder cet espace léger.</div>';
     return;
   }
-  wrap.innerHTML = renderAdminResourceCards(filtered) || '<div class="empty">Aucun document dans ce filtre.</div>';
+  wrap.innerHTML = renderAdminResourceCards(historyItems) || '<div class="empty">Aucun document dans l’historique.</div>';
 }
 
 async function loadAdminResources(){
@@ -2503,19 +2522,6 @@ async function loadAdminResources(){
   }catch(err){
     wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
   }
-}
-
-async function toggleAdminResource(index){
-  const r = adminResourceCache[index];
-  if (!r) return;
-  try{
-    const restoreInAdmin = isAdminResourceArchived(r);
-    const data = await adminFetch('/api/admin/resources/' + encodeURIComponent(r.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:restoreInAdmin}) });
-    adminResourceCache[index] = data.resource || { ...r, is_active:true, admin_archived:!restoreInAdmin };
-    renderAdminResourcesFromCache();
-    await Promise.allSettled([loadAdminResources()]);
-    toast(restoreInAdmin ? 'Document remis dans l’administration ✅' : 'Document archivé côté admin ✅ — toujours visible candidat');
-  }catch(err){ toast(err.message); }
 }
 
 async function deleteAdminResource(index){

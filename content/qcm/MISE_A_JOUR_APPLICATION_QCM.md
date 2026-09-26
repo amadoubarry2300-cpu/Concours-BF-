@@ -450,5 +450,12 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 ## 2026-09-26 — Formulaires admin alignés avec l’archive
 
 - Les cases des formulaires QCM et Documents signifient maintenant “Afficher dans la liste admin”.
-- Même décoché, le contenu reste visible chez le candidat et part seulement en Archives admin.
+- Même décoché, le contenu reste visible chez le candidat et part seulement dans l’historique publié.
 - Les anciennes lignes QCM inactives sont aussi servies côté candidat ; la suppression reste le seul retrait public.
+
+## 2026-09-26 — Historique publié simplifié
+
+- Les QCM et documents publiés quittent automatiquement la liste principale admin et vont dans **Voir historique publié (nombre)**.
+- Les libellés d’archive admin ont été retirés pour éviter la confusion.
+- Les contenus restent visibles côté candidat après publication ; seule la suppression les retire partout.
+- Les propositions IA publiées disparaissent de la liste de relecture et se retrouvent dans l’historique publié.
