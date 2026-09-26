@@ -421,3 +421,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - La suppression d’un document/PDF crée maintenant un marqueur persistant afin qu’un PDF quotidien ne réapparaisse plus après actualisation.
 - Les PDF reconstruits depuis les QCM publiés respectent aussi cette suppression côté admin et côté candidat.
 - L’interface retire le document supprimé immédiatement puis recharge les listes pour confirmer l’état réel.
+
+## 2026-09-26 — Actions Mes QCM vérifiées
+
+- Le bouton **Masquer** déplace maintenant les QCM hors de la liste active ; ils restent accessibles uniquement dans le filtre **Masqués** pour republication ou suppression.
+- Les actions groupées vérifient le nombre réellement modifié côté serveur avant d’afficher le succès.
+- La liste admin charge jusqu’à 500 QCM pour faciliter les sélections en masse.

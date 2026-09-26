@@ -2653,7 +2653,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'delete-resource-fix-1',
+    build: 'qcm-actions-fix-1',
     time: new Date().toISOString()
   });
 });
@@ -3360,7 +3360,7 @@ app.get('/api/cron/official-news-scan', async (req, res, next) => {
 app.get('/api/admin/questions', requireAdmin, async (req, res, next) => {
   try{
     if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 30)));
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit || 80)));
     const search = cleanText(req.query.search, 120);
     const category = cleanText(req.query.category, 80);
     let query = `questions?select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,is_active,source,created_at,updated_at&order=created_at.desc&limit=${limit}`;
@@ -3421,7 +3421,9 @@ app.patch('/api/admin/questions/bulk/status', requireAdmin, async (req, res, nex
       prefer:'return=representation',
       body:{ is_active:isActive }
     });
-    res.json({ ok:true, updated:Array.isArray(rows) ? rows.length : ids.length, questions:Array.isArray(rows) ? rows : [] });
+    const updated = Array.isArray(rows) ? rows.length : 0;
+    if (!updated) return res.status(404).json({ message:'Aucun QCM sélectionné n’a été modifié. Actualise la liste puis réessaie.' });
+    res.json({ ok:true, requested:ids.length, updated, questions:Array.isArray(rows) ? rows : [] });
   }catch(err){ next(err); }
 });
 
@@ -3430,8 +3432,10 @@ app.delete('/api/admin/questions/bulk', requireAdmin, async (req, res, next) => 
     if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
     const ids = adminQuestionIds(req.body || {});
     if (!ids.length) return res.status(400).json({ message:'Sélectionne au moins un QCM.' });
-    await supabaseRequest(`questions?id=in.(${supabaseInList(ids)})`, { method:'DELETE', prefer:'return=minimal' });
-    res.json({ ok:true, deleted:ids.length });
+    const rows = await supabaseRequest(`questions?id=in.(${supabaseInList(ids)})&select=id`, { method:'DELETE', prefer:'return=representation' });
+    const deleted = Array.isArray(rows) ? rows.length : 0;
+    if (!deleted) return res.status(404).json({ message:'Aucun QCM sélectionné n’a été supprimé. Actualise la liste puis réessaie.' });
+    res.json({ ok:true, requested:ids.length, deleted });
   }catch(err){ next(err); }
 });
 
@@ -3443,15 +3447,18 @@ app.patch('/api/admin/questions/:id/status', requireAdmin, async (req, res, next
       prefer:'return=representation',
       body:{ is_active:Boolean(req.body?.is_active) }
     });
-    res.json({ ok:true, question:Array.isArray(rows) ? rows[0] || null : null });
+    const question = Array.isArray(rows) ? rows[0] || null : null;
+    if (!question) return res.status(404).json({ message:'QCM introuvable ou déjà modifié. Actualise la liste.' });
+    res.json({ ok:true, question });
   }catch(err){ next(err); }
 });
 
 app.delete('/api/admin/questions/:id', requireAdmin, async (req, res, next) => {
   try{
     if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
-    await supabaseRequest(`questions?id=eq.${encodeURIComponent(req.params.id)}`, { method:'DELETE', prefer:'return=minimal' });
-    res.json({ ok:true });
+    const rows = await supabaseRequest(`questions?id=eq.${encodeURIComponent(req.params.id)}&select=id`, { method:'DELETE', prefer:'return=representation' });
+    if (!Array.isArray(rows) || !rows.length) return res.status(404).json({ message:'QCM introuvable ou déjà supprimé. Actualise la liste.' });
+    res.json({ ok:true, deleted:rows.length });
   }catch(err){ next(err); }
 });
 

@@ -1283,7 +1283,7 @@ function adminQuestionItemsForFilter(){
   if (adminQuestionFilter === 'free') return allItems.filter(item => !item.q.is_premium && item.q.is_active !== false);
   if (adminQuestionFilter === 'premium') return allItems.filter(item => item.q.is_premium && item.q.is_active !== false);
   if (adminQuestionFilter === 'hidden') return allItems.filter(item => item.q.is_active === false);
-  return allItems;
+  return allItems.filter(item => item.q.is_active !== false);
 }
 
 function selectedAdminQuestions(){
@@ -1334,7 +1334,7 @@ function renderAdminQuestionListFromCache(){
   }else{
     html = renderAdminQuestionGroup('QCM gratuits', 'Visible par tous les candidats.', freeItems, 'free')
       + renderAdminQuestionGroup('QCM Premium', 'Visible uniquement après abonnement Premium.', premiumItems, 'premium')
-      + renderAdminQuestionGroup('QCM masqués', 'Non visibles tant qu’ils restent masqués.', hiddenItems, 'hidden');
+      + (hiddenItems.length ? `<div class="pay-note">${hiddenItems.length} QCM masqué${hiddenItems.length>1?'s':''}. Utilise le filtre <b>Masqués</b> pour les republier ou les supprimer.</div>` : '');
   }
   const visibleItems = adminQuestionItemsForFilter();
   wrap.innerHTML = renderAdminBulkBar(visibleItems) + (html || '<div class="empty">Aucun QCM dans ce filtre.</div>');
@@ -1367,17 +1367,21 @@ async function bulkAdminQuestions(action){
   if (action === 'delete' && !confirm(`Supprimer définitivement ${ids.length} QCM sélectionné${ids.length>1?'s':''} ?`)) return;
   try{
     toast(`${ids.length} QCM : ${label}...`);
+    let data;
     if (action === 'delete'){
-      await adminFetch('/api/admin/questions/bulk', { method:'DELETE', body:JSON.stringify({ ids }) });
+      data = await adminFetch('/api/admin/questions/bulk', { method:'DELETE', body:JSON.stringify({ ids }) });
+      if (!Number(data.deleted || 0)) throw new Error('Aucun QCM n’a été supprimé.');
       adminQuestionCache = adminQuestionCache.filter(q => !adminQuestionSelectedIds.has(q.id));
     }else{
       const isActive = action === 'publish';
-      await adminFetch('/api/admin/questions/bulk/status', { method:'PATCH', body:JSON.stringify({ ids, is_active:isActive }) });
-      adminQuestionCache = adminQuestionCache.map(q => adminQuestionSelectedIds.has(q.id) ? { ...q, is_active:isActive } : q);
+      data = await adminFetch('/api/admin/questions/bulk/status', { method:'PATCH', body:JSON.stringify({ ids, is_active:isActive }) });
+      if (!Number(data.updated || 0)) throw new Error('Aucun QCM n’a été modifié.');
+      const returned = new Map((data.questions || []).map(q => [q.id, q]));
+      adminQuestionCache = adminQuestionCache.map(q => returned.get(q.id) || (adminQuestionSelectedIds.has(q.id) ? { ...q, is_active:isActive } : q));
     }
     adminQuestionSelectedIds.clear();
     renderAdminQuestionListFromCache();
-    toast(action === 'delete' ? 'QCM supprimés ✅' : (action === 'publish' ? 'QCM publiés ✅' : 'QCM masqués ✅'));
+    toast(action === 'delete' ? `${Number(data.deleted || ids.length)} QCM supprimé${Number(data.deleted || ids.length)>1?'s':''} ✅` : (action === 'publish' ? `${Number(data.updated || ids.length)} QCM publié${Number(data.updated || ids.length)>1?'s':''} ✅` : `${Number(data.updated || ids.length)} QCM masqué${Number(data.updated || ids.length)>1?'s':''} ✅`));
     setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 300);
   }catch(err){ toast(err.message); }
 }
@@ -1423,7 +1427,7 @@ async function loadAdminQuestions(){
   wrap.innerHTML = '<div class="empty">Chargement des contenus...</div>';
   try{
     const search = encodeURIComponent($('#adminSearch')?.value || '');
-    const data = await adminFetch('/api/admin/questions?limit=100&search=' + search);
+    const data = await adminFetch('/api/admin/questions?limit=500&search=' + search);
     adminQuestionCache = data.questions || [];
     renderAdminQuestionListFromCache();
   }catch(err){
@@ -1457,8 +1461,8 @@ async function toggleAdminQuestion(index){
   if (!q) return;
   try{
     const nextActive = !q.is_active;
-    await adminFetch('/api/admin/questions/' + encodeURIComponent(q.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:nextActive}) });
-    q.is_active = nextActive;
+    const data = await adminFetch('/api/admin/questions/' + encodeURIComponent(q.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:nextActive}) });
+    adminQuestionCache[index] = data.question || { ...q, is_active:nextActive };
     renderAdminQuestionListFromCache();
     setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 250);
     toast(nextActive ? 'QCM visible' : 'QCM masqué');
