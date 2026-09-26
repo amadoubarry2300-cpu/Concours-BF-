@@ -427,3 +427,11 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Le bouton **Masquer** déplace maintenant les QCM hors de la liste active ; ils restent accessibles uniquement dans le filtre **Masqués** pour republication ou suppression.
 - Les actions groupées vérifient le nombre réellement modifié côté serveur avant d’afficher le succès.
 - La liste admin charge jusqu’à 500 QCM pour faciliter les sélections en masse.
+
+## 2026-09-26 — Structure admin, fichiers et veille officielle
+
+- Les documents masqués restent dans l’historique admin mais sont retirés côté candidat ; les documents supprimés disparaissent des deux côtés.
+- Les PDF quotidiens reconstruits respectent maintenant aussi l’action Masquer.
+- Côté candidat, les fichiers et communiqués s’ouvrent dans l’application sans bouton de téléchargement.
+- Les brouillons IA QCM/PDF permettent de choisir Gratuit ou Premium avant publication.
+- La veille officielle ignore les actualités déjà présentes et ne prépare une nouvelle actualité automatique que si un communiqué PDF officiel est récupéré.

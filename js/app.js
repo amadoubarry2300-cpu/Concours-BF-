@@ -1124,6 +1124,7 @@ function logoutUser(){
 let adminQuestionCache = [];
 let adminQuestionSelectedIds = new Set();
 let adminResourceCache = [];
+let adminResourceFilter = 'all';
 let adminNewsCache = [];
 let aiDraftCache = [];
 let aiDraftSelectedIndexes = new Set();
@@ -1557,6 +1558,13 @@ function toggleDailyPublishedHistory(){
   renderDailyAiDrafts();
 }
 
+function setDailyDraftPremium(index, checked){
+  if (!aiDailyDraftCache[index] || aiDailyDraftCache[index].status === 'published') return;
+  aiDailyDraftCache[index].is_premium = Boolean(checked);
+  if (currentDailyPdfIndex === index && $('#dailyPublishPremium')) $('#dailyPublishPremium').checked = Boolean(checked);
+  renderDailyAiDrafts();
+}
+
 function renderDailyAiDrafts(){
   const wrap = $('#aiDailyDraftList');
   if (!wrap) return;
@@ -1580,10 +1588,11 @@ function renderDailyAiDrafts(){
         ${d.status === 'published' ? '<span class="active">Publié</span>' : '<span>PDF à relire</span>'}
       </div>
       <h4>${escapeHtml(d.title || 'QCM quotidien')}</h4>
-      <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Télécharge le fichier, vérifie les questions et publie seulement après validation.'}</p>
+      <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Ouvre le fichier, vérifie les questions, choisis Gratuit ou Premium, puis publie seulement après validation.'}</p>
+      ${d.status !== 'published' ? `<label class="admin-select-line"><input type="checkbox" ${d.is_premium ? 'checked' : ''} onchange="setDailyDraftPremium(${idx}, this.checked)"><span>Publier en Premium <small>(sinon Gratuit)</small></span></label>` : ''}
       <div class="admin-q-actions">
         <button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>
-        ${!(d.orphanResource || d.orphanQuestions) ? `<button class="pause" onclick="publishDailyAiDraft(${idx})">${d.status === 'published' ? 'Synchroniser' : `Publier les ${Number(d.count || 0)} QCM`}</button>` : ''}
+        ${!(d.orphanResource || d.orphanQuestions) ? `<button class="pause" onclick="publishDailyAiDraft(${idx})">${d.status === 'published' ? 'Synchroniser' : `Publier en ${d.is_premium ? 'Premium' : 'Gratuit'}`}</button>` : ''}
         ${d.status === 'published' ? `<button class="delete" onclick="unpublishDailyAiDraft(${idx})">Supprimer chez candidat</button>` : ''}
         ${!(d.orphanResource || d.orphanQuestions) ? `<button class="delete" onclick="deleteDailyAiDraft(${idx})">${d.status === 'published' ? 'Retirer de l’admin' : 'Supprimer'}</button>` : ''}
       </div>
@@ -1869,6 +1878,7 @@ function renderAiDrafts(){
       <p class="admin-destination-note">Nom du QCM : <b>${escapeHtml(q.source || 'QCM')}</b></p>
       <p class="admin-help"><b>A.</b> ${renderMathText(q.option_a)} · <b>B.</b> ${renderMathText(q.option_b)} · <b>C.</b> ${renderMathText(q.option_c)} · <b>D.</b> ${renderMathText(q.option_d)}</p>
       <p class="admin-help"><b>Correction :</b> ${renderMathText(q.explanation || '')}</p>
+      ${!q._published ? `<label class="admin-select-line"><input type="checkbox" ${q.is_premium ? 'checked' : ''} onchange="setAiDraftPremium(${idx}, this.checked)"><span>Publier en Premium <small>(sinon Gratuit)</small></span></label>` : ''}
       <div class="admin-q-actions">
         <button class="edit" onclick="editAiDraft(${idx})">Relire / Modifier</button>
         <button class="pause" onclick="publishAiDraft(${idx})" ${q._published ? 'disabled' : ''}>${q.is_premium ? 'Publier en Premium' : 'Publier en Gratuit'}</button>
@@ -1894,6 +1904,12 @@ function toggleAllAiDraftSelection(checked){
 
 function clearAiDraftSelection(){
   aiDraftSelectedIndexes.clear();
+  renderAiDrafts();
+}
+
+function setAiDraftPremium(index, checked){
+  if (!aiDraftCache[index] || aiDraftCache[index]._published) return;
+  aiDraftCache[index].is_premium = Boolean(checked);
   renderAiDrafts();
 }
 
@@ -2148,7 +2164,7 @@ async function openNewsPdf(id){
     const a = document.createElement('a');
     a.href = url;
     a.target = '_blank';
-    a.download = 'communique.pdf';
+    a.rel = 'noopener';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -2351,9 +2367,7 @@ async function openResource(id){
     const a = document.createElement('a');
     a.href = url;
     a.target = '_blank';
-    const disp = res.headers.get('Content-Disposition') || '';
-    const m = disp.match(/filename\*=UTF-8''([^;]+)/);
-    if (m) a.download = decodeURIComponent(m[1]);
+    a.rel = 'noopener';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -2405,19 +2419,24 @@ async function uploadAdminResource(){
   }
 }
 
-async function loadAdminResources(){
-  const wrap = $('#adminResourceList');
-  if (!wrap) return;
-  wrap.innerHTML = '<div class="empty">Chargement des documents...</div>';
-  try{
-    const data = await adminFetch('/api/admin/resources');
-    adminResourceCache = data.resources || [];
-    if (!adminResourceCache.length){
-      wrap.innerHTML = '<div class="empty">Aucun document disponible pour le moment.</div>';
-      return;
-    }
-    wrap.innerHTML = adminResourceCache.map((r, idx)=>`
-      <div class="admin-q-item">
+function setAdminResourceFilter(filter, el){
+  adminResourceFilter = filter || 'all';
+  $$('#adminResourceFilterRow .chip').forEach(c=>c.classList.remove('on'));
+  if (el) el.classList.add('on');
+  renderAdminResourcesFromCache();
+}
+
+function adminResourceItemsForFilter(){
+  const all = adminResourceCache.map((r, idx)=>({r, idx}));
+  if (adminResourceFilter === 'published') return all.filter(item => item.r.is_active !== false);
+  if (adminResourceFilter === 'hidden') return all.filter(item => item.r.is_active === false);
+  return all;
+}
+
+function renderAdminResourceCards(items){
+  if (!items.length) return '';
+  return items.map(({r, idx})=>`
+      <div class="admin-q-item ${r.is_active === false ? 'is-hidden' : ''}">
         <div class="admin-q-meta">
           <span>${resourceIcon(r.kind)} ${escapeHtml(r.kind || 'document')}</span>
           <span>${escapeHtml(r.category || 'Documents')}</span>
@@ -2428,10 +2447,45 @@ async function loadAdminResources(){
         <p class="admin-help">${escapeHtml(r.description || r.fileName || '')} · ${formatBytes(r.size)}</p>
         <div class="admin-q-actions">
           <button class="edit" onclick="openResource('${escapeHtml(r.id)}')">Ouvrir</button>
-          <button class="pause" onclick="toggleAdminResource(${idx})">${r.is_active ? 'Masquer' : 'Publier'}</button>
+          <button class="pause" onclick="toggleAdminResource(${idx})">${r.is_active ? 'Masquer côté candidat' : 'Publier côté candidat'}</button>
           <button class="delete" onclick="deleteAdminResource(${idx})">Supprimer</button>
         </div>
       </div>`).join('');
+}
+
+function renderAdminResourcesFromCache(){
+  const wrap = $('#adminResourceList');
+  if (!wrap) return;
+  const allItems = adminResourceCache.map((r, idx)=>({r, idx}));
+  const published = allItems.filter(item => item.r.is_active !== false);
+  const hidden = allItems.filter(item => item.r.is_active === false);
+  const summary = $('#adminResourceSummary');
+  if (summary){
+    summary.innerHTML = `
+      <div><b>${published.length}</b><span>Publiés</span></div>
+      <div><b>${hidden.length}</b><span>Masqués</span></div>
+      <div><b>${allItems.length}</b><span>Historique admin</span></div>`;
+  }
+  if (!adminResourceCache.length){
+    wrap.innerHTML = '<div class="empty">Aucun document disponible pour le moment.</div>';
+    return;
+  }
+  const filtered = adminResourceItemsForFilter();
+  if (adminResourceFilter === 'all'){
+    wrap.innerHTML = `${published.length ? '<h4 class="admin-section-title">Documents publiés</h4>' + renderAdminResourceCards(published) : ''}${hidden.length ? '<h4 class="admin-section-title">Documents masqués</h4>' + renderAdminResourceCards(hidden) : ''}` || '<div class="empty">Aucun document dans cet historique.</div>';
+    return;
+  }
+  wrap.innerHTML = renderAdminResourceCards(filtered) || '<div class="empty">Aucun document dans ce filtre.</div>';
+}
+
+async function loadAdminResources(){
+  const wrap = $('#adminResourceList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty">Chargement des documents...</div>';
+  try{
+    const data = await adminFetch('/api/admin/resources');
+    adminResourceCache = data.resources || [];
+    renderAdminResourcesFromCache();
   }catch(err){
     wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
   }
@@ -2441,10 +2495,11 @@ async function toggleAdminResource(index){
   const r = adminResourceCache[index];
   if (!r) return;
   try{
-    await adminFetch('/api/admin/resources/' + encodeURIComponent(r.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:!r.is_active}) });
-    await loadAdminResources();
-    await loadResources();
-    toast(!r.is_active ? 'Document publié' : 'Document masqué');
+    const data = await adminFetch('/api/admin/resources/' + encodeURIComponent(r.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:!r.is_active}) });
+    adminResourceCache[index] = data.resource || { ...r, is_active:!r.is_active };
+    renderAdminResourcesFromCache();
+    await Promise.allSettled([loadAdminResources(), loadResources()]);
+    toast(!r.is_active ? 'Document publié côté candidat ✅' : 'Document masqué côté candidat ✅');
   }catch(err){ toast(err.message); }
 }
 

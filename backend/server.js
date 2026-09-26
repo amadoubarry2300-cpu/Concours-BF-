@@ -1308,9 +1308,10 @@ function dailyAiPlan(dateId = todayId(), overrides = {}){
     : (allowedCategories[day % allowedCategories.length] || defaultCategoryForLevel(level, dateId, allCategories));
   const mode = ['module','niveau'].includes(String(overrides.mode || '').toLowerCase()) ? String(overrides.mode).toLowerCase() : AI_DAILY_GROUP_MODE;
   const isPremium = overrides.is_premium === undefined ? AI_DAILY_IS_PREMIUM : Boolean(overrides.is_premium);
+  const focus = qcmGenerationAngle(category, day + (level || '').length);
   const theme = cleanText(overrides.theme || (mode === 'niveau'
-    ? `Série quotidienne ${dateId} — niveau ${level}, module ${category}`
-    : `Série quotidienne ${dateId} — module ${category}, niveau ${level}`), 220);
+    ? `Série quotidienne ${dateId} — niveau ${level}, module ${category}. Variation du programme: ${focus}. Évite les mêmes chapitres que les jours précédents.`
+    : `Série quotidienne ${dateId} — module ${category}, niveau ${level}. Variation du programme: ${focus}. Évite les mêmes chapitres que les jours précédents.`), 260);
   return { date:dateId, count, category, level, mode, is_premium:isPremium, theme };
 }
 
@@ -1395,12 +1396,33 @@ function deletedResourceTargetSet(resources = []){
   return set;
 }
 
-function resourceBlockedByDeletion(resource, deletedTargets){
-  if (!deletedTargets?.size || !resource) return false;
+function hiddenResourceTargetSet(resources = []){
+  const set = new Set();
+  for (const row of (Array.isArray(resources) ? resources : [])){
+    if (!row || row.is_deleted || row.is_active !== false || !isDailyPdfResourceLike(row)) continue;
+    if (row.id) set.add(String(row.id));
+    if (row.source_draft_id) set.add(String(row.source_draft_id));
+    if (row.resource_id) set.add(String(row.resource_id));
+    const title = safePdfTitle(row.title || row.source_title || '');
+    if (title) set.add('title:' + title);
+  }
+  return set;
+}
+
+function resourceBlockedByTargetSet(resource, targets){
+  if (!targets?.size || !resource) return false;
   const ids = [resource.id, resource.source_draft_id, resource.resource_id].filter(Boolean).map(String);
-  if (ids.some(id => deletedTargets.has(id))) return true;
+  if (ids.some(id => targets.has(id))) return true;
   const title = safePdfTitle(resource.title || resource.source_title || '');
-  return Boolean(title && deletedTargets.has('title:' + title));
+  return Boolean(title && targets.has('title:' + title));
+}
+
+function resourceBlockedByDeletion(resource, deletedTargets){
+  return resourceBlockedByTargetSet(resource, deletedTargets);
+}
+
+function resourceBlockedByHidden(resource, hiddenTargets){
+  return resourceBlockedByTargetSet(resource, hiddenTargets);
 }
 
 function removeResourceDeletionMarkers(resources = [], target = {}){
@@ -1506,10 +1528,12 @@ async function loadPublishedDailyPdfResources(){
   const drafts = await loadAiDailyIndex().catch(() => []);
   const resources = await loadResourceIndex().catch(() => []);
   const deletedTargets = deletedResourceTargetSet(resources);
+  const hiddenTargets = hiddenResourceTargetSet(resources);
   const publishedDrafts = (Array.isArray(drafts) ? drafts : [])
     .filter(d => d.status === 'published' && d.storage_path)
-    .filter(d => !resourceBlockedByDeletion(dailyDraftPublicResource(d), deletedTargets));
-  const questionDrafts = await loadPublishedDailyQuestionDrafts(publishedDrafts, deletedTargets).catch(() => []);
+    .filter(d => !resourceBlockedByDeletion(dailyDraftPublicResource(d), deletedTargets))
+    .filter(d => !resourceBlockedByHidden(dailyDraftPublicResource(d), hiddenTargets));
+  const questionDrafts = await loadPublishedDailyQuestionDrafts(publishedDrafts, deletedTargets, hiddenTargets).catch(() => []);
   return mergePublicResources(
     publishedDrafts.map(dailyDraftPublicResource),
     questionDrafts.map(dailyDraftPublicResource)
@@ -1570,9 +1594,11 @@ function dailyQuestionSourceMatches(source){
   return /^QCM\s+quotidien\s*[—-]/i.test(String(source || '').trim());
 }
 
-async function loadPublishedDailyQuestionDrafts(existingDrafts = [], deletedTargets = null){
+async function loadPublishedDailyQuestionDrafts(existingDrafts = [], deletedTargets = null, hiddenTargets = null){
   if (!supabaseReady()) return [];
-  const deletionSet = deletedTargets || deletedResourceTargetSet(await loadResourceIndex().catch(() => []));
+  const resources = (!deletedTargets || !hiddenTargets) ? await loadResourceIndex().catch(() => []) : [];
+  const deletionSet = deletedTargets || deletedResourceTargetSet(resources);
+  const hiddenSet = hiddenTargets || hiddenResourceTargetSet(resources);
   const existingTitles = new Set((existingDrafts || []).map(d => safePdfTitle(d.title || d.source_title || '')).filter(Boolean));
   const query = 'questions?select=id,source,category,level,is_premium,created_at,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation&source=ilike.' + encodeURIComponent('QCM quotidien*') + '&order=created_at.desc&limit=1000';
   const rows = await supabaseRequest(query).catch(() => []);
@@ -1620,7 +1646,8 @@ async function loadPublishedDailyQuestionDrafts(existingDrafts = [], deletedTarg
         published_at:first.created_at || ''
       };
     })
-    .filter(draft => !resourceBlockedByDeletion(dailyDraftPublicResource(draft), deletionSet));
+    .filter(draft => !resourceBlockedByDeletion(dailyDraftPublicResource(draft), deletionSet))
+    .filter(draft => !resourceBlockedByHidden(dailyDraftPublicResource(draft), hiddenSet));
 }
 
 async function loadPublishedDailyQuestionDraftById(id){
@@ -1648,8 +1675,36 @@ async function findPublishedDailyDraftByResourceId(id){
   const drafts = await loadAiDailyIndex().catch(() => []);
   const resources = await loadResourceIndex().catch(() => []);
   const deletedTargets = deletedResourceTargetSet(resources);
+  const hiddenTargets = hiddenResourceTargetSet(resources);
   const draft = (Array.isArray(drafts) ? drafts : []).find(d => d.status === 'published' && d.storage_path && dailyDraftResourceId(d) === id) || null;
-  return draft && !resourceBlockedByDeletion(dailyDraftPublicResource(draft), deletedTargets) ? draft : null;
+  const resource = draft ? dailyDraftPublicResource(draft) : null;
+  return draft && !resourceBlockedByDeletion(resource, deletedTargets) && !resourceBlockedByHidden(resource, hiddenTargets) ? draft : null;
+}
+
+function dailyDraftResourceRecord(draft, overrides = {}){
+  const category = cleanText(overrides.category || draft?.category || 'QCM', 80);
+  const level = cleanText(overrides.level || draft?.level || 'Concours', 40);
+  const date = cleanText(draft?.date || todayId(), 20);
+  const title = safePdfTitle(overrides.title || `QCM quotidien — ${category} — ${level} — ${date}`);
+  const now = new Date().toISOString();
+  return {
+    id:overrides.id || dailyDraftResourceId(draft),
+    title,
+    category:'QCM quotidiens',
+    description:`${Number(draft?.count || draft?.questions?.length || 0)} QCM corrigés — ${category} · ${level}.`,
+    file_name:draft?.file_name || safeFileName(`${title}.pdf`),
+    mime_type:draft?.mime_type || 'application/pdf',
+    kind:'pdf',
+    size:Number(draft?.size || 0),
+    storage_path:draft?.storage_path || '',
+    is_premium:overrides.is_premium === undefined ? Boolean(draft?.is_premium) : Boolean(overrides.is_premium),
+    is_active:overrides.is_active === undefined ? draft?.status === 'published' : Boolean(overrides.is_active),
+    source_draft_id:draft?.id || '',
+    source_type:'daily_qcm_pdf',
+    author_phone:overrides.author_phone || '',
+    created_at:draft?.published_at || draft?.created_at || now,
+    updated_at:now
+  };
 }
 
 async function deleteDailyDraftResource(draft){
@@ -2389,8 +2444,15 @@ async function stageOfficialNewsDrafts(items, authorPhone = 'system'){
           };
         }
       }
-      if (idx >= 0) news[idx] = record;
-      else news.unshift(record);
+      if (!record.storage_path){
+        console.warn('Actualité officielle ignorée sans communiqué PDF:', payload.title);
+        continue;
+      }
+      if (idx >= 0){
+        news[idx] = record;
+        continue;
+      }
+      news.unshift(record);
       staged.push({
         ...publicNews(record),
         preparedId:id,
@@ -2653,7 +2715,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'qcm-actions-fix-1',
+    build: 'admin-structure-fix-1',
     time: new Date().toISOString()
   });
 });
@@ -3538,12 +3600,25 @@ app.patch('/api/admin/resources/:id', requireAdmin, async (req, res, next) => {
 
 app.patch('/api/admin/resources/:id/status', requireAdmin, async (req, res, next) => {
   try{
-    const resources = await loadResourceIndex();
-    const idx = resources.findIndex(r => r.id === req.params.id);
-    if (idx < 0) return res.status(404).json({ message:'Document introuvable' });
-    resources[idx] = { ...resources[idx], is_active:Boolean(req.body?.is_active), updated_at:new Date().toISOString() };
+    const nextActive = Boolean(req.body?.is_active);
+    let resources = await loadResourceIndex();
+    let idx = resources.findIndex(r => !r.is_deleted && r.id === req.params.id);
+    if (idx >= 0){
+      resources[idx] = { ...resources[idx], is_active:nextActive, updated_at:new Date().toISOString() };
+      await saveResourceIndex(resources);
+      return res.json({ ok:true, resource:publicResource(resources[idx]) });
+    }
+    const dailyDraft = await findPublishedDailyDraftByResourceId(req.params.id);
+    const questionDraft = dailyDraft ? null : await loadPublishedDailyQuestionDraftByResourceId(req.params.id);
+    const draft = dailyDraft || questionDraft;
+    if (!draft) return res.status(404).json({ message:'Document introuvable' });
+    const record = dailyDraftResourceRecord(draft, { id:req.params.id, is_active:nextActive, author_phone:req.phone });
+    resources = removeResourceDeletionMarkers(resources, { id:record.id, sourceDraftId:record.source_draft_id, title:record.title });
+    idx = resources.findIndex(r => !r.is_deleted && (r.id === record.id || (record.source_draft_id && r.source_draft_id === record.source_draft_id)));
+    if (idx >= 0) resources[idx] = { ...resources[idx], ...record, is_active:nextActive, updated_at:new Date().toISOString() };
+    else resources.unshift(record);
     await saveResourceIndex(resources);
-    res.json({ ok:true, resource:publicResource(resources[idx]) });
+    res.json({ ok:true, resource:publicResource(idx >= 0 ? resources[idx] : record) });
   }catch(err){ next(err); }
 });
 
@@ -3785,7 +3860,7 @@ app.get('/api/resources/:id/download', async (req, res, next) => {
       is_premium:Boolean(dailyDraft.is_premium),
       is_active:true
     };
-    if (!item){
+    if (!item || (item && !item.storage_path && isDailyPdfResourceLike(item))){
       const questionDraft = await loadPublishedDailyQuestionDraftByResourceId(req.params.id);
       if (questionDraft){
         if (questionDraft.is_premium){
@@ -3800,7 +3875,7 @@ app.get('/api/resources/:id/download', async (req, res, next) => {
         res.setHeader('Cache-Control', 'private, max-age=60');
         return res.send(pdf);
       }
-      return res.status(404).json({ message:'Document introuvable' });
+      if (!item) return res.status(404).json({ message:'Document introuvable' });
     }
     if (item.is_premium){
       const premiumAllowed = await requestHasPremium(req);
@@ -3808,10 +3883,9 @@ app.get('/api/resources/:id/download', async (req, res, next) => {
     }
     const file = await downloadResourceObject(item.storage_path);
     const filename = safeFileName(item.file_name || item.title || 'document');
-    const inline = ['image','pdf'].includes(item.kind || fileKind(filename, item.mime_type));
     res.setHeader('Content-Type', item.mime_type || file.contentType || 'application/octet-stream');
     res.setHeader('Content-Length', file.buffer.length);
-    res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`);
     res.setHeader('Cache-Control', 'private, max-age=60');
     res.send(file.buffer);
   }catch(err){ next(err); }
