@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'android-offline-1';
+const CACHE_VERSION = 'premium-lock-update-1';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=android-offline-1',
-  '/js/questions.js?v=android-offline-1',
-  '/js/app.js?v=android-offline-1',
+  '/css/styles.css?v=premium-lock-update-1',
+  '/js/questions.js?v=premium-lock-update-1',
+  '/js/app.js?v=premium-lock-update-1',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',
@@ -55,11 +55,28 @@ function isOpenableFile(path){
   return /^\/api\/resources\/[^/]+\/download$/.test(path) || /^\/api\/news\/[^/]+\/pdf$/.test(path);
 }
 
+function responseHasPremiumData(response){
+  return response && (response.headers.get('X-Premium-Included') === 'true' || response.headers.get('X-Premium-Content') === 'true');
+}
+
 async function networkFirst(request){
   const cache = await caches.open(DATA_CACHE);
   try{
     const fresh = await fetch(request);
-    if (fresh && fresh.ok) cache.put(request, fresh.clone());
+    if (fresh && fresh.ok && !responseHasPremiumData(fresh)) cache.put(request, fresh.clone());
+    return fresh;
+  }catch(err){
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw err;
+  }
+}
+
+async function networkFirstFile(request){
+  const cache = await caches.open(DATA_CACHE);
+  try{
+    const fresh = await fetch(request);
+    if (fresh && fresh.ok && !responseHasPremiumData(fresh)) cache.put(request, fresh.clone());
     return fresh;
   }catch(err){
     const cached = await cache.match(request);
@@ -95,11 +112,17 @@ self.addEventListener('fetch', event => {
   }
 
   if (isOpenableFile(url.pathname)){
-    event.respondWith(cacheFirst(request));
+    event.respondWith(networkFirstFile(request));
     return;
   }
 
   if (/\.(?:css|js|png|jpg|jpeg|webp|svg|gif|ico|woff2?)$/i.test(url.pathname)){
     event.respondWith(cacheFirst(request));
+  }
+});
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'CLEAR_DATA_CACHE'){
+    event.waitUntil(caches.delete(DATA_CACHE));
   }
 });

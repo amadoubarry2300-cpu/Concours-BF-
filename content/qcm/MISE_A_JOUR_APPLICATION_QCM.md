@@ -466,3 +466,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout d’un service worker : l’application, les QCM, documents et actualités déjà ouverts restent disponibles hors connexion.
 - Les contenus publiés par l’admin sont récupérés automatiquement dès que le candidat retrouve internet, avec fallback sur la dernière version en cache.
 - Ajout d’un bouton “Installer” sur Android quand le navigateur le propose.
+
+## 2026-09-26 — Verrouillage Premium et mise à jour mobile
+
+- Les documents et fichiers Premium restent visibles dans Documents, mais sont verrouillés pour les comptes non Premium.
+- Le téléchargement/ouverture d’un document Premium est bloqué côté serveur sans abonnement actif.
+- Le cache mobile ne conserve plus les réponses ou fichiers marqués Premium, afin d’éviter un accès Premium hors statut autorisé.
+- L’application installée vérifie plus souvent les mises à jour et recharge automatiquement quand une nouvelle version est activée.

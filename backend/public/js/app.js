@@ -1114,6 +1114,7 @@ function logoutUser(){
   state.authToken = null;
   state.authExpiresAt = null;
   save();
+  if (navigator.serviceWorker?.controller) navigator.serviceWorker.controller.postMessage({ type:'CLEAR_DATA_CACHE' });
   renderAccount();
   toast('Compte déconnecté');
   show('home');
@@ -2365,9 +2366,11 @@ async function loadResources(){
       wrap.innerHTML = '<div class="empty">Aucun document disponible pour le moment.</div>';
       return;
     }
-    wrap.innerHTML = resourceCache.map(r => `
-      <div class="resource-card">
-        <div class="resource-icon">${resourceIcon(r.kind)}</div>
+    wrap.innerHTML = resourceCache.map(r => {
+      const locked = Boolean(r.locked || (r.is_premium && !hasOpenAccess()));
+      return `
+      <div class="resource-card ${locked ? 'locked' : ''}">
+        <div class="resource-icon">${locked ? '🔒' : resourceIcon(r.kind)}</div>
         <div>
           <h3>${escapeHtml(r.title)}</h3>
           <p>${escapeHtml(r.description || 'Document de révision pour t’aider à progresser.')}</p>
@@ -2376,19 +2379,26 @@ async function loadResources(){
             <span>${formatBytes(r.size)}</span>
             ${r.is_premium ? '<span class="premium">Premium</span>' : '<span>Gratuit</span>'}
           </div>
-          <button class="mini-btn" onclick="openResource('${escapeHtml(r.id)}')">Ouvrir</button>
+          <button class="mini-btn ${locked ? 'btn-ghost' : ''}" onclick="openResource('${escapeHtml(r.id)}')">${locked ? 'Débloquer Premium' : 'Ouvrir'}</button>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }catch(err){
     wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
   }
 }
 
 async function openResource(id){
+  const item = (resourceCache || []).find(r => r.id === id);
+  if (item && (item.locked || (item.is_premium && !hasOpenAccess()))){
+    openPremium(item.title || 'Document Premium');
+    return;
+  }
   try{
     const res = await fetch('/api/resources/' + encodeURIComponent(id) + '/download', { headers:authHeaders({}) });
     if (!res.ok){
       const data = await res.json().catch(()=>({}));
+      if (res.status === 402){ openPremium(item?.title || 'Document Premium'); return; }
       throw new Error(data.message || 'Ouverture impossible');
     }
     const blob = await res.blob();
@@ -3443,13 +3453,40 @@ async function installAndroidApp(){
   if (choice?.outcome === 'accepted') toast('Installation lancée ✅');
 }
 
+function refreshCurrentOnlineScreen(){
+  if (!navigator.onLine) return;
+  if (currentScreenId === 'resources') loadResources();
+  if (currentScreenId === 'publishedqcm') loadPublishedQcm(currentPublishedQcmFilter);
+  if (currentScreenId === 'formations') loadSupabaseQuestions().then(()=>renderFormations(currentFormFilter));
+}
+
+async function checkAppBuildVersion(){
+  try{
+    const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
+    const data = await res.json().catch(()=>({}));
+    if (data.build && data.build !== 'premium-lock-update-1') location.reload();
+  }catch{}
+}
+
 function registerOfflineApp(){
   if (!('serviceWorker' in navigator)) return;
+  let reloadedBySw = false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if (reloadedBySw) return;
+    reloadedBySw = true;
+    location.reload();
+  });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=android-offline-1')
-      .then(reg => reg.update().catch(()=>{}))
+    navigator.serviceWorker.register('/sw.js?v=premium-lock-update-1')
+      .then(reg => {
+        reg.update().catch(()=>{});
+        setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
+      })
       .catch(err => console.warn('Service worker:', err.message));
   });
+  window.addEventListener('online', refreshCurrentOnlineScreen);
+  window.addEventListener('focus', ()=>{ refreshCurrentOnlineScreen(); checkAppBuildVersion(); });
+  document.addEventListener('visibilitychange', ()=>{ if (!document.hidden){ refreshCurrentOnlineScreen(); checkAppBuildVersion(); } });
 }
 
 /* ---------- init ---------- */

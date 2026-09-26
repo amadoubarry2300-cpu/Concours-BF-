@@ -433,6 +433,7 @@ function publicResource(row){
 async function requestHasPremium(req){
   const sessionData = await getSessionFromRequest(req).catch(() => null);
   if (!sessionData?.profile?.phone) return false;
+  if (isAdminProfile(sessionData.profile)) return true;
   const sub = await getActiveSubscription(sessionData.profile.phone);
   return Boolean(sub);
 }
@@ -2758,7 +2759,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'android-offline-1',
+    build: 'premium-lock-update-1',
     time: new Date().toISOString()
   });
 });
@@ -3910,13 +3911,16 @@ app.get('/api/resources', async (req, res, next) => {
       return r;
     });
     if (changed) await saveResourceIndex(resources).catch(err => console.warn('Migration archive documents public:', err.message));
+    const lockResource = item => ({ ...item, locked:Boolean(item.is_premium) && !premiumAllowed });
     const indexed = visibleResourceRows(resources)
       .filter(r => r.is_active !== false)
-      .filter(r => premiumAllowed || !r.is_premium)
-      .map(publicResource);
+      .map(publicResource)
+      .map(lockResource);
     const dailyResources = (await loadPublishedDailyPdfResources())
       .filter(r => r.is_active !== false)
-      .filter(r => premiumAllowed || !r.is_premium);
+      .map(lockResource);
+    res.setHeader('X-Premium-Included', premiumAllowed ? 'true' : 'false');
+    res.setHeader('Cache-Control', 'private, max-age=30');
     res.json({ ok:true, premiumIncluded:premiumAllowed, resources:mergePublicResources(indexed, dailyResources) });
   }catch(err){ next(err); }
 });
@@ -3948,7 +3952,8 @@ app.get('/api/resources/:id/download', async (req, res, next) => {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Length', pdf.length);
         res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`);
-        res.setHeader('Cache-Control', 'private, max-age=60');
+        res.setHeader('X-Premium-Content', questionDraft.is_premium ? 'true' : 'false');
+        res.setHeader('Cache-Control', questionDraft.is_premium ? 'private, no-store' : 'private, max-age=60');
         return res.send(pdf);
       }
       if (!item) return res.status(404).json({ message:'Document introuvable' });
@@ -3962,7 +3967,8 @@ app.get('/api/resources/:id/download', async (req, res, next) => {
     res.setHeader('Content-Type', item.mime_type || file.contentType || 'application/octet-stream');
     res.setHeader('Content-Length', file.buffer.length);
     res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`);
-    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.setHeader('X-Premium-Content', item.is_premium ? 'true' : 'false');
+    res.setHeader('Cache-Control', item.is_premium ? 'private, no-store' : 'private, max-age=60');
     res.send(file.buffer);
   }catch(err){ next(err); }
 });
@@ -4004,7 +4010,11 @@ function publicQcmPublicationTitle(row){
 
 app.get('/api/qcm-publications', async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.json({ ok:true, publications:[], premiumIncluded:false });
+    if (!supabaseReady()){
+      res.setHeader('X-Premium-Included', 'false');
+      res.setHeader('Cache-Control', 'private, max-age=30');
+      return res.json({ ok:true, publications:[], premiumIncluded:false });
+    }
     const premiumAllowed = await premiumAllowedForRequest(req);
     const rows = await supabaseRequest('questions?select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.desc&limit=800').catch(()=>[]);
     const groups = new Map();
@@ -4030,6 +4040,8 @@ app.get('/api/qcm-publications', async (req, res, next) => {
       if (!group.locked) group.questions.push(safeQuestion(row));
     }
     const publications = Array.from(groups.values()).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    res.setHeader('X-Premium-Included', premiumAllowed ? 'true' : 'false');
+    res.setHeader('Cache-Control', 'private, max-age=30');
     res.json({ ok:true, premiumIncluded:premiumAllowed, publications });
   }catch(err){ next(err); }
 });
@@ -4056,6 +4068,8 @@ app.get('/api/questions', async (req, res, next) => {
           });
         }
       }
+      res.setHeader('X-Premium-Included', premiumAllowed ? 'true' : 'false');
+      res.setHeader('Cache-Control', 'private, max-age=30');
       return res.json({
         ok:true,
         source:'local_bank_5000_v1',
@@ -4067,6 +4081,8 @@ app.get('/api/questions', async (req, res, next) => {
     if (!supabaseReady()) return res.status(503).json({ message:'Stockage indisponible pour le moment.' });
     const premiumFilter = premiumAllowed ? '' : '&is_premium=eq.false';
     const rows = await supabaseRequest(`questions?${premiumFilter ? premiumFilter.slice(1) + '&' : ''}select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.asc`);
+    res.setHeader('X-Premium-Included', premiumAllowed ? 'true' : 'false');
+    res.setHeader('Cache-Control', 'private, max-age=30');
     res.json({ ok:true, source:'supabase', premiumIncluded:premiumAllowed, questions:Array.isArray(rows) ? rows.map(safeQuestion) : [] });
   }catch(err){ next(err); }
 });
@@ -4076,6 +4092,8 @@ app.get('/api/subscription/status', async (req, res, next) => {
     const phone = normalizePhone(req.query.phone);
     if (!phone) return res.status(400).json({ message: 'Numéro invalide' });
     const sub = await getActiveSubscription(phone);
+    res.setHeader('X-Premium-Included', sub ? 'true' : 'false');
+    res.setHeader('Cache-Control', sub ? 'private, no-store' : 'private, max-age=30');
     if (!sub) return res.json({ active:false, status:'free' });
     res.json({ active:true, status:'premium', expiresAt:sub.expiresAt, txRef:sub.txRef, provider:sub.provider });
   }catch(err){ next(err); }
