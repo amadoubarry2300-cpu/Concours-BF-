@@ -435,3 +435,7 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Côté candidat, les fichiers et communiqués s’ouvrent dans l’application sans bouton de téléchargement.
 - Les brouillons IA QCM/PDF permettent de choisir Gratuit ou Premium avant publication.
 - La veille officielle ignore les actualités déjà présentes et ne prépare une nouvelle actualité automatique que si un communiqué PDF officiel est récupéré.
+
+## 2026-09-26 — Actualités officielles avec PDF
+
+- Les actualités automatiques officielles sans communiqué PDF joint ne sont plus affichées côté candidat. Elles restent côté admin pour vérification ou correction.

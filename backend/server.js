@@ -2715,7 +2715,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'admin-structure-fix-1',
+    build: 'news-pdf-guard-1',
     time: new Date().toISOString()
   });
 });
@@ -3658,6 +3658,7 @@ app.get('/api/news', async (_req, res, next) => {
     });
     const visible = news
       .filter(item => item.is_active !== false)
+      .filter(item => !(item.official_draft && !item.storage_path))
       .map(publicNews)
       .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
     res.json({ ok:true, news:visible });
