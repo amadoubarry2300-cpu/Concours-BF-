@@ -1355,19 +1355,87 @@ function dailyDraftResourceId(draft){
   return `daily-pdf-${String(draft?.id || '').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 }
 
+function resourceDeletionMarkerId(target){
+  const key = `${target?.id || ''}|${target?.sourceDraftId || ''}|${target?.title || ''}`;
+  return 'deleted-resource-' + crypto.createHash('sha1').update(key).digest('hex').slice(0, 16);
+}
+
+function isDailyPdfResourceLike(resource){
+  return resource?.source_type === 'daily_qcm_pdf'
+    || String(resource?.id || '').startsWith('daily-pdf-')
+    || /^QCM\s+quotidien\s*[—-]/i.test(String(resource?.title || resource?.source_title || ''));
+}
+
+function resourceDeletionMarker(target = {}){
+  const now = new Date().toISOString();
+  const title = safePdfTitle(target.title || '');
+  const dailyLike = Boolean(target.dailyLike || /^QCM\s+quotidien\s*[—-]/i.test(title) || String(target.id || '').startsWith('daily-pdf-'));
+  return {
+    id:resourceDeletionMarkerId(target),
+    is_deleted:true,
+    is_active:false,
+    target_id:target.id || '',
+    source_draft_id:target.sourceDraftId || '',
+    target_title:dailyLike ? title : '',
+    source_type:dailyLike ? 'daily_qcm_pdf_deleted' : 'resource_deleted',
+    title: title || 'Document supprimé',
+    created_at:now,
+    updated_at:now
+  };
+}
+
+function deletedResourceTargetSet(resources = []){
+  const set = new Set();
+  for (const row of (Array.isArray(resources) ? resources : [])){
+    if (!row?.is_deleted) continue;
+    if (row.target_id) set.add(String(row.target_id));
+    if (row.source_draft_id) set.add(String(row.source_draft_id));
+    if (row.target_title) set.add('title:' + safePdfTitle(row.target_title));
+  }
+  return set;
+}
+
+function resourceBlockedByDeletion(resource, deletedTargets){
+  if (!deletedTargets?.size || !resource) return false;
+  const ids = [resource.id, resource.source_draft_id, resource.resource_id].filter(Boolean).map(String);
+  if (ids.some(id => deletedTargets.has(id))) return true;
+  const title = safePdfTitle(resource.title || resource.source_title || '');
+  return Boolean(title && deletedTargets.has('title:' + title));
+}
+
+function removeResourceDeletionMarkers(resources = [], target = {}){
+  const ids = new Set([target.id, target.sourceDraftId].filter(Boolean).map(String));
+  const title = safePdfTitle(target.title || '');
+  return (Array.isArray(resources) ? resources : []).filter(row => {
+    if (!row?.is_deleted) return true;
+    if (row.target_id && ids.has(String(row.target_id))) return false;
+    if (row.source_draft_id && ids.has(String(row.source_draft_id))) return false;
+    if (title && safePdfTitle(row.target_title || '') === title) return false;
+    return true;
+  });
+}
+
+function visibleResourceRows(resources = []){
+  const deletedTargets = deletedResourceTargetSet(resources);
+  return (Array.isArray(resources) ? resources : [])
+    .filter(r => !r?.is_deleted)
+    .filter(r => !resourceBlockedByDeletion(r, deletedTargets));
+}
+
 async function ensureDailyDraftResource(draft, { category, level, is_premium, author_phone } = {}){
   if (!draft?.storage_path) return null;
-  const resources = await loadResourceIndex().catch(err => {
+  let resources = await loadResourceIndex().catch(err => {
     if (err.status === 404 || /Fichier introuvable|not found|does not exist|object.*not/i.test(String(err.message || err.details?.message || ''))) return [];
     throw err;
   });
   const id = dailyDraftResourceId(draft);
-  const idx = resources.findIndex(r => r.id === id || r.source_draft_id === draft.id);
-  const existing = idx >= 0 ? resources[idx] : null;
   const cleanCategory = cleanText(category || draft.category || 'QCM', 80);
   const cleanLevel = cleanText(level || draft.level || 'Concours', 40);
   const cleanDate = cleanText(draft.date || todayId(), 20);
   const title = safePdfTitle(`QCM quotidien — ${cleanCategory} — ${cleanLevel} — ${cleanDate}`);
+  resources = removeResourceDeletionMarkers(resources, { id, sourceDraftId:draft.id, title });
+  const idx = resources.findIndex(r => !r.is_deleted && (r.id === id || r.source_draft_id === draft.id));
+  const existing = idx >= 0 ? resources[idx] : null;
   const fileName = safeFileName(`${title}.pdf`);
   let storagePath = existing?.storage_path || '';
   let size = Number(existing?.size || draft.size || 0);
@@ -1436,8 +1504,12 @@ function dailyDraftPublicResource(draft){
 
 async function loadPublishedDailyPdfResources(){
   const drafts = await loadAiDailyIndex().catch(() => []);
-  const publishedDrafts = (Array.isArray(drafts) ? drafts : []).filter(d => d.status === 'published' && d.storage_path);
-  const questionDrafts = await loadPublishedDailyQuestionDrafts(publishedDrafts).catch(() => []);
+  const resources = await loadResourceIndex().catch(() => []);
+  const deletedTargets = deletedResourceTargetSet(resources);
+  const publishedDrafts = (Array.isArray(drafts) ? drafts : [])
+    .filter(d => d.status === 'published' && d.storage_path)
+    .filter(d => !resourceBlockedByDeletion(dailyDraftPublicResource(d), deletedTargets));
+  const questionDrafts = await loadPublishedDailyQuestionDrafts(publishedDrafts, deletedTargets).catch(() => []);
   return mergePublicResources(
     publishedDrafts.map(dailyDraftPublicResource),
     questionDrafts.map(dailyDraftPublicResource)
@@ -1458,8 +1530,10 @@ function parseDailyResourceTitle(resource){
 async function loadOrphanDailyResourceDrafts(existingDrafts = []){
   const existingIds = new Set((existingDrafts || []).flatMap(d => [d.id, d.resource_id]).filter(Boolean));
   const resources = await loadResourceIndex().catch(() => []);
-  return (Array.isArray(resources) ? resources : [])
+  const deletedTargets = deletedResourceTargetSet(resources);
+  return visibleResourceRows(resources)
     .filter(r => r.source_type === 'daily_qcm_pdf' || String(r.id || '').startsWith('daily-pdf-'))
+    .filter(r => !resourceBlockedByDeletion(r, deletedTargets))
     .filter(r => !existingIds.has(r.source_draft_id) && !existingIds.has(r.id))
     .map(r => {
       const meta = parseDailyResourceTitle(r);
@@ -1496,8 +1570,9 @@ function dailyQuestionSourceMatches(source){
   return /^QCM\s+quotidien\s*[—-]/i.test(String(source || '').trim());
 }
 
-async function loadPublishedDailyQuestionDrafts(existingDrafts = []){
+async function loadPublishedDailyQuestionDrafts(existingDrafts = [], deletedTargets = null){
   if (!supabaseReady()) return [];
+  const deletionSet = deletedTargets || deletedResourceTargetSet(await loadResourceIndex().catch(() => []));
   const existingTitles = new Set((existingDrafts || []).map(d => safePdfTitle(d.title || d.source_title || '')).filter(Boolean));
   const query = 'questions?select=id,source,category,level,is_premium,created_at,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation&source=ilike.' + encodeURIComponent('QCM quotidien*') + '&order=created_at.desc&limit=1000';
   const rows = await supabaseRequest(query).catch(() => []);
@@ -1544,7 +1619,8 @@ async function loadPublishedDailyQuestionDrafts(existingDrafts = []){
         updated_at:first.created_at || '',
         published_at:first.created_at || ''
       };
-    });
+    })
+    .filter(draft => !resourceBlockedByDeletion(dailyDraftPublicResource(draft), deletionSet));
 }
 
 async function loadPublishedDailyQuestionDraftById(id){
@@ -1570,7 +1646,10 @@ function mergePublicResources(primary = [], secondary = []){
 
 async function findPublishedDailyDraftByResourceId(id){
   const drafts = await loadAiDailyIndex().catch(() => []);
-  return (Array.isArray(drafts) ? drafts : []).find(d => d.status === 'published' && d.storage_path && dailyDraftResourceId(d) === id) || null;
+  const resources = await loadResourceIndex().catch(() => []);
+  const deletedTargets = deletedResourceTargetSet(resources);
+  const draft = (Array.isArray(drafts) ? drafts : []).find(d => d.status === 'published' && d.storage_path && dailyDraftResourceId(d) === id) || null;
+  return draft && !resourceBlockedByDeletion(dailyDraftPublicResource(draft), deletedTargets) ? draft : null;
 }
 
 async function deleteDailyDraftResource(draft){
@@ -1580,10 +1659,13 @@ async function deleteDailyDraftResource(draft){
   });
   const id = dailyDraftResourceId(draft);
   const ids = new Set([id, draft?.resource_id, draft?.id].filter(Boolean));
-  const item = resources.find(r => ids.has(r.id) || ids.has(r.source_draft_id));
+  const item = resources.find(r => !r.is_deleted && (ids.has(r.id) || ids.has(r.source_draft_id)));
   if (item?.storage_path) await deleteResourceObject(item.storage_path).catch(()=>{});
-  const next = resources.filter(r => !ids.has(r.id) && !ids.has(r.source_draft_id));
-  if (next.length !== resources.length) await saveResourceIndex(next);
+  const title = safePdfTitle(item?.title || draft?.title || `QCM quotidien — ${draft?.category || 'QCM'} — ${draft?.level || 'Concours'} — ${draft?.date || todayId()}`);
+  const marker = resourceDeletionMarker({ id, sourceDraftId:draft?.id, title, dailyLike:true });
+  const next = removeResourceDeletionMarkers(resources.filter(r => !ids.has(r.id) && !ids.has(r.source_draft_id)), { id, sourceDraftId:draft?.id, title });
+  next.unshift(marker);
+  await saveResourceIndex(next);
   return Boolean(item);
 }
 
@@ -2571,7 +2653,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'bulk-cron-fix-1',
+    build: 'delete-resource-fix-1',
     time: new Date().toISOString()
   });
 });
@@ -3377,7 +3459,7 @@ app.get('/api/admin/resources', requireAdmin, async (_req, res, next) => {
   try{
     const resources = await loadResourceIndex();
     const dailyResources = await loadPublishedDailyPdfResources();
-    res.json({ ok:true, resources:mergePublicResources(resources.map(publicResource), dailyResources) });
+    res.json({ ok:true, resources:mergePublicResources(visibleResourceRows(resources).map(publicResource), dailyResources) });
   }catch(err){ next(err); }
 });
 
@@ -3460,12 +3542,29 @@ app.patch('/api/admin/resources/:id/status', requireAdmin, async (req, res, next
 
 app.delete('/api/admin/resources/:id', requireAdmin, async (req, res, next) => {
   try{
-    const resources = await loadResourceIndex();
-    const item = resources.find(r => r.id === req.params.id);
-    if (!item) return res.status(404).json({ message:'Document introuvable' });
-    await saveResourceIndex(resources.filter(r => r.id !== req.params.id));
-    if (item.storage_path) await deleteResourceObject(item.storage_path);
-    res.json({ ok:true });
+    let resources = await loadResourceIndex();
+    let item = visibleResourceRows(resources).find(r => r.id === req.params.id);
+    let dailyDraft = null;
+    let questionDraft = null;
+    if (!item) dailyDraft = await findPublishedDailyDraftByResourceId(req.params.id);
+    if (!item && !dailyDraft) questionDraft = await loadPublishedDailyQuestionDraftByResourceId(req.params.id);
+    if (!item && !dailyDraft && !questionDraft){
+      const alreadyDeleted = deletedResourceTargetSet(resources).has(req.params.id);
+      if (alreadyDeleted) return res.json({ ok:true, deleted:true, alreadyDeleted:true });
+      return res.status(404).json({ message:'Document introuvable' });
+    }
+    const targetId = req.params.id;
+    const targetTitle = safePdfTitle(item?.title || dailyDraft?.title || questionDraft?.title || 'Document');
+    const targetDraftId = item?.source_draft_id || dailyDraft?.id || questionDraft?.id || '';
+    const dailyLike = isDailyPdfResourceLike(item || dailyDraft || questionDraft || { id:targetId, title:targetTitle });
+    if (item?.storage_path) await deleteResourceObject(item.storage_path).catch(()=>{});
+    if (dailyDraft?.storage_path) await deleteResourceObject(dailyDraft.storage_path).catch(()=>{});
+    const marker = resourceDeletionMarker({ id:targetId, sourceDraftId:targetDraftId, title:targetTitle, dailyLike });
+    resources = removeResourceDeletionMarkers(resources, { id:targetId, sourceDraftId:targetDraftId, title:targetTitle })
+      .filter(r => r.id !== targetId && r.source_draft_id !== targetDraftId);
+    resources.unshift(marker);
+    await saveResourceIndex(resources);
+    res.json({ ok:true, deleted:true, id:targetId });
   }catch(err){ next(err); }
 });
 
@@ -3653,7 +3752,7 @@ app.get('/api/resources', async (req, res, next) => {
       if (err.status === 503 || /Stockage indisponible/i.test(err.message)) return [];
       throw err;
     });
-    const indexed = resources
+    const indexed = visibleResourceRows(resources)
       .filter(r => r.is_active !== false)
       .filter(r => premiumAllowed || !r.is_premium)
       .map(publicResource);
@@ -3667,7 +3766,7 @@ app.get('/api/resources', async (req, res, next) => {
 app.get('/api/resources/:id/download', async (req, res, next) => {
   try{
     const resources = await loadResourceIndex();
-    let item = resources.find(r => r.id === req.params.id && r.is_active !== false);
+    let item = visibleResourceRows(resources).find(r => r.id === req.params.id && r.is_active !== false);
     const dailyDraft = item ? null : await findPublishedDailyDraftByResourceId(req.params.id);
     if (!item && dailyDraft) item = {
       id:dailyDraftResourceId(dailyDraft),

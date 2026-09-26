@@ -415,3 +415,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Les multiplications écrites avec `*` sont affichées et normalisées en `×` dans les contenus éducatifs.
 - Les crons IA acceptent correctement les appels officiels Vercel Cron même lorsqu’un secret cron est configuré.
 - Les horaires quotidiens IA QCM et veille officielle sont réglés tôt le matin pour préparer les contenus à relire.
+
+## 2026-09-26 — Suppression réelle des fichiers
+
+- La suppression d’un document/PDF crée maintenant un marqueur persistant afin qu’un PDF quotidien ne réapparaisse plus après actualisation.
+- Les PDF reconstruits depuis les QCM publiés respectent aussi cette suppression côté admin et côté candidat.
+- L’interface retire le document supprimé immédiatement puis recharge les listes pour confirmer l’état réel.

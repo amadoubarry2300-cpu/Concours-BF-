@@ -2449,10 +2449,12 @@ async function deleteAdminResource(index){
   if (!r) return;
   if (!confirm('Supprimer définitivement ce document ?')) return;
   try{
+    toast('Suppression du document...');
     await adminFetch('/api/admin/resources/' + encodeURIComponent(r.id), { method:'DELETE' });
-    await loadAdminResources();
-    await loadResources();
-    toast('Document supprimé');
+    adminResourceCache = adminResourceCache.filter(item => item.id !== r.id);
+    resourceCache = resourceCache.filter(item => item.id !== r.id && item.title !== r.title);
+    await Promise.allSettled([loadAdminResources(), loadResources()]);
+    toast('Document supprimé ✅');
   }catch(err){ toast(err.message); }
 }
 
