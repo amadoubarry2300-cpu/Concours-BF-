@@ -831,6 +831,8 @@ function normalizeMathNotationText(value){
   return String(value || '')
     .replace(/\\times/g, '×')
     .replace(/\\cdot/g, '·')
+    .replace(/([0-9A-Za-z)\]])\s*\*\s*([0-9A-Za-z(])/g, '$1 × $2')
+    .replace(/([0-9A-Za-z)\]])\s*\*\s*([0-9A-Za-z(])/g, '$1 × $2')
     .replace(/<=/g, '≤')
     .replace(/>=/g, '≥')
     .replace(/!=/g, '≠')
@@ -1913,11 +1915,13 @@ async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
 }
 
 function cronAuthorized(req){
+  const fromVercelCron = /vercel-cron/i.test(String(req.headers['user-agent'] || '')) || String(req.headers['x-vercel-cron'] || '') === '1';
+  if (fromVercelCron) return true;
   const expected = AI_DAILY_CRON_SECRET;
   const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   const querySecret = String(req.query?.secret || '').trim();
   if (expected) return auth === expected || querySecret === expected;
-  return /vercel-cron/i.test(String(req.headers['user-agent'] || ''));
+  return false;
 }
 
 
@@ -2567,7 +2571,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'math-render-fix-1',
+    build: 'bulk-cron-fix-1',
     time: new Date().toISOString()
   });
 });
@@ -3312,6 +3316,40 @@ app.patch('/api/admin/questions/:id', requireAdmin, async (req, res, next) => {
       body:payload
     });
     res.json({ ok:true, question:Array.isArray(rows) ? rows[0] || null : null });
+  }catch(err){ next(err); }
+});
+
+function adminQuestionIds(body){
+  const ids = Array.isArray(body?.ids) ? body.ids : [];
+  return Array.from(new Set(ids.map(id => cleanText(id, 80)).filter(id => /^[0-9a-f-]{20,80}$/i.test(id)))).slice(0, 300);
+}
+
+function supabaseInList(values){
+  return values.map(v => String(v).replace(/[^0-9a-f-]/gi, '')).filter(Boolean).join(',');
+}
+
+app.patch('/api/admin/questions/bulk/status', requireAdmin, async (req, res, next) => {
+  try{
+    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    const ids = adminQuestionIds(req.body || {});
+    if (!ids.length) return res.status(400).json({ message:'Sélectionne au moins un QCM.' });
+    const isActive = Boolean(req.body?.is_active);
+    const rows = await supabaseRequest(`questions?id=in.(${supabaseInList(ids)})&select=*`, {
+      method:'PATCH',
+      prefer:'return=representation',
+      body:{ is_active:isActive }
+    });
+    res.json({ ok:true, updated:Array.isArray(rows) ? rows.length : ids.length, questions:Array.isArray(rows) ? rows : [] });
+  }catch(err){ next(err); }
+});
+
+app.delete('/api/admin/questions/bulk', requireAdmin, async (req, res, next) => {
+  try{
+    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    const ids = adminQuestionIds(req.body || {});
+    if (!ids.length) return res.status(400).json({ message:'Sélectionne au moins un QCM.' });
+    await supabaseRequest(`questions?id=in.(${supabaseInList(ids)})`, { method:'DELETE', prefer:'return=minimal' });
+    res.json({ ok:true, deleted:ids.length });
   }catch(err){ next(err); }
 });
 

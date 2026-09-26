@@ -19,40 +19,6 @@ const SUBSCRIPTION_PLANS = {
   }
 };
 
-
-function normalizeDailyLevel(level){
-  const raw = String(level || '').trim();
-  const key = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (key.includes('cep')) return 'CEP';
-  if (key.includes('bepc')) return 'BEPC';
-  if (key.includes('bac')) return 'BAC';
-  if (key.includes('licence')) return 'Licence';
-  if (key.includes('concours')) return 'Concours';
-  return raw || 'Concours';
-}
-
-function dailyAllowedCategories(level){
-  return DAILY_LEVEL_CATEGORY_RULES[normalizeDailyLevel(level)] || ALL_QCM_CATEGORIES;
-}
-
-function setDailyCategoryOptions(select, level, preferred='', includeRotation=false){
-  if (!select) return '';
-  const allowed = dailyAllowedCategories(level);
-  const current = preferred !== undefined && preferred !== null ? String(preferred) : select.value;
-  select.innerHTML = `${includeRotation ? '<option value="">Rotation automatique</option>' : ''}${allowed.map(cat=>`<option>${escapeHtml(cat)}</option>`).join('')}`;
-  if (current && allowed.includes(current)) select.value = current;
-  else select.value = includeRotation ? '' : (allowed[0] || 'Culture générale');
-  return select.value;
-}
-
-function refreshDailyCategoryOptions(preferred){
-  return setDailyCategoryOptions($('#aiDailyCategory'), $('#aiDailyLevel')?.value || 'Concours', (preferred ?? $('#aiDailyCategory')?.value ?? ''), true);
-}
-
-function refreshDailyPublishCategoryOptions(preferred){
-  return setDailyCategoryOptions($('#dailyPublishCategory'), $('#dailyPublishLevel')?.value || 'Concours', (preferred ?? $('#dailyPublishCategory')?.value ?? ''), false);
-}
-
 function subscriptionPlan(id){
   return SUBSCRIPTION_PLANS[id] || SUBSCRIPTION_PLANS.premium_monthly;
 }
@@ -70,13 +36,6 @@ const SUPABASE_CONFIG = window.REUSSITE_CONCOURS_BF_SUPABASE_CONFIG || {
 const ACCESS_OPEN_UNTIL_PAYMENT = false; // Premium réactivé : seules les catégories gratuites restent ouvertes sans paiement.
 const FREE_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo'];
 const ALL_QCM_CATEGORIES = ['Burkina Faso', 'Culture générale', 'Histoire-Géo', 'Mathématiques', 'Physique-Chimie', 'Psychotechnique', 'Français', 'SVT', 'Greffier / Droit'];
-const DAILY_LEVEL_CATEGORY_RULES = {
-  'CEP':['Français','Mathématiques','SVT','Histoire-Géo','Burkina Faso','Culture générale'],
-  'BEPC':['Français','Mathématiques','Physique-Chimie','SVT','Histoire-Géo','Burkina Faso','Culture générale'],
-  'BAC':['Français','Mathématiques','Physique-Chimie','SVT','Histoire-Géo','Burkina Faso','Culture générale'],
-  'Concours':['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Physique-Chimie','Psychotechnique','Français','SVT','Greffier / Droit'],
-  'Licence':['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Physique-Chimie','Psychotechnique','Français','SVT','Greffier / Droit']
-};
 const PAID_CATEGORIES = ALL_QCM_CATEGORIES.filter(cat => !FREE_CATEGORIES.includes(cat));
 function isFreeCategory(cat){ return FREE_CATEGORIES.includes(cat); }
 function isPaidCategory(cat){ return !isFreeCategory(cat); }
@@ -197,57 +156,6 @@ function userInitials(user = state.user){
 
 function escapeHtml(value){
   return String(value || '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-}
-
-function renderMathText(value){
-  let text = String(value || '')
-    .replace(/\\\((.*?)\\\)/g, '$1')
-    .replace(/\\\[(.*?)\\\]/g, '$1')
-    .replace(/\\times/g, '×')
-    .replace(/\\cdot/g, '·')
-    .replace(/\bplus ou moins\b/gi, '±')
-    .replace(/<=/g, '≤')
-    .replace(/>=/g, '≥')
-    .replace(/!=/g, '≠')
-    .replace(/\bsigma\b/gi, 'σ')
-    .replace(/\bDelta\b/g, 'Δ')
-    .replace(/\bpi\b/g, 'π')
-    .replace(/\b([A-Za-z])''(?=[\s)=,+\-−]|$)/g, '$1″')
-    .replace(/\b([A-Za-z])'(?=[\s()=,+\-−]|$)/g, '$1′')
-    .replace(/\s+-\s+/g, ' − ');
-  const pieces = [];
-  const hold = html => `@@RCBFMATH${pieces.push(html) - 1}@@`;
-  text = text.replace(/\\frac\s*\{([^{}]{1,90})\}\s*\{([^{}]{1,90})\}/g, (_, num, den) => hold(renderFraction(num, den)));
-  text = text.replace(/\bfrac\s*\{([^{}]{1,90})\}\s*\{([^{}]{1,90})\}/gi, (_, num, den) => hold(renderFraction(num, den)));
-  text = text.replace(/(?:\\sqrt|sqrt)\s*\(([^\n]{1,160}?)\)(?=[\s.,;:!?]|$)/gi, (_, rad) => hold(renderSqrt(rad)));
-  text = text.replace(/√\s*\(([^\n]{1,160}?)\)(?=[\s.,;:!?]|$)/g, (_, rad) => hold(renderSqrt(rad)));
-  let html = escapeHtml(text);
-  html = html.replace(/\^\{([^{}<>]{1,50})\}/g, (_, exp) => `<sup>${escapeHtml(exp)}</sup>`);
-  html = html.replace(/\^\(([^()<>]{1,50})\)/g, (_, exp) => `<sup>${escapeHtml(exp)}</sup>`);
-  html = html.replace(/\^([+\-−]?\d+(?:[a-zA-Z])?|[a-zA-Z])/g, (_, exp) => `<sup>${escapeHtml(exp)}</sup>`);
-  html = html.replace(/_\{([^{}<>]{1,40})\}/g, (_, sub) => `<sub>${escapeHtml(sub)}</sub>`);
-  html = html.replace(/_([A-Za-z0-9]+)/g, (_, sub) => `<sub>${escapeHtml(sub)}</sub>`);
-  html = html.replace(/(?<![\w/])([A-Za-z]\([^()]{1,40}\))\s*\/\s*([A-Za-z]\w*|\d{1,3}(?:[,.]\d+)?|\([^()]{1,30}\))(?![\w/])/g, (_, num, den) => renderFraction(num, den));
-  html = html.replace(/(?<![\w/])([A-Za-z]\w*|\d{1,3}(?:[,.]\d+)?|\([^()]{1,30}\))\s*\/\s*([A-Za-z]\w*|\d{1,3}(?:[,.]\d+)?|\([^()]{1,30}\))(?![\w/])/g, (_, num, den) => renderFraction(num, den));
-  pieces.forEach((piece, idx) => { html = html.replace(`@@RCBFMATH${idx}@@`, piece); });
-  return `<span class="math-text">${html}</span>`;
-}
-
-function renderFraction(num, den){
-  return `<span class="math-frac"><span class="math-num">${renderMathText(num)}</span><span class="math-den">${renderMathText(den)}</span></span>`;
-}
-
-function renderSqrt(rad){
-  return `<span class="math-sqrt">√<span class="math-radicand">${renderMathText(rad)}</span></span>`;
-}
-
-function refreshAiCategoryOptions(preferred){
-  return setDailyCategoryOptions($('#aiCategory'), $('#aiLevel')?.value || 'Concours', (preferred ?? $('#aiCategory')?.value ?? ''), false);
-}
-
-function refreshAllAiCategoryOptions(){
-  refreshDailyCategoryOptions();
-  refreshAiCategoryOptions();
 }
 
 function avatarDataForUser(user = state.user){
@@ -867,12 +775,12 @@ function renderQuestion(){
   card.classList.remove('out');
   card.innerHTML = `
     <div class="q-meta">
-      <span class="q-tag">${escapeHtml(q.c)}</span>
+      <span class="q-tag">${q.c}</span>
       <span class="q-count">${quiz.i+1} / ${quiz.qs.length}</span>
     </div>
-    <div class="q-text">${renderMathText(q.q)}</div>
+    <div class="q-text">${q.q}</div>
     <div class="opts">
-      ${q.o.map((o,idx)=>`<button class="opt" data-i="${idx}"><span class="key">${'ABCD'[idx]}</span><span>${renderMathText(o)}</span></button>`).join('')}
+      ${q.o.map((o,idx)=>`<button class="opt" data-i="${idx}"><span class="key">${'ABCD'[idx]}</span><span>${o}</span></button>`).join('')}
     </div>
     <div id="explainBox"></div>`;
   card.style.animation='none'; void card.offsetWidth; card.style.animation='';
@@ -910,7 +818,7 @@ function answer(idx){
   $('#explainBox').innerHTML = `
     <div class="explain">
       <h4>${good ? '✅ Bonne réponse !' : '💡 Explication'}</h4>
-      <p>${renderMathText(q.e)}</p>
+      <p>${q.e}</p>
     </div>`;
   $('#nextBtn').style.visibility='visible';
   $('#progressBar').style.width = ((quiz.i+1)/quiz.qs.length*100)+'%';
@@ -1282,9 +1190,9 @@ function renderAdminQuestionCards(items){
         <span class="${q.is_active ? 'active' : ''}">${q.is_active ? 'Publié' : 'Masqué'}</span>
         ${q.is_premium ? '<span class="premium">Premium abonnés</span>' : '<span class="free">Gratuit</span>'}
       </div>
-      <h4>${renderMathText(q.question_text || '')}</h4>
+      <h4>${escapeHtml(q.question_text || '')}</h4>
       <p class="admin-destination-note">Nom du QCM : <b>${escapeHtml(q.source || 'Nouveau QCM')}</b> · Date : <b>${escapeHtml(formatDate(q.created_at))}</b></p>
-      <p class="admin-destination-note">Accès : <b>${qcmDestinationText(q)}</b></p>
+      <p class="admin-destination-note">Destination : <b>${qcmDestinationText(q)}</b></p>
       <div class="admin-q-actions">
         <button class="edit" onclick="openPublishedQcmFromAdmin()">Ouvrir le quiz</button>
         <button class="edit" onclick="editAdminQuestion(${idx})">Modifier</button>
@@ -1383,13 +1291,11 @@ async function deleteAdminQuestion(index){
   if (!q) return;
   if (!confirm('Supprimer définitivement ce QCM ?')) return;
   try{
-    toast('Suppression en cours...');
     await adminFetch('/api/admin/questions/' + encodeURIComponent(q.id), { method:'DELETE' });
-    adminQuestionCache.splice(index, 1);
-    const list = adminQuestionCache.map((q, idx)=>({q, idx}));
-    $('#adminQuestionList') && ($('#adminQuestionList').innerHTML = renderAdminQuestionCards(list));
+    await loadAdminQuestions();
+    await loadSupabaseQuestions();
+    renderFormations(currentFormFilter);
     toast('QCM supprimé');
-    setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 250);
   }catch(err){ toast(err.message); }
 }
 
@@ -1406,7 +1312,6 @@ async function loadAiStatus(){
   }catch(err){
     wrap.innerHTML = `<div><b>Erreur</b><span>${escapeHtml(err.message)}</span></div>`;
   }
-  refreshAllAiCategoryOptions();
   loadDailyAiDrafts();
 }
 
@@ -1424,7 +1329,6 @@ async function loadDailyAiDrafts(){
         <div><b>${data.configured ? 'Prêt' : 'À configurer'}</b><span>PDF</span></div>
         <div><b>${data.settings?.mode === 'niveau' ? 'Niveau' : 'Module'}</b><span>Rotation</span></div>`;
     }
-    refreshDailyCategoryOptions();
     renderDailyAiDrafts();
   }catch(err){
     if (status) status.innerHTML = `<div><b>Erreur</b><span>${escapeHtml(err.message)}</span></div>`;
@@ -1438,7 +1342,6 @@ async function runDailyAiQcm(){
   setButtonLoading(btn, true, 'Création du PDF...');
   if (result) result.innerHTML = '<div class="pay-note">L’IA prépare le PDF du jour. Cela peut prendre quelques secondes.</div>';
   try{
-    refreshDailyCategoryOptions();
     const payload = {
       count:50,
       mode:$('#aiDailyMode')?.value || 'module',
@@ -1492,9 +1395,9 @@ function renderDailyAiDrafts(){
       <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Télécharge le fichier, vérifie les questions et publie seulement après validation.'}</p>
       <div class="admin-q-actions">
         <button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>
-        ${!(d.orphanResource || d.orphanQuestions) ? `<button class="pause" onclick="publishDailyAiDraft(${idx})">${d.status === 'published' ? 'Synchroniser' : `Publier les ${Number(d.count || 0)} QCM`}</button>` : ''}
+        <button class="pause" onclick="publishDailyAiDraft(${idx})">${d.status === 'published' ? 'Synchroniser' : `Publier les ${Number(d.count || 0)} QCM`}</button>
         ${d.status === 'published' ? `<button class="delete" onclick="unpublishDailyAiDraft(${idx})">Supprimer chez candidat</button>` : ''}
-        ${!(d.orphanResource || d.orphanQuestions) ? `<button class="delete" onclick="deleteDailyAiDraft(${idx})">${d.status === 'published' ? 'Retirer de l’admin' : 'Supprimer'}</button>` : ''}
+        <button class="delete" onclick="deleteDailyAiDraft(${idx})">${d.status === 'published' ? 'Retirer de l’admin' : 'Supprimer'}</button>
       </div>
     </div>`).join('');
 }
@@ -1540,12 +1443,12 @@ function renderDailyPdfHtml(d){
         <article class="pdf-preview-question">
           <div class="pdf-q-num">${idx + 1}.</div>
           <div class="pdf-q-body">
-            <h3>${renderMathText(q.question_text || '')}</h3>
-            <p><b>A.</b> ${renderMathText(q.option_a || '')}</p>
-            <p><b>B.</b> ${renderMathText(q.option_b || '')}</p>
-            <p><b>C.</b> ${renderMathText(q.option_c || '')}</p>
-            <p><b>D.</b> ${renderMathText(q.option_d || '')}</p>
-            <div class="pdf-preview-correction"><b>Réponse : ${dailyAnswerLabel(q.correct_answer)}</b><span>${renderMathText(q.explanation || '')}</span></div>
+            <h3>${escapeHtml(q.question_text || '')}</h3>
+            <p><b>A.</b> ${escapeHtml(q.option_a || '')}</p>
+            <p><b>B.</b> ${escapeHtml(q.option_b || '')}</p>
+            <p><b>C.</b> ${escapeHtml(q.option_c || '')}</p>
+            <p><b>D.</b> ${escapeHtml(q.option_d || '')}</p>
+            <div class="pdf-preview-correction"><b>Réponse : ${dailyAnswerLabel(q.correct_answer)}</b><span>${escapeHtml(q.explanation || '')}</span></div>
           </div>
         </article>`).join('')}
     </div>`;
@@ -1568,8 +1471,8 @@ async function openDailyAiPdf(index){
     currentDailyPdfIndex = index;
     $('#dailyPdfTitle') && ($('#dailyPdfTitle').textContent = d.title || 'QCM quotidien');
     $('#dailyPdfMeta') && ($('#dailyPdfMeta').textContent = `${d.date || ''} · ${d.category || ''} · ${d.level || ''} · ${Number(d.count || 0)} QCM`);
+    $('#dailyPublishCategory') && ($('#dailyPublishCategory').value = d.category || 'Culture générale');
     $('#dailyPublishLevel') && ($('#dailyPublishLevel').value = d.level || 'Concours');
-    refreshDailyPublishCategoryOptions(d.category || 'Culture générale');
     $('#dailyPublishPremium') && ($('#dailyPublishPremium').checked = Boolean(d.is_premium));
     renderDailyPdfHtml(d);
     show('pdfreview');
@@ -1620,9 +1523,8 @@ async function publishDailyAiDraft(index){
   const d = aiDailyDraftCache[index];
   if (!d) return;
   const reviewOpen = currentDailyPdfIndex === index && $('#pdfreview')?.classList.contains('active');
-  const level = reviewOpen ? ($('#dailyPublishLevel')?.value || d.level || 'Concours') : (d.level || 'Concours');
-  if (reviewOpen) refreshDailyPublishCategoryOptions();
   const category = reviewOpen ? ($('#dailyPublishCategory')?.value || d.category || 'Culture générale') : (d.category || 'Culture générale');
+  const level = reviewOpen ? ($('#dailyPublishLevel')?.value || d.level || 'Concours') : (d.level || 'Concours');
   const isPremium = reviewOpen ? Boolean($('#dailyPublishPremium')?.checked) : Boolean(d.is_premium);
   const destination = isPremium ? 'Premium' : 'Gratuit';
   const verb = d.status === 'published' ? 'Synchroniser' : 'Publier';
@@ -1634,20 +1536,16 @@ async function publishDailyAiDraft(index){
     });
     const result = $('#aiDailyResult');
     if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM disponibles dans <b>Nouveaux QCM → ${destination}</b> ✅${data.resource ? '<br>PDF ajouté dans <b>Documents & fichiers</b> ✅' : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${isPremium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir les QCM ${destination}</button> <button class="mini-btn" onclick="openResourcesFromAdmin()" style="margin-top:8px">Ouvrir Documents</button></div>`;
-    if (data.draft) aiDailyDraftCache[index] = data.draft;
-    else aiDailyDraftCache[index] = { ...d, status:'published', is_premium:isPremium, category, level, published_at:new Date().toISOString() };
     showPublishedDailyDrafts = false;
-    renderDailyAiDrafts();
+    await loadDailyAiDrafts();
     if (currentDailyPdfIndex === index && $('#pdfreview')?.classList.contains('active')) closeDailyPdfReview();
+    await loadAdminQuestions();
+    await loadSupabaseQuestions();
+    await loadPublishedQcm(isPremium ? 'premium' : 'free');
+    await loadResources();
+    if (isAdmin()) await loadAdminResources().catch(()=>{});
+    renderFormations(currentFormFilter);
     toast(data.alreadyPublished ? 'Synchronisation terminée ✅' : 'QCM quotidiens publiés ✅');
-    setTimeout(()=>Promise.allSettled([
-      loadDailyAiDrafts(),
-      loadAdminQuestions(),
-      loadSupabaseQuestions(),
-      loadPublishedQcm(isPremium ? 'premium' : 'free'),
-      loadResources(),
-      isAdmin() ? loadAdminResources() : Promise.resolve()
-    ]).then(()=>renderFormations(currentFormFilter)), 350);
   }catch(err){ toast(err.message); }
 }
 
@@ -1656,23 +1554,14 @@ async function unpublishDailyAiDraft(index){
   if (!d || d.status !== 'published') return;
   if (!confirm('Supprimer chez le candidat ? Les QCM disparaîtront de Nouveaux QCM et le PDF disparaîtra de Documents & fichiers. Le PDF restera dans l’admin pour correction ou republication.')) return;
   try{
-    toast('Suppression en cours...');
     const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/public', { method:'DELETE' });
-    if (data.draft) aiDailyDraftCache[index] = data.draft;
-    else aiDailyDraftCache[index] = { ...d, status:'draft', published_at:'', resource_id:'' };
-    renderDailyAiDrafts();
-    publishedQcmCache = publishedQcmCache.filter(set => set.title !== d.title);
-    resourceCache = resourceCache.filter(r => r.title !== d.title);
-    renderPublishedQcm();
+    await loadDailyAiDrafts();
+    await loadPublishedQcm(currentPublishedQcmFilter || 'all').catch(()=>{});
+    await loadResources().catch(()=>{});
+    if (isAdmin()) await loadAdminResources().catch(()=>{});
     const result = $('#aiDailyResult');
     if (result) result.innerHTML = `<div class="pay-note success">Contenu retiré côté candidat ✅ ${Number(data.removedQuestions || 0)} QCM retiré${Number(data.removedQuestions || 0)>1?'s':''}. Le PDF peut être corrigé ou supprimé dans l’admin.</div>`;
     toast('Supprimé chez le candidat ✅');
-    setTimeout(()=>Promise.allSettled([
-      loadDailyAiDrafts(),
-      loadPublishedQcm(currentPublishedQcmFilter || 'all'),
-      loadResources(),
-      isAdmin() ? loadAdminResources() : Promise.resolve()
-    ]), 350);
   }catch(err){ toast(err.message); }
 }
 
@@ -1684,12 +1573,14 @@ async function deleteDailyAiDraft(index){
     : 'Supprimer ce PDF quotidien ?';
   if (!confirm(msg)) return;
   try{
-    toast('Suppression en cours...');
     await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id), { method:'DELETE' });
-    aiDailyDraftCache.splice(index, 1);
-    renderDailyAiDrafts();
-    setTimeout(()=>Promise.allSettled([loadDailyAiDrafts(), d.status === 'published' ? loadResources() : Promise.resolve()]), 350);
-    toast(d.status === 'published' ? 'Retiré de l’administration ✅' : 'PDF supprimé');
+    await loadDailyAiDrafts();
+    if (d.status === 'published'){
+      await loadResources().catch(()=>{});
+      toast('Retiré de l’administration ✅');
+    } else {
+      toast('PDF supprimé');
+    }
   }catch(err){ toast(err.message); }
 }
 
@@ -1704,17 +1595,14 @@ async function generateAiQcm(){
     : '<div class="pay-note">L’IA prépare des propositions à relire avant publication.</div>';
   if (list) list.innerHTML = '<div class="empty">Génération en cours...</div>';
   try{
-    refreshAiCategoryOptions();
-    const publicationNameInput = ($('#aiPublicationName')?.value || '').trim();
     const payload = {
       category: $('#aiCategory')?.value || 'Culture générale',
       level: $('#aiLevel')?.value || 'Concours',
       theme: $('#aiTheme')?.value || '',
       count: Number($('#aiCount')?.value || 5),
-      is_premium: Boolean($('#aiPremium')?.checked),
-      publication_name: publicationNameInput
+      is_premium: Boolean($('#aiPremium')?.checked)
     };
-    const publicationName = (publicationNameInput || payload.theme || (pdfFile?.name ? pdfFile.name.replace(/\.pdf$/i,'') : '') || ('QCM ' + formatDate(new Date().toISOString()))).trim();
+    const publicationName = ($('#aiPublicationName')?.value || payload.theme || (pdfFile?.name ? pdfFile.name.replace(/\.pdf$/i,'') : '') || ('QCM ' + formatDate(new Date().toISOString()))).trim();
     let data;
     if (pdfFile){
       const headers = authHeaders({
@@ -1724,8 +1612,7 @@ async function generateAiQcm(){
         'X-Ai-Level': encodeURIComponent(payload.level),
         'X-Ai-Theme': encodeURIComponent(payload.theme || publicationName),
         'X-Ai-Count': String(payload.count),
-        'X-Ai-Is-Premium': String(Boolean(payload.is_premium)),
-        'X-Ai-Publication-Name': encodeURIComponent(publicationName)
+        'X-Ai-Is-Premium': String(Boolean(payload.is_premium))
       });
       const res = await fetch('/api/admin/ai/qcm-pdf', { method:'POST', headers, body:pdfFile });
       data = await res.json().catch(()=>({}));
@@ -1760,10 +1647,11 @@ function renderAiDrafts(){
         ${q.is_premium ? '<span class="premium">Premium abonnés</span>' : '<span class="free">Gratuit</span>'}
         ${q._published ? '<span class="active">Publié</span>' : '<span>Proposition</span>'}
       </div>
-      <h4>${renderMathText(q.question_text || '')}</h4>
+      <h4>${escapeHtml(q.question_text || '')}</h4>
       <p class="admin-destination-note">Nom du QCM : <b>${escapeHtml(q.source || 'QCM')}</b></p>
-      <p class="admin-help"><b>A.</b> ${renderMathText(q.option_a)} · <b>B.</b> ${renderMathText(q.option_b)} · <b>C.</b> ${renderMathText(q.option_c)} · <b>D.</b> ${renderMathText(q.option_d)}</p>
-      <p class="admin-help"><b>Correction :</b> ${renderMathText(q.explanation || '')}</p>
+      <p class="admin-destination-note">Destination après validation : <b>${qcmDestinationText(q)}</b></p>
+      <p class="admin-help"><b>A.</b> ${escapeHtml(q.option_a)} · <b>B.</b> ${escapeHtml(q.option_b)} · <b>C.</b> ${escapeHtml(q.option_c)} · <b>D.</b> ${escapeHtml(q.option_d)}</p>
+      <p class="admin-help"><b>Correction :</b> ${escapeHtml(q.explanation || '')}</p>
       <div class="admin-q-actions">
         <button class="edit" onclick="editAiDraft(${idx})">Relire / Modifier</button>
         <button class="pause" onclick="publishAiDraft(${idx})" ${q._published ? 'disabled' : ''}>${q.is_premium ? 'Publier en Premium' : 'Publier en Gratuit'}</button>
@@ -1796,7 +1684,6 @@ async function publishAiDraft(index){
   const q = aiDraftCache[index];
   if (!q || q._published) return;
   try{
-    toast('Publication en cours...');
     await adminFetch('/api/admin/questions', { method:'POST', body:JSON.stringify({
       category:q.category,
       level:q.level,
@@ -1810,11 +1697,13 @@ async function publishAiDraft(index){
     }) });
     q._published = true;
     renderAiDrafts();
+    await loadAdminQuestions();
+    await loadSupabaseQuestions();
+    renderFormations(currentFormFilter);
     const destination = qcmDestinationText(q);
     const result = $('#aiResult');
     if (result) result.innerHTML = `<div class="pay-note success">QCM ajouté dans <b>Mes QCM → ${destination}</b> ✅<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
     toast('QCM publié dans ' + destination + ' ✅');
-    setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 250);
   }catch(err){ toast(err.message); }
 }
 

@@ -205,6 +205,8 @@ function renderMathText(value){
     .replace(/\\\[(.*?)\\\]/g, '$1')
     .replace(/\\times/g, '×')
     .replace(/\\cdot/g, '·')
+    .replace(/([0-9A-Za-z)\]])\s*\*\s*([0-9A-Za-z(])/g, '$1 × $2')
+    .replace(/([0-9A-Za-z)\]])\s*\*\s*([0-9A-Za-z(])/g, '$1 × $2')
     .replace(/\bplus ou moins\b/gi, '±')
     .replace(/<=/g, '≤')
     .replace(/>=/g, '≥')
@@ -1120,9 +1122,11 @@ function logoutUser(){
 
 /* ---------- administration ---------- */
 let adminQuestionCache = [];
+let adminQuestionSelectedIds = new Set();
 let adminResourceCache = [];
 let adminNewsCache = [];
 let aiDraftCache = [];
+let aiDraftSelectedIndexes = new Set();
 let aiDailyDraftCache = [];
 let showPublishedDailyDrafts = false;
 let currentDailyPdfIndex = -1;
@@ -1268,14 +1272,123 @@ function qcmDestinationText(q){
 
 function setAdminQuestionFilter(filter, el){
   adminQuestionFilter = filter || 'all';
+  adminQuestionSelectedIds.clear();
   $$('#adminQuestionFilterRow .chip').forEach(c=>c.classList.remove('on'));
   if (el) el.classList.add('on');
   loadAdminQuestions();
 }
 
+function adminQuestionItemsForFilter(){
+  const allItems = adminQuestionCache.map((q, idx)=>({q, idx}));
+  if (adminQuestionFilter === 'free') return allItems.filter(item => !item.q.is_premium && item.q.is_active !== false);
+  if (adminQuestionFilter === 'premium') return allItems.filter(item => item.q.is_premium && item.q.is_active !== false);
+  if (adminQuestionFilter === 'hidden') return allItems.filter(item => item.q.is_active === false);
+  return allItems;
+}
+
+function selectedAdminQuestions(){
+  return adminQuestionCache.filter(q => adminQuestionSelectedIds.has(q.id));
+}
+
+function renderAdminBulkBar(visibleItems){
+  const selectedCount = selectedAdminQuestions().length;
+  const visibleIds = (visibleItems || []).map(item => item.q.id).filter(Boolean);
+  const allVisibleSelected = visibleIds.length && visibleIds.every(id => adminQuestionSelectedIds.has(id));
+  return `
+    <div class="admin-bulk-bar">
+      <label><input type="checkbox" ${allVisibleSelected ? 'checked' : ''} onchange="toggleAdminVisibleSelection(this.checked)"> Sélectionner cette liste</label>
+      <span><b>${selectedCount}</b> sélectionné${selectedCount>1?'s':''}</span>
+      <button class="mini-btn" onclick="bulkAdminQuestions('publish')" ${selectedCount ? '' : 'disabled'}>Publier</button>
+      <button class="mini-btn" onclick="bulkAdminQuestions('hide')" ${selectedCount ? '' : 'disabled'}>Masquer</button>
+      <button class="mini-btn danger" onclick="bulkAdminQuestions('delete')" ${selectedCount ? '' : 'disabled'}>Supprimer</button>
+      ${selectedCount ? '<button class="mini-btn" onclick="clearAdminQuestionSelection()">Annuler</button>' : ''}
+    </div>`;
+}
+
+function renderAdminQuestionListFromCache(){
+  const wrap = $('#adminQuestionList');
+  if (!wrap) return;
+  adminQuestionSelectedIds = new Set([...adminQuestionSelectedIds].filter(id => adminQuestionCache.some(q => q.id === id)));
+  const allItems = adminQuestionCache.map((q, idx)=>({q, idx}));
+  const freeItems = allItems.filter(item => !item.q.is_premium && item.q.is_active !== false);
+  const premiumItems = allItems.filter(item => item.q.is_premium && item.q.is_active !== false);
+  const hiddenItems = allItems.filter(item => item.q.is_active === false);
+  const summary = $('#adminQuestionSummary');
+  if (summary){
+    summary.innerHTML = `
+      <div><b>${freeItems.length}</b><span>Gratuits actifs</span></div>
+      <div><b>${premiumItems.length}</b><span>Premium actifs</span></div>
+      <div><b>${hiddenItems.length}</b><span>Masqués</span></div>`;
+  }
+  if (!adminQuestionCache.length){
+    wrap.innerHTML = '<div class="empty">Aucun QCM ajouté pour le moment.</div>';
+    return;
+  }
+  let html = '';
+  if (adminQuestionFilter === 'free'){
+    html = renderAdminQuestionGroup('QCM gratuits', 'Ces questions sont visibles par tous les candidats.', freeItems, 'free');
+  }else if (adminQuestionFilter === 'premium'){
+    html = renderAdminQuestionGroup('QCM Premium', 'Ces questions sont réservées aux abonnés Premium.', premiumItems, 'premium');
+  }else if (adminQuestionFilter === 'hidden'){
+    html = renderAdminQuestionGroup('QCM masqués', 'Ces questions existent mais ne sont pas visibles par les candidats.', hiddenItems, 'hidden');
+  }else{
+    html = renderAdminQuestionGroup('QCM gratuits', 'Visible par tous les candidats.', freeItems, 'free')
+      + renderAdminQuestionGroup('QCM Premium', 'Visible uniquement après abonnement Premium.', premiumItems, 'premium')
+      + renderAdminQuestionGroup('QCM masqués', 'Non visibles tant qu’ils restent masqués.', hiddenItems, 'hidden');
+  }
+  const visibleItems = adminQuestionItemsForFilter();
+  wrap.innerHTML = renderAdminBulkBar(visibleItems) + (html || '<div class="empty">Aucun QCM dans ce filtre.</div>');
+}
+
+function toggleAdminQuestionSelection(id, checked){
+  if (checked) adminQuestionSelectedIds.add(id);
+  else adminQuestionSelectedIds.delete(id);
+  renderAdminQuestionListFromCache();
+}
+
+function toggleAdminVisibleSelection(checked){
+  adminQuestionItemsForFilter().forEach(({q}) => {
+    if (!q.id) return;
+    if (checked) adminQuestionSelectedIds.add(q.id);
+    else adminQuestionSelectedIds.delete(q.id);
+  });
+  renderAdminQuestionListFromCache();
+}
+
+function clearAdminQuestionSelection(){
+  adminQuestionSelectedIds.clear();
+  renderAdminQuestionListFromCache();
+}
+
+async function bulkAdminQuestions(action){
+  const ids = [...adminQuestionSelectedIds];
+  if (!ids.length) return toast('Sélectionne au moins un QCM');
+  const label = action === 'publish' ? 'publier' : (action === 'hide' ? 'masquer' : 'supprimer');
+  if (action === 'delete' && !confirm(`Supprimer définitivement ${ids.length} QCM sélectionné${ids.length>1?'s':''} ?`)) return;
+  try{
+    toast(`${ids.length} QCM : ${label}...`);
+    if (action === 'delete'){
+      await adminFetch('/api/admin/questions/bulk', { method:'DELETE', body:JSON.stringify({ ids }) });
+      adminQuestionCache = adminQuestionCache.filter(q => !adminQuestionSelectedIds.has(q.id));
+    }else{
+      const isActive = action === 'publish';
+      await adminFetch('/api/admin/questions/bulk/status', { method:'PATCH', body:JSON.stringify({ ids, is_active:isActive }) });
+      adminQuestionCache = adminQuestionCache.map(q => adminQuestionSelectedIds.has(q.id) ? { ...q, is_active:isActive } : q);
+    }
+    adminQuestionSelectedIds.clear();
+    renderAdminQuestionListFromCache();
+    toast(action === 'delete' ? 'QCM supprimés ✅' : (action === 'publish' ? 'QCM publiés ✅' : 'QCM masqués ✅'));
+    setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 300);
+  }catch(err){ toast(err.message); }
+}
+
 function renderAdminQuestionCards(items){
   return items.map(({q, idx})=>`
-    <div class="admin-q-item ${q.is_premium ? 'premium-zone' : 'free-zone'}">
+    <div class="admin-q-item ${q.is_premium ? 'premium-zone' : 'free-zone'} ${adminQuestionSelectedIds.has(q.id) ? 'selected' : ''}">
+      <label class="admin-select-line">
+        <input type="checkbox" ${adminQuestionSelectedIds.has(q.id) ? 'checked' : ''} onchange="toggleAdminQuestionSelection('${escapeHtml(q.id)}', this.checked)">
+        <span>Sélectionner</span>
+      </label>
       <div class="admin-q-meta">
         <span>${escapeHtml(q.category || 'Catégorie')}</span>
         <span>${escapeHtml(q.level || '')}</span>
@@ -1312,34 +1425,7 @@ async function loadAdminQuestions(){
     const search = encodeURIComponent($('#adminSearch')?.value || '');
     const data = await adminFetch('/api/admin/questions?limit=100&search=' + search);
     adminQuestionCache = data.questions || [];
-    const allItems = adminQuestionCache.map((q, idx)=>({q, idx}));
-    const freeItems = allItems.filter(item => !item.q.is_premium && item.q.is_active !== false);
-    const premiumItems = allItems.filter(item => item.q.is_premium && item.q.is_active !== false);
-    const hiddenItems = allItems.filter(item => item.q.is_active === false);
-    const summary = $('#adminQuestionSummary');
-    if (summary){
-      summary.innerHTML = `
-        <div><b>${freeItems.length}</b><span>Gratuits actifs</span></div>
-        <div><b>${premiumItems.length}</b><span>Premium actifs</span></div>
-        <div><b>${hiddenItems.length}</b><span>Masqués</span></div>`;
-    }
-    if (!adminQuestionCache.length){
-      wrap.innerHTML = '<div class="empty">Aucun QCM ajouté pour le moment.</div>';
-      return;
-    }
-    let html = '';
-    if (adminQuestionFilter === 'free'){
-      html = renderAdminQuestionGroup('QCM gratuits', 'Ces questions sont visibles par tous les candidats.', freeItems, 'free');
-    }else if (adminQuestionFilter === 'premium'){
-      html = renderAdminQuestionGroup('QCM Premium', 'Ces questions sont réservées aux abonnés Premium.', premiumItems, 'premium');
-    }else if (adminQuestionFilter === 'hidden'){
-      html = renderAdminQuestionGroup('QCM masqués', 'Ces questions existent mais ne sont pas visibles par les candidats.', hiddenItems, 'hidden');
-    }else{
-      html = renderAdminQuestionGroup('QCM gratuits', 'Visible par tous les candidats.', freeItems, 'free')
-        + renderAdminQuestionGroup('QCM Premium', 'Visible uniquement après abonnement Premium.', premiumItems, 'premium')
-        + renderAdminQuestionGroup('QCM masqués', 'Non visibles tant qu’ils restent masqués.', hiddenItems, 'hidden');
-    }
-    wrap.innerHTML = html || '<div class="empty">Aucun QCM dans ce filtre.</div>';
+    renderAdminQuestionListFromCache();
   }catch(err){
     wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
   }
@@ -1370,11 +1456,12 @@ async function toggleAdminQuestion(index){
   const q = adminQuestionCache[index];
   if (!q) return;
   try{
-    await adminFetch('/api/admin/questions/' + encodeURIComponent(q.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:!q.is_active}) });
-    await loadAdminQuestions();
-    await loadSupabaseQuestions();
-    renderFormations(currentFormFilter);
-    toast(!q.is_active ? 'QCM visible' : 'QCM masqué');
+    const nextActive = !q.is_active;
+    await adminFetch('/api/admin/questions/' + encodeURIComponent(q.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:nextActive}) });
+    q.is_active = nextActive;
+    renderAdminQuestionListFromCache();
+    setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 250);
+    toast(nextActive ? 'QCM visible' : 'QCM masqué');
   }catch(err){ toast(err.message); }
 }
 
@@ -1386,8 +1473,8 @@ async function deleteAdminQuestion(index){
     toast('Suppression en cours...');
     await adminFetch('/api/admin/questions/' + encodeURIComponent(q.id), { method:'DELETE' });
     adminQuestionCache.splice(index, 1);
-    const list = adminQuestionCache.map((q, idx)=>({q, idx}));
-    $('#adminQuestionList') && ($('#adminQuestionList').innerHTML = renderAdminQuestionCards(list));
+    adminQuestionSelectedIds.delete(q.id);
+    renderAdminQuestionListFromCache();
     toast('QCM supprimé');
     setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 250);
   }catch(err){ toast(err.message); }
@@ -1734,6 +1821,7 @@ async function generateAiQcm(){
       data = await adminFetch('/api/admin/ai/qcm', { method:'POST', body:JSON.stringify(payload) });
     }
     aiDraftCache = (data.questions || []).map(q => ({...q, source:publicationName, is_premium:payload.is_premium, is_active:true, _published:false}));
+    aiDraftSelectedIndexes.clear();
     if (result) result.innerHTML = `<div class="pay-note success">${aiDraftCache.length} proposition${aiDraftCache.length>1?'s':''} prête${aiDraftCache.length>1?'s':''}${pdfFile ? ' depuis le PDF' : ''} ✅</div>`;
     renderAiDrafts();
   }catch(err){
@@ -1749,11 +1837,24 @@ function renderAiDrafts(){
   const wrap = $('#aiDraftList');
   if (!wrap) return;
   if (!aiDraftCache.length){ wrap.innerHTML = ''; return; }
+  aiDraftSelectedIndexes = new Set([...aiDraftSelectedIndexes].filter(idx => aiDraftCache[idx] && !aiDraftCache[idx]._published));
+  const pendingIndexes = aiDraftCache.map((q, idx)=>q._published ? -1 : idx).filter(idx => idx >= 0);
+  const selectedCount = aiDraftSelectedIndexes.size;
+  const allPendingSelected = pendingIndexes.length && pendingIndexes.every(idx => aiDraftSelectedIndexes.has(idx));
   const publishAll = aiDraftCache.some(q => !q._published)
     ? '<button class="btn btn-green btn-block" onclick="publishAllAiDrafts()" style="margin-bottom:10px">Publier les QCM relus</button>'
     : '';
-  wrap.innerHTML = publishAll + aiDraftCache.map((q, idx)=>`
-    <div class="admin-q-item ${q._published ? 'ai-published' : ''}">
+  const bulkBar = `
+    <div class="admin-bulk-bar ai-bulk-bar">
+      <label><input type="checkbox" ${allPendingSelected ? 'checked' : ''} onchange="toggleAllAiDraftSelection(this.checked)"> Sélectionner les propositions</label>
+      <span><b>${selectedCount}</b> sélectionnée${selectedCount>1?'s':''}</span>
+      <button class="mini-btn" onclick="bulkAiDrafts('publish')" ${selectedCount ? '' : 'disabled'}>Publier sélection</button>
+      <button class="mini-btn danger" onclick="bulkAiDrafts('remove')" ${selectedCount ? '' : 'disabled'}>Retirer sélection</button>
+      ${selectedCount ? '<button class="mini-btn" onclick="clearAiDraftSelection()">Annuler</button>' : ''}
+    </div>`;
+  wrap.innerHTML = publishAll + bulkBar + aiDraftCache.map((q, idx)=>`
+    <div class="admin-q-item ${q._published ? 'ai-published' : ''} ${aiDraftSelectedIndexes.has(idx) ? 'selected' : ''}">
+      ${!q._published ? `<label class="admin-select-line"><input type="checkbox" ${aiDraftSelectedIndexes.has(idx) ? 'checked' : ''} onchange="toggleAiDraftSelection(${idx}, this.checked)"><span>Sélectionner</span></label>` : ''}
       <div class="admin-q-meta">
         <span>${escapeHtml(q.category || 'Catégorie')}</span>
         <span>${escapeHtml(q.level || '')}</span>
@@ -1770,6 +1871,42 @@ function renderAiDrafts(){
         <button class="delete" onclick="removeAiDraft(${idx})">Retirer</button>
       </div>
     </div>`).join('');
+}
+
+function toggleAiDraftSelection(index, checked){
+  if (checked) aiDraftSelectedIndexes.add(index);
+  else aiDraftSelectedIndexes.delete(index);
+  renderAiDrafts();
+}
+
+function toggleAllAiDraftSelection(checked){
+  aiDraftCache.forEach((q, idx) => {
+    if (q._published) return;
+    if (checked) aiDraftSelectedIndexes.add(idx);
+    else aiDraftSelectedIndexes.delete(idx);
+  });
+  renderAiDrafts();
+}
+
+function clearAiDraftSelection(){
+  aiDraftSelectedIndexes.clear();
+  renderAiDrafts();
+}
+
+async function bulkAiDrafts(action){
+  const indexes = [...aiDraftSelectedIndexes].filter(idx => aiDraftCache[idx] && !aiDraftCache[idx]._published).sort((a,b)=>a-b);
+  if (!indexes.length) return toast('Sélectionne au moins une proposition');
+  if (action === 'remove'){
+    aiDraftCache = aiDraftCache.filter((_, idx) => !aiDraftSelectedIndexes.has(idx));
+    aiDraftSelectedIndexes.clear();
+    renderAiDrafts();
+    return toast('Propositions retirées ✅');
+  }
+  for (const idx of indexes){
+    if (aiDraftCache[idx] && !aiDraftCache[idx]._published) await publishAiDraft(idx);
+  }
+  aiDraftSelectedIndexes.clear();
+  renderAiDrafts();
 }
 
 function editAiDraft(index){
@@ -1826,6 +1963,7 @@ async function publishAllAiDrafts(){
 
 function removeAiDraft(index){
   aiDraftCache.splice(index, 1);
+  aiDraftSelectedIndexes.clear();
   renderAiDrafts();
 }
 
