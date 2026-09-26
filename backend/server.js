@@ -2758,7 +2758,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'published-history-fix-1',
+    build: 'android-offline-1',
     time: new Date().toISOString()
   });
 });

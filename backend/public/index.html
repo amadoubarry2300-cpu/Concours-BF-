@@ -6,9 +6,14 @@
 <title>Réussite Concours BF — Prépare tes examens et concours</title>
 <meta name="description" content="Prépare le CEP, BEPC, BAC et les concours professionnels avec plus de 5000 questions corrigées et expliquées. Spécial Burkina Faso.">
 <meta name="theme-color" content="#0e9f6e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Réussite BF">
+<link rel="manifest" href="/manifest.webmanifest?v=android-offline-1">
+<link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=published-history-fix-1">
+<link rel="stylesheet" href="css/styles.css?v=android-offline-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -18,6 +23,7 @@
   <header class="topbar" id="topbar">
     <div class="brand"><img class="brand-logo-img" src="img/logo.png" alt="Logo Réussite Concours BF"><span class="brand-title"><span>Réussite</span><em>Concours BF</em></span></div>
     <div class="top-actions">
+      <button class="install-chip" id="installAppBtn" onclick="installAndroidApp()" style="display:none">📲 Installer</button>
       <button class="account-chip" id="accountChip" onclick="openAccountMenu()">👤 Connexion</button>
       <div class="streak-pill">🔥 <span id="streakVal">0</span> j</div>
     </div>
@@ -1205,7 +1211,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=published-history-fix-1"></script>
-<script src="js/app.js?v=published-history-fix-1"></script>
+<script src="js/questions.js?v=android-offline-1"></script>
+<script src="js/app.js?v=android-offline-1"></script>
 </body>
 </html>

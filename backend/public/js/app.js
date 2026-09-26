@@ -3413,6 +3413,45 @@ function initDraggableWhatsapp(){
   });
 }
 
+
+let deferredInstallPrompt = null;
+
+function setupAndroidInstall(){
+  const btn = $('#installAppBtn');
+  if (!btn) return;
+  window.addEventListener('beforeinstallprompt', (event)=>{
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    btn.style.display = 'inline-flex';
+  });
+  window.addEventListener('appinstalled', ()=>{
+    deferredInstallPrompt = null;
+    btn.style.display = 'none';
+    toast('Application installée ✅');
+  });
+}
+
+async function installAndroidApp(){
+  if (!deferredInstallPrompt){
+    toast('Sur Android : menu Chrome → Installer l’application.');
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  const choice = await deferredInstallPrompt.userChoice.catch(()=>null);
+  deferredInstallPrompt = null;
+  $('#installAppBtn') && ($('#installAppBtn').style.display = 'none');
+  if (choice?.outcome === 'accepted') toast('Installation lancée ✅');
+}
+
+function registerOfflineApp(){
+  if (!('serviceWorker' in navigator)) return;
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('/sw.js?v=android-offline-1')
+      .then(reg => reg.update().catch(()=>{}))
+      .catch(err => console.warn('Service worker:', err.message));
+  });
+}
+
 /* ---------- init ---------- */
 window.addEventListener('scroll', ()=>{
   $('#topbar').classList.toggle('scrolled', window.scrollY>10);
@@ -3424,6 +3463,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
   renderFormations('Tout');
   renderAccount();
   initDraggableWhatsapp();
+  setupAndroidInstall();
+  registerOfflineApp();
   setTimeout(openOffer, 15000);
   if (location.hash === '#subscription'){
     show('subscription');

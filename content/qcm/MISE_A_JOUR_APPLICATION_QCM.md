@@ -459,3 +459,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Les libellés d’archive admin ont été retirés pour éviter la confusion.
 - Les contenus restent visibles côté candidat après publication ; seule la suppression les retire partout.
 - Les propositions IA publiées disparaissent de la liste de relecture et se retrouvent dans l’historique publié.
+
+## 2026-09-26 — Application Android installable et hors connexion
+
+- Ajout du manifeste d’application installable Android/PWA.
+- Ajout d’un service worker : l’application, les QCM, documents et actualités déjà ouverts restent disponibles hors connexion.
+- Les contenus publiés par l’admin sont récupérés automatiquement dès que le candidat retrouve internet, avec fallback sur la dernière version en cache.
+- Ajout d’un bouton “Installer” sur Android quand le navigateur le propose.
