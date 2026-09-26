@@ -333,3 +333,85 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Les PDF IA restent des brouillons à relire : rien n’est publié automatiquement côté candidat.
 - Après vérification, l’admin peut publier les QCM du PDF en Gratuit ou Premium.
 - Ajout d’une route cron quotidienne pour préparer automatiquement le PDF du jour si la clé IA et le stockage sont configurés.
+
+## 2026-09-24 — PDF QCM premium
+
+- Amélioration du PDF quotidien : design plus professionnel avec en-tête Réussite Concours BF, logo, date, module, niveau et cartes de questions.
+- Suppression des mentions IA dans le document PDF destiné à la relecture.
+- Correction de l’encodage des accents français dans le PDF.
+
+## 2026-09-24 — PDF premium et vérification intégrée
+
+- Nouveau modèle PDF quotidien inspiré des supports de formation : couverture colorée, logo, titre, date, module, niveau et nombre de QCM.
+- Les pages QCM sont mieux structurées pour la relecture avec questions, réponses proposées, bonne réponse et correction.
+- Le document PDF ne mentionne plus l’IA.
+- Ajout d’un écran de vérification PDF dans l’application pour ouvrir le PDF, le relire, le télécharger ou publier les QCM validés.
+
+## 2026-09-24 — Correction aperçu PDF et publication ciblée
+
+- L’aperçu du PDF ne dépend plus du lecteur PDF du navigateur : un aperçu intégré lisible s’ouvre directement dans l’application.
+- Ajout d’un bouton séparé **Ouvrir le PDF** pour afficher le fichier complet si le navigateur le permet.
+- Agrandissement des écritures dans les pages QCM pour se rapprocher du format du PDF de référence.
+- Renforcement du prompt : les QCM quotidiens doivent être de haut niveau, avec raisonnement et pièges réalistes.
+- Avant publication, l’admin choisit maintenant la catégorie, le niveau et Gratuit/Premium.
+
+## 2026-09-24 — QCM stricts, 50 questions et veille officielle
+
+- Le PDF quotidien prépare maintenant **50 QCM** au lieu de 20.
+- Ajout d’une vérification stricte avant création du PDF : blocage des commentaires internes comme “attention”, “à vérifier”, “brouillon” ou “IA” dans les questions/corrections.
+- Ajout d’un contrôle de non-répétition : les QCM générés sont comparés à la banque locale, aux QCM Supabase et aux anciens brouillons pour éviter les doublons ou reformulations trop proches.
+- La publication est bloquée si un QCM du PDF existe déjà ou ressemble trop à une question présente dans l’application.
+- La mention “Document de révision à vérifier avant publication” a été retirée du document et remplacée par une formulation neutre de préparation.
+- La veille actualités consulte davantage de sources officielles du Burkina Faso, prépare des actualités masquées pour validation admin et tente de joindre automatiquement le communiqué PDF officiel quand il est disponible.
+- Ajout d’une route cron de veille officielle quotidienne pour préparer les communiqués récents sans publication automatique.
+
+## 2026-09-24 — Correctif génération 50 QCM
+
+- La génération quotidienne ne s’arrête plus après un lot partiellement validé.
+- Les 50 QCM sont préparés par petits lots mieux ciblés pour éviter les réponses tronquées et augmenter le nombre de QCM fiables.
+- Les anciennes questions de la même catégorie sont davantage prises en compte pour éviter les répétitions, sans bloquer abusivement les questions réellement différentes.
+
+## 2026-09-24 — Fiabilisation finale des 50 QCM
+
+- La liste anti-répétition transmise au modèle est raccourcie pour éviter de saturer la génération.
+- Les QCM sont produits par lots plus efficaces avec contrôle interne demandé au modèle et contrôle local strict conservé.
+- Le mot “attention” n’est plus rejeté quand il fait partie d’un vrai thème, mais les commentaires internes du type “attention,” restent bloqués.
+
+## 2026-09-24 — Documents PDF quotidiens visibles
+
+- Les PDF quotidiens déjà publiés apparaissent automatiquement dans **Documents & fichiers**, même s’ils ont été publiés avant la synchronisation Documents.
+- Le téléchargement public des PDF quotidiens publiés utilise le stockage du brouillon validé si le document n’a pas encore été copié dans l’index Documents.
+
+## 2026-09-24 — Historique PDF admin
+
+- Les PDF quotidiens déjà publiés sont masqués par défaut dans l’administration afin de garder l’espace propre.
+- Un bouton **Voir l’historique publié** permet de les revoir au besoin.
+- Retirer un PDF publié de l’historique admin conserve les QCM et le document côté candidat.
+
+## 2026-09-24 — Suppression côté candidat
+
+- Ajout d’un bouton **Supprimer chez candidat** dans l’historique des PDF quotidiens publiés.
+- Cette action retire le groupe de QCM de **Nouveaux QCM** et le PDF de **Documents & fichiers**.
+- Le PDF reste disponible dans l’administration pour correction, republication ou suppression complète.
+
+## 2026-09-24 — Niveau prioritaire et historique multi-PDF
+
+- Les matières proposées dépendent maintenant du niveau sélectionné : par exemple **CEP** ne propose plus **Physique-Chimie**.
+- La génération quotidienne garde plusieurs PDF le même jour si le niveau ou la matière change ; un nouveau PDF ne remplace plus les autres PDF du jour.
+- L’historique admin et Documents récupèrent aussi les PDF quotidiens déjà publiés qui existent dans Documents ou dans les QCM publiés mais avaient disparu de la liste IA.
+
+## 2026-09-25 — Formules lisibles et IA mieux ciblée
+
+- Les QCM affichent maintenant les puissances, racines, fractions et symboles mathématiques/scientifiques de façon lisible dans l’application.
+- Les textes techniques inutiles comme **Destination après validation** ont été retirés des propositions IA.
+- Le formulaire IA est mieux respecté : nom du QCM, thème, catégorie et niveau guident davantage la génération.
+- Les actions publier/supprimer mettent à jour l’écran plus rapidement, puis rechargent les listes en arrière-plan.
+
+## 2026-09-26 — Sélection multiple admin et crons IA
+
+- Ajout de cases de sélection dans **Mes QCM** côté administration.
+- Possibilité de publier, masquer ou supprimer plusieurs QCM sélectionnés en une seule action.
+- Les propositions IA peuvent aussi être sélectionnées pour publier ou retirer seulement une partie du lot.
+- Les multiplications écrites avec `*` sont affichées et normalisées en `×` dans les contenus éducatifs.
+- Les crons IA acceptent correctement les appels officiels Vercel Cron même lorsqu’un secret cron est configuré.
+- Les horaires quotidiens IA QCM et veille officielle sont réglés tôt le matin pour préparer les contenus à relire.
