@@ -44,6 +44,7 @@ const LOGIN_LOCK_MINUTES = Number(process.env.LOGIN_LOCK_MINUTES || 15);
 const RESOURCE_BUCKET = process.env.SUPABASE_RESOURCE_BUCKET || 'reussite-concours-resources';
 const RESOURCE_INDEX_PATH = 'resources/index.json';
 const NEWS_INDEX_PATH = 'news/index.json';
+const QCM_ADMIN_ARCHIVE_PATH = 'questions/admin-archive.json';
 const MAX_RESOURCE_FILE_BYTES = Number(process.env.MAX_RESOURCE_FILE_BYTES || 4 * 1024 * 1024);
 const SMTP_HOST = process.env.SMTP_HOST || '';
 const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
@@ -268,6 +269,52 @@ async function saveResourceIndex(resources){
   await uploadResourceObject(RESOURCE_INDEX_PATH, body, 'application/json; charset=utf-8');
 }
 
+async function loadAdminQuestionArchive(){
+  try{
+    const file = await downloadResourceObject(QCM_ADMIN_ARCHIVE_PATH);
+    const data = JSON.parse(file.buffer.toString('utf8') || '[]');
+    const ids = Array.isArray(data) ? data : (Array.isArray(data?.ids) ? data.ids : []);
+    return new Set(ids.map(id => cleanText(id, 80)).filter(id => /^[0-9a-f-]{20,80}$/i.test(id)));
+  }catch(err){
+    if (err.status === 404 || /Fichier introuvable|not found|does not exist|object.*not/i.test(String(err.message || err.details?.message || ''))) return new Set();
+    throw err;
+  }
+}
+
+async function saveAdminQuestionArchive(idSet){
+  const ids = Array.from(idSet || []).map(id => cleanText(id, 80)).filter(id => /^[0-9a-f-]{20,80}$/i.test(id)).sort();
+  const body = Buffer.from(JSON.stringify(ids, null, 2), 'utf8');
+  await uploadResourceObject(QCM_ADMIN_ARCHIVE_PATH, body, 'application/json; charset=utf-8');
+  return new Set(ids);
+}
+
+async function setAdminQuestionArchived(ids, archived){
+  const cleanIds = Array.from(new Set((ids || []).map(id => cleanText(id, 80)).filter(id => /^[0-9a-f-]{20,80}$/i.test(id))));
+  const set = await loadAdminQuestionArchive();
+  cleanIds.forEach(id => archived ? set.add(id) : set.delete(id));
+  return await saveAdminQuestionArchive(set);
+}
+
+async function annotateAdminQuestionRows(rows, { promoteInactive = false } = {}){
+  const list = Array.isArray(rows) ? rows : [];
+  let archived = await loadAdminQuestionArchive().catch(() => new Set());
+  const inactiveIds = list.filter(row => row?.id && row.is_active === false).map(row => row.id);
+  if (promoteInactive && inactiveIds.length && supabaseReady()){
+    inactiveIds.forEach(id => archived.add(id));
+    archived = await saveAdminQuestionArchive(archived).catch(() => archived);
+    await supabaseRequest(`questions?id=in.(${supabaseInList(inactiveIds)})`, {
+      method:'PATCH',
+      prefer:'return=minimal',
+      body:{ is_active:true }
+    }).catch(err => console.warn('Promotion QCM masqués vers archive admin:', err.message));
+  }
+  return list.map(row => ({
+    ...row,
+    is_active: promoteInactive && row?.is_active === false ? true : row.is_active,
+    admin_archived: archived.has(row.id) || row.admin_archived === true || row.is_active === false
+  }));
+}
+
 async function loadNewsIndex(){
   try{
     const file = await downloadResourceObject(NEWS_INDEX_PATH);
@@ -377,6 +424,7 @@ function publicResource(row){
     size: Number(row.size || 0),
     is_premium: Boolean(row.is_premium),
     is_active: row.is_active !== false,
+    admin_archived: Boolean(row.admin_archived),
     created_at: row.created_at,
     updated_at: row.updated_at
   };
@@ -1528,12 +1576,10 @@ async function loadPublishedDailyPdfResources(){
   const drafts = await loadAiDailyIndex().catch(() => []);
   const resources = await loadResourceIndex().catch(() => []);
   const deletedTargets = deletedResourceTargetSet(resources);
-  const hiddenTargets = hiddenResourceTargetSet(resources);
   const publishedDrafts = (Array.isArray(drafts) ? drafts : [])
     .filter(d => d.status === 'published' && d.storage_path)
-    .filter(d => !resourceBlockedByDeletion(dailyDraftPublicResource(d), deletedTargets))
-    .filter(d => !resourceBlockedByHidden(dailyDraftPublicResource(d), hiddenTargets));
-  const questionDrafts = await loadPublishedDailyQuestionDrafts(publishedDrafts, deletedTargets, hiddenTargets).catch(() => []);
+    .filter(d => !resourceBlockedByDeletion(dailyDraftPublicResource(d), deletedTargets));
+  const questionDrafts = await loadPublishedDailyQuestionDrafts(publishedDrafts, deletedTargets).catch(() => []);
   return mergePublicResources(
     publishedDrafts.map(dailyDraftPublicResource),
     questionDrafts.map(dailyDraftPublicResource)
@@ -1594,11 +1640,10 @@ function dailyQuestionSourceMatches(source){
   return /^QCM\s+quotidien\s*[—-]/i.test(String(source || '').trim());
 }
 
-async function loadPublishedDailyQuestionDrafts(existingDrafts = [], deletedTargets = null, hiddenTargets = null){
+async function loadPublishedDailyQuestionDrafts(existingDrafts = [], deletedTargets = null){
   if (!supabaseReady()) return [];
-  const resources = (!deletedTargets || !hiddenTargets) ? await loadResourceIndex().catch(() => []) : [];
+  const resources = !deletedTargets ? await loadResourceIndex().catch(() => []) : [];
   const deletionSet = deletedTargets || deletedResourceTargetSet(resources);
-  const hiddenSet = hiddenTargets || hiddenResourceTargetSet(resources);
   const existingTitles = new Set((existingDrafts || []).map(d => safePdfTitle(d.title || d.source_title || '')).filter(Boolean));
   const query = 'questions?select=id,source,category,level,is_premium,created_at,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation&source=ilike.' + encodeURIComponent('QCM quotidien*') + '&order=created_at.desc&limit=1000';
   const rows = await supabaseRequest(query).catch(() => []);
@@ -1646,8 +1691,7 @@ async function loadPublishedDailyQuestionDrafts(existingDrafts = [], deletedTarg
         published_at:first.created_at || ''
       };
     })
-    .filter(draft => !resourceBlockedByDeletion(dailyDraftPublicResource(draft), deletionSet))
-    .filter(draft => !resourceBlockedByHidden(dailyDraftPublicResource(draft), hiddenSet));
+    .filter(draft => !resourceBlockedByDeletion(dailyDraftPublicResource(draft), deletionSet));
 }
 
 async function loadPublishedDailyQuestionDraftById(id){
@@ -1675,10 +1719,9 @@ async function findPublishedDailyDraftByResourceId(id){
   const drafts = await loadAiDailyIndex().catch(() => []);
   const resources = await loadResourceIndex().catch(() => []);
   const deletedTargets = deletedResourceTargetSet(resources);
-  const hiddenTargets = hiddenResourceTargetSet(resources);
   const draft = (Array.isArray(drafts) ? drafts : []).find(d => d.status === 'published' && d.storage_path && dailyDraftResourceId(d) === id) || null;
   const resource = draft ? dailyDraftPublicResource(draft) : null;
-  return draft && !resourceBlockedByDeletion(resource, deletedTargets) && !resourceBlockedByHidden(resource, hiddenTargets) ? draft : null;
+  return draft && !resourceBlockedByDeletion(resource, deletedTargets) ? draft : null;
 }
 
 function dailyDraftResourceRecord(draft, overrides = {}){
@@ -2715,7 +2758,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'news-pdf-guard-1',
+    build: 'archive-admin-fix-1',
     time: new Date().toISOString()
   });
 });
@@ -3429,7 +3472,8 @@ app.get('/api/admin/questions', requireAdmin, async (req, res, next) => {
     if (category) query += `&category=eq.${encodeURIComponent(category)}`;
     if (search) query += `&question_text=ilike.${encodeURIComponent('*' + search + '*')}`;
     const rows = await supabaseRequest(query);
-    res.json({ ok:true, questions:Array.isArray(rows) ? rows : [] });
+    const questions = await annotateAdminQuestionRows(Array.isArray(rows) ? rows : [], { promoteInactive:true });
+    res.json({ ok:true, questions });
   }catch(err){ next(err); }
 });
 
@@ -3477,15 +3521,17 @@ app.patch('/api/admin/questions/bulk/status', requireAdmin, async (req, res, nex
     if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
     const ids = adminQuestionIds(req.body || {});
     if (!ids.length) return res.status(400).json({ message:'Sélectionne au moins un QCM.' });
-    const isActive = Boolean(req.body?.is_active);
+    const restoreInAdmin = Boolean(req.body?.is_active);
     const rows = await supabaseRequest(`questions?id=in.(${supabaseInList(ids)})&select=*`, {
       method:'PATCH',
       prefer:'return=representation',
-      body:{ is_active:isActive }
+      body:{ is_active:true }
     });
     const updated = Array.isArray(rows) ? rows.length : 0;
     if (!updated) return res.status(404).json({ message:'Aucun QCM sélectionné n’a été modifié. Actualise la liste puis réessaie.' });
-    res.json({ ok:true, requested:ids.length, updated, questions:Array.isArray(rows) ? rows : [] });
+    await setAdminQuestionArchived(ids, !restoreInAdmin);
+    const questions = await annotateAdminQuestionRows(Array.isArray(rows) ? rows : []);
+    res.json({ ok:true, requested:ids.length, updated, archived:!restoreInAdmin, questions });
   }catch(err){ next(err); }
 });
 
@@ -3495,6 +3541,7 @@ app.delete('/api/admin/questions/bulk', requireAdmin, async (req, res, next) => 
     const ids = adminQuestionIds(req.body || {});
     if (!ids.length) return res.status(400).json({ message:'Sélectionne au moins un QCM.' });
     const rows = await supabaseRequest(`questions?id=in.(${supabaseInList(ids)})&select=id`, { method:'DELETE', prefer:'return=representation' });
+    await setAdminQuestionArchived(ids, false).catch(()=>{});
     const deleted = Array.isArray(rows) ? rows.length : 0;
     if (!deleted) return res.status(404).json({ message:'Aucun QCM sélectionné n’a été supprimé. Actualise la liste puis réessaie.' });
     res.json({ ok:true, requested:ids.length, deleted });
@@ -3504,14 +3551,17 @@ app.delete('/api/admin/questions/bulk', requireAdmin, async (req, res, next) => 
 app.patch('/api/admin/questions/:id/status', requireAdmin, async (req, res, next) => {
   try{
     if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    const restoreInAdmin = Boolean(req.body?.is_active);
     const rows = await supabaseRequest(`questions?id=eq.${encodeURIComponent(req.params.id)}&select=*`, {
       method:'PATCH',
       prefer:'return=representation',
-      body:{ is_active:Boolean(req.body?.is_active) }
+      body:{ is_active:true }
     });
     const question = Array.isArray(rows) ? rows[0] || null : null;
     if (!question) return res.status(404).json({ message:'QCM introuvable ou déjà modifié. Actualise la liste.' });
-    res.json({ ok:true, question });
+    await setAdminQuestionArchived([req.params.id], !restoreInAdmin);
+    const annotated = await annotateAdminQuestionRows([question]);
+    res.json({ ok:true, archived:!restoreInAdmin, question:annotated[0] || question });
   }catch(err){ next(err); }
 });
 
@@ -3519,6 +3569,7 @@ app.delete('/api/admin/questions/:id', requireAdmin, async (req, res, next) => {
   try{
     if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
     const rows = await supabaseRequest(`questions?id=eq.${encodeURIComponent(req.params.id)}&select=id`, { method:'DELETE', prefer:'return=representation' });
+    await setAdminQuestionArchived([req.params.id], false).catch(()=>{});
     if (!Array.isArray(rows) || !rows.length) return res.status(404).json({ message:'QCM introuvable ou déjà supprimé. Actualise la liste.' });
     res.json({ ok:true, deleted:rows.length });
   }catch(err){ next(err); }
@@ -3526,7 +3577,17 @@ app.delete('/api/admin/questions/:id', requireAdmin, async (req, res, next) => {
 
 app.get('/api/admin/resources', requireAdmin, async (_req, res, next) => {
   try{
-    const resources = await loadResourceIndex();
+    let resources = await loadResourceIndex();
+    let changed = false;
+    const now = new Date().toISOString();
+    resources = resources.map(r => {
+      if (r && !r.is_deleted && r.is_active === false){
+        changed = true;
+        return { ...r, is_active:true, admin_archived:true, updated_at:now };
+      }
+      return r;
+    });
+    if (changed) await saveResourceIndex(resources).catch(err => console.warn('Migration archive documents admin:', err.message));
     const dailyResources = await loadPublishedDailyPdfResources();
     res.json({ ok:true, resources:mergePublicResources(visibleResourceRows(resources).map(publicResource), dailyResources) });
   }catch(err){ next(err); }
@@ -3591,6 +3652,7 @@ app.patch('/api/admin/resources/:id', requireAdmin, async (req, res, next) => {
       description: patch.description === undefined ? current.description : cleanText(patch.description, 1000),
       is_premium: patch.is_premium === undefined ? Boolean(current.is_premium) : Boolean(patch.is_premium),
       is_active: patch.is_active === undefined ? current.is_active !== false : Boolean(patch.is_active),
+      admin_archived: patch.admin_archived === undefined ? Boolean(current.admin_archived) : Boolean(patch.admin_archived),
       updated_at:new Date().toISOString()
     };
     await saveResourceIndex(resources);
@@ -3600,25 +3662,26 @@ app.patch('/api/admin/resources/:id', requireAdmin, async (req, res, next) => {
 
 app.patch('/api/admin/resources/:id/status', requireAdmin, async (req, res, next) => {
   try{
-    const nextActive = Boolean(req.body?.is_active);
+    const restoreInAdmin = Boolean(req.body?.is_active);
+    const adminArchived = !restoreInAdmin;
     let resources = await loadResourceIndex();
     let idx = resources.findIndex(r => !r.is_deleted && r.id === req.params.id);
     if (idx >= 0){
-      resources[idx] = { ...resources[idx], is_active:nextActive, updated_at:new Date().toISOString() };
+      resources[idx] = { ...resources[idx], is_active:true, admin_archived:adminArchived, updated_at:new Date().toISOString() };
       await saveResourceIndex(resources);
-      return res.json({ ok:true, resource:publicResource(resources[idx]) });
+      return res.json({ ok:true, archived:adminArchived, resource:publicResource(resources[idx]) });
     }
     const dailyDraft = await findPublishedDailyDraftByResourceId(req.params.id);
     const questionDraft = dailyDraft ? null : await loadPublishedDailyQuestionDraftByResourceId(req.params.id);
     const draft = dailyDraft || questionDraft;
     if (!draft) return res.status(404).json({ message:'Document introuvable' });
-    const record = dailyDraftResourceRecord(draft, { id:req.params.id, is_active:nextActive, author_phone:req.phone });
+    const record = { ...dailyDraftResourceRecord(draft, { id:req.params.id, is_active:true, author_phone:req.phone }), admin_archived:adminArchived };
     resources = removeResourceDeletionMarkers(resources, { id:record.id, sourceDraftId:record.source_draft_id, title:record.title });
     idx = resources.findIndex(r => !r.is_deleted && (r.id === record.id || (record.source_draft_id && r.source_draft_id === record.source_draft_id)));
-    if (idx >= 0) resources[idx] = { ...resources[idx], ...record, is_active:nextActive, updated_at:new Date().toISOString() };
+    if (idx >= 0) resources[idx] = { ...resources[idx], ...record, is_active:true, admin_archived:adminArchived, updated_at:new Date().toISOString() };
     else resources.unshift(record);
     await saveResourceIndex(resources);
-    res.json({ ok:true, resource:publicResource(idx >= 0 ? resources[idx] : record) });
+    res.json({ ok:true, archived:adminArchived, resource:publicResource(idx >= 0 ? resources[idx] : record) });
   }catch(err){ next(err); }
 });
 

@@ -1271,6 +1271,10 @@ function qcmDestinationText(q){
   return q?.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
 }
 
+function isAdminQuestionArchived(q){
+  return Boolean(q?.admin_archived);
+}
+
 function setAdminQuestionFilter(filter, el){
   adminQuestionFilter = filter || 'all';
   adminQuestionSelectedIds.clear();
@@ -1281,10 +1285,10 @@ function setAdminQuestionFilter(filter, el){
 
 function adminQuestionItemsForFilter(){
   const allItems = adminQuestionCache.map((q, idx)=>({q, idx}));
-  if (adminQuestionFilter === 'free') return allItems.filter(item => !item.q.is_premium && item.q.is_active !== false);
-  if (adminQuestionFilter === 'premium') return allItems.filter(item => item.q.is_premium && item.q.is_active !== false);
-  if (adminQuestionFilter === 'hidden') return allItems.filter(item => item.q.is_active === false);
-  return allItems.filter(item => item.q.is_active !== false);
+  if (adminQuestionFilter === 'free') return allItems.filter(item => !item.q.is_premium && !isAdminQuestionArchived(item.q));
+  if (adminQuestionFilter === 'premium') return allItems.filter(item => item.q.is_premium && !isAdminQuestionArchived(item.q));
+  if (adminQuestionFilter === 'hidden') return allItems.filter(item => isAdminQuestionArchived(item.q));
+  return allItems.filter(item => !isAdminQuestionArchived(item.q));
 }
 
 function selectedAdminQuestions(){
@@ -1299,8 +1303,8 @@ function renderAdminBulkBar(visibleItems){
     <div class="admin-bulk-bar">
       <label><input type="checkbox" ${allVisibleSelected ? 'checked' : ''} onchange="toggleAdminVisibleSelection(this.checked)"> Sélectionner cette liste</label>
       <span><b>${selectedCount}</b> sélectionné${selectedCount>1?'s':''}</span>
-      <button class="mini-btn" onclick="bulkAdminQuestions('publish')" ${selectedCount ? '' : 'disabled'}>Publier</button>
-      <button class="mini-btn" onclick="bulkAdminQuestions('hide')" ${selectedCount ? '' : 'disabled'}>Masquer</button>
+      <button class="mini-btn" onclick="bulkAdminQuestions('publish')" ${selectedCount ? '' : 'disabled'}>Remettre admin</button>
+      <button class="mini-btn" onclick="bulkAdminQuestions('hide')" ${selectedCount ? '' : 'disabled'}>Archiver admin</button>
       <button class="mini-btn danger" onclick="bulkAdminQuestions('delete')" ${selectedCount ? '' : 'disabled'}>Supprimer</button>
       ${selectedCount ? '<button class="mini-btn" onclick="clearAdminQuestionSelection()">Annuler</button>' : ''}
     </div>`;
@@ -1311,15 +1315,15 @@ function renderAdminQuestionListFromCache(){
   if (!wrap) return;
   adminQuestionSelectedIds = new Set([...adminQuestionSelectedIds].filter(id => adminQuestionCache.some(q => q.id === id)));
   const allItems = adminQuestionCache.map((q, idx)=>({q, idx}));
-  const freeItems = allItems.filter(item => !item.q.is_premium && item.q.is_active !== false);
-  const premiumItems = allItems.filter(item => item.q.is_premium && item.q.is_active !== false);
-  const hiddenItems = allItems.filter(item => item.q.is_active === false);
+  const freeItems = allItems.filter(item => !item.q.is_premium && !isAdminQuestionArchived(item.q));
+  const premiumItems = allItems.filter(item => item.q.is_premium && !isAdminQuestionArchived(item.q));
+  const hiddenItems = allItems.filter(item => isAdminQuestionArchived(item.q));
   const summary = $('#adminQuestionSummary');
   if (summary){
     summary.innerHTML = `
-      <div><b>${freeItems.length}</b><span>Gratuits actifs</span></div>
-      <div><b>${premiumItems.length}</b><span>Premium actifs</span></div>
-      <div><b>${hiddenItems.length}</b><span>Masqués</span></div>`;
+      <div><b>${freeItems.length}</b><span>Gratuits admin</span></div>
+      <div><b>${premiumItems.length}</b><span>Premium admin</span></div>
+      <div><b>${hiddenItems.length}</b><span>Archivés admin</span></div>`;
   }
   if (!adminQuestionCache.length){
     wrap.innerHTML = '<div class="empty">Aucun QCM ajouté pour le moment.</div>';
@@ -1331,11 +1335,11 @@ function renderAdminQuestionListFromCache(){
   }else if (adminQuestionFilter === 'premium'){
     html = renderAdminQuestionGroup('QCM Premium', 'Ces questions sont réservées aux abonnés Premium.', premiumItems, 'premium');
   }else if (adminQuestionFilter === 'hidden'){
-    html = renderAdminQuestionGroup('QCM masqués', 'Ces questions existent mais ne sont pas visibles par les candidats.', hiddenItems, 'hidden');
+    html = renderAdminQuestionGroup('QCM archivés dans l’admin', 'Ces questions restent visibles chez les candidats, mais elles sont rangées ici pour alléger l’administration.', hiddenItems, 'hidden');
   }else{
     html = renderAdminQuestionGroup('QCM gratuits', 'Visible par tous les candidats.', freeItems, 'free')
       + renderAdminQuestionGroup('QCM Premium', 'Visible uniquement après abonnement Premium.', premiumItems, 'premium')
-      + (hiddenItems.length ? `<div class="pay-note">${hiddenItems.length} QCM masqué${hiddenItems.length>1?'s':''}. Utilise le filtre <b>Masqués</b> pour les republier ou les supprimer.</div>` : '');
+      + (hiddenItems.length ? `<div class="pay-note">${hiddenItems.length} QCM archivé${hiddenItems.length>1?'s':''} côté admin. Ils restent visibles chez les candidats. Utilise le filtre <b>Archives admin</b> pour les remettre dans la liste admin ou les supprimer.</div>` : '');
   }
   const visibleItems = adminQuestionItemsForFilter();
   wrap.innerHTML = renderAdminBulkBar(visibleItems) + (html || '<div class="empty">Aucun QCM dans ce filtre.</div>');
@@ -1364,7 +1368,7 @@ function clearAdminQuestionSelection(){
 async function bulkAdminQuestions(action){
   const ids = [...adminQuestionSelectedIds];
   if (!ids.length) return toast('Sélectionne au moins un QCM');
-  const label = action === 'publish' ? 'publier' : (action === 'hide' ? 'masquer' : 'supprimer');
+  const label = action === 'publish' ? 'remettre dans l’admin' : (action === 'hide' ? 'archiver dans l’admin' : 'supprimer');
   if (action === 'delete' && !confirm(`Supprimer définitivement ${ids.length} QCM sélectionné${ids.length>1?'s':''} ?`)) return;
   try{
     toast(`${ids.length} QCM : ${label}...`);
@@ -1374,15 +1378,15 @@ async function bulkAdminQuestions(action){
       if (!Number(data.deleted || 0)) throw new Error('Aucun QCM n’a été supprimé.');
       adminQuestionCache = adminQuestionCache.filter(q => !adminQuestionSelectedIds.has(q.id));
     }else{
-      const isActive = action === 'publish';
-      data = await adminFetch('/api/admin/questions/bulk/status', { method:'PATCH', body:JSON.stringify({ ids, is_active:isActive }) });
+      const restoreInAdmin = action === 'publish';
+      data = await adminFetch('/api/admin/questions/bulk/status', { method:'PATCH', body:JSON.stringify({ ids, is_active:restoreInAdmin }) });
       if (!Number(data.updated || 0)) throw new Error('Aucun QCM n’a été modifié.');
       const returned = new Map((data.questions || []).map(q => [q.id, q]));
-      adminQuestionCache = adminQuestionCache.map(q => returned.get(q.id) || (adminQuestionSelectedIds.has(q.id) ? { ...q, is_active:isActive } : q));
+      adminQuestionCache = adminQuestionCache.map(q => returned.get(q.id) || (adminQuestionSelectedIds.has(q.id) ? { ...q, is_active:true, admin_archived:!restoreInAdmin } : q));
     }
     adminQuestionSelectedIds.clear();
     renderAdminQuestionListFromCache();
-    toast(action === 'delete' ? `${Number(data.deleted || ids.length)} QCM supprimé${Number(data.deleted || ids.length)>1?'s':''} ✅` : (action === 'publish' ? `${Number(data.updated || ids.length)} QCM publié${Number(data.updated || ids.length)>1?'s':''} ✅` : `${Number(data.updated || ids.length)} QCM masqué${Number(data.updated || ids.length)>1?'s':''} ✅`));
+    toast(action === 'delete' ? `${Number(data.deleted || ids.length)} QCM supprimé${Number(data.deleted || ids.length)>1?'s':''} ✅` : (action === 'publish' ? `${Number(data.updated || ids.length)} QCM remis dans l’admin ✅` : `${Number(data.updated || ids.length)} QCM archivé${Number(data.updated || ids.length)>1?'s':''} côté admin ✅ — toujours visible candidat`));
     setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 300);
   }catch(err){ toast(err.message); }
 }
@@ -1397,7 +1401,7 @@ function renderAdminQuestionCards(items){
       <div class="admin-q-meta">
         <span>${escapeHtml(q.category || 'Catégorie')}</span>
         <span>${escapeHtml(q.level || '')}</span>
-        <span class="${q.is_active ? 'active' : ''}">${q.is_active ? 'Publié' : 'Masqué'}</span>
+        <span class="${!isAdminQuestionArchived(q) ? 'active' : ''}">${isAdminQuestionArchived(q) ? 'Archivé admin' : 'Visible candidat'}</span>
         ${q.is_premium ? '<span class="premium">Premium abonnés</span>' : '<span class="free">Gratuit</span>'}
       </div>
       <h4>${renderMathText(q.question_text || '')}</h4>
@@ -1406,7 +1410,7 @@ function renderAdminQuestionCards(items){
       <div class="admin-q-actions">
         <button class="edit" onclick="openPublishedQcmFromAdmin()">Ouvrir le quiz</button>
         <button class="edit" onclick="editAdminQuestion(${idx})">Modifier</button>
-        <button class="pause" onclick="toggleAdminQuestion(${idx})">${q.is_active ? 'Masquer' : 'Publier'}</button>
+        <button class="pause" onclick="toggleAdminQuestion(${idx})">${isAdminQuestionArchived(q) ? 'Remettre dans admin' : 'Masquer dans admin'}</button>
         <button class="delete" onclick="deleteAdminQuestion(${idx})">Supprimer</button>
       </div>
     </div>`).join('');
@@ -1461,12 +1465,12 @@ async function toggleAdminQuestion(index){
   const q = adminQuestionCache[index];
   if (!q) return;
   try{
-    const nextActive = !q.is_active;
-    const data = await adminFetch('/api/admin/questions/' + encodeURIComponent(q.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:nextActive}) });
-    adminQuestionCache[index] = data.question || { ...q, is_active:nextActive };
+    const restoreInAdmin = isAdminQuestionArchived(q);
+    const data = await adminFetch('/api/admin/questions/' + encodeURIComponent(q.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:restoreInAdmin}) });
+    adminQuestionCache[index] = data.question || { ...q, is_active:true, admin_archived:!restoreInAdmin };
     renderAdminQuestionListFromCache();
     setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 250);
-    toast(nextActive ? 'QCM visible' : 'QCM masqué');
+    toast(restoreInAdmin ? 'QCM remis dans l’administration ✅' : 'QCM archivé côté admin ✅ — toujours visible candidat');
   }catch(err){ toast(err.message); }
 }
 
@@ -2316,6 +2320,10 @@ function formatBytes(bytes){
   return (n/1024/1024).toFixed(n > 10*1024*1024 ? 0 : 1).replace('.', ',') + ' Mo';
 }
 
+function isAdminResourceArchived(r){
+  return Boolean(r?.admin_archived);
+}
+
 function resourceIcon(kind){
   if (kind === 'image') return '🖼️';
   if (kind === 'pdf') return '📄';
@@ -2428,26 +2436,26 @@ function setAdminResourceFilter(filter, el){
 
 function adminResourceItemsForFilter(){
   const all = adminResourceCache.map((r, idx)=>({r, idx}));
-  if (adminResourceFilter === 'published') return all.filter(item => item.r.is_active !== false);
-  if (adminResourceFilter === 'hidden') return all.filter(item => item.r.is_active === false);
+  if (adminResourceFilter === 'published') return all.filter(item => !isAdminResourceArchived(item.r));
+  if (adminResourceFilter === 'hidden') return all.filter(item => isAdminResourceArchived(item.r));
   return all;
 }
 
 function renderAdminResourceCards(items){
   if (!items.length) return '';
   return items.map(({r, idx})=>`
-      <div class="admin-q-item ${r.is_active === false ? 'is-hidden' : ''}">
+      <div class="admin-q-item ${isAdminResourceArchived(r) ? 'is-hidden' : ''}">
         <div class="admin-q-meta">
           <span>${resourceIcon(r.kind)} ${escapeHtml(r.kind || 'document')}</span>
           <span>${escapeHtml(r.category || 'Documents')}</span>
-          <span class="${r.is_active ? 'active' : ''}">${r.is_active ? 'Publié' : 'Masqué'}</span>
+          <span class="${!isAdminResourceArchived(r) ? 'active' : ''}">${isAdminResourceArchived(r) ? 'Archivé admin' : 'Visible candidat'}</span>
           ${r.is_premium ? '<span class="premium">Premium</span>' : '<span>Gratuit</span>'}
         </div>
         <h4>${escapeHtml(r.title || r.fileName || 'Document')}</h4>
         <p class="admin-help">${escapeHtml(r.description || r.fileName || '')} · ${formatBytes(r.size)}</p>
         <div class="admin-q-actions">
           <button class="edit" onclick="openResource('${escapeHtml(r.id)}')">Ouvrir</button>
-          <button class="pause" onclick="toggleAdminResource(${idx})">${r.is_active ? 'Masquer côté candidat' : 'Publier côté candidat'}</button>
+          <button class="pause" onclick="toggleAdminResource(${idx})">${isAdminResourceArchived(r) ? 'Remettre dans admin' : 'Masquer dans admin'}</button>
           <button class="delete" onclick="deleteAdminResource(${idx})">Supprimer</button>
         </div>
       </div>`).join('');
@@ -2457,13 +2465,13 @@ function renderAdminResourcesFromCache(){
   const wrap = $('#adminResourceList');
   if (!wrap) return;
   const allItems = adminResourceCache.map((r, idx)=>({r, idx}));
-  const published = allItems.filter(item => item.r.is_active !== false);
-  const hidden = allItems.filter(item => item.r.is_active === false);
+  const published = allItems.filter(item => !isAdminResourceArchived(item.r));
+  const hidden = allItems.filter(item => isAdminResourceArchived(item.r));
   const summary = $('#adminResourceSummary');
   if (summary){
     summary.innerHTML = `
-      <div><b>${published.length}</b><span>Publiés</span></div>
-      <div><b>${hidden.length}</b><span>Masqués</span></div>
+      <div><b>${published.length}</b><span>Liste admin</span></div>
+      <div><b>${hidden.length}</b><span>Archivés admin</span></div>
       <div><b>${allItems.length}</b><span>Historique admin</span></div>`;
   }
   if (!adminResourceCache.length){
@@ -2472,7 +2480,7 @@ function renderAdminResourcesFromCache(){
   }
   const filtered = adminResourceItemsForFilter();
   if (adminResourceFilter === 'all'){
-    wrap.innerHTML = `${published.length ? '<h4 class="admin-section-title">Documents publiés</h4>' + renderAdminResourceCards(published) : ''}${hidden.length ? '<h4 class="admin-section-title">Documents masqués</h4>' + renderAdminResourceCards(hidden) : ''}` || '<div class="empty">Aucun document dans cet historique.</div>';
+    wrap.innerHTML = `${published.length ? '<h4 class="admin-section-title">Documents dans l’admin</h4>' + renderAdminResourceCards(published) : ''}${hidden.length ? '<h4 class="admin-section-title">Documents archivés dans l’admin</h4>' + renderAdminResourceCards(hidden) : ''}` || '<div class="empty">Aucun document dans cet historique.</div>';
     return;
   }
   wrap.innerHTML = renderAdminResourceCards(filtered) || '<div class="empty">Aucun document dans ce filtre.</div>';
@@ -2495,11 +2503,12 @@ async function toggleAdminResource(index){
   const r = adminResourceCache[index];
   if (!r) return;
   try{
-    const data = await adminFetch('/api/admin/resources/' + encodeURIComponent(r.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:!r.is_active}) });
-    adminResourceCache[index] = data.resource || { ...r, is_active:!r.is_active };
+    const restoreInAdmin = isAdminResourceArchived(r);
+    const data = await adminFetch('/api/admin/resources/' + encodeURIComponent(r.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:restoreInAdmin}) });
+    adminResourceCache[index] = data.resource || { ...r, is_active:true, admin_archived:!restoreInAdmin };
     renderAdminResourcesFromCache();
-    await Promise.allSettled([loadAdminResources(), loadResources()]);
-    toast(!r.is_active ? 'Document publié côté candidat ✅' : 'Document masqué côté candidat ✅');
+    await Promise.allSettled([loadAdminResources()]);
+    toast(restoreInAdmin ? 'Document remis dans l’administration ✅' : 'Document archivé côté admin ✅ — toujours visible candidat');
   }catch(err){ toast(err.message); }
 }
 

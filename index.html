@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e9f6e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=news-pdf-guard-1">
+<link rel="stylesheet" href="css/styles.css?v=archive-admin-fix-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -667,10 +667,10 @@
             <div class="admin-zone-card premium"><b>⭐ Premium</b><span>Visible après abonnement</span></div>
           </div>
           <div class="admin-filter-row" id="adminQuestionFilterRow">
-            <button class="chip on" onclick="setAdminQuestionFilter('all', this)">Publiés</button>
+            <button class="chip on" onclick="setAdminQuestionFilter('all', this)">Liste admin</button>
             <button class="chip" onclick="setAdminQuestionFilter('free', this)">Gratuit</button>
             <button class="chip" onclick="setAdminQuestionFilter('premium', this)">Premium</button>
-            <button class="chip" onclick="setAdminQuestionFilter('hidden', this)">Masqués</button>
+            <button class="chip" onclick="setAdminQuestionFilter('hidden', this)">Archives admin</button>
           </div>
           <div id="adminQuestionSummary" class="admin-qcm-summary"></div>
           <div class="admin-search-row">
@@ -719,11 +719,11 @@
 
           <hr class="soft-separator">
           <h3>Mes documents</h3>
-          <p class="admin-help">Masquer retire le document côté candidat, mais le garde dans l’historique admin. Supprimer l’enlève côté candidat et côté admin.</p>
+          <p class="admin-help">Masquer archive seulement le document dans l’admin pour alléger la liste. Le candidat le voit toujours. Supprimer l’enlève côté candidat et côté admin.</p>
           <div class="admin-filter-row" id="adminResourceFilterRow">
-            <button class="chip on" onclick="setAdminResourceFilter('all', this)">Historique</button>
+            <button class="chip on" onclick="setAdminResourceFilter('all', this)">Historique admin</button>
             <button class="chip" onclick="setAdminResourceFilter('published', this)">Publiés</button>
-            <button class="chip" onclick="setAdminResourceFilter('hidden', this)">Masqués</button>
+            <button class="chip" onclick="setAdminResourceFilter('hidden', this)">Archives admin</button>
           </div>
           <div id="adminResourceSummary" class="admin-qcm-summary"></div>
           <div id="adminResourceList" class="admin-list"></div>
@@ -1211,7 +1211,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=news-pdf-guard-1"></script>
-<script src="js/app.js?v=news-pdf-guard-1"></script>
+<script src="js/questions.js?v=archive-admin-fix-1"></script>
+<script src="js/app.js?v=archive-admin-fix-1"></script>
 </body>
 </html>

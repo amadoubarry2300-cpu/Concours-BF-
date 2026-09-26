@@ -439,3 +439,10 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 ## 2026-09-26 — Actualités officielles avec PDF
 
 - Les actualités automatiques officielles sans communiqué PDF joint ne sont plus affichées côté candidat. Elles restent côté admin pour vérification ou correction.
+
+## 2026-09-26 — Masquer = archive admin seulement
+
+- Le bouton Masquer pour les documents et les QCM archive maintenant le contenu seulement côté administration.
+- Les documents et QCM archivés restent visibles et ouverts côté candidat.
+- Supprimer reste l’unique action qui retire le contenu côté candidat et côté admin.
+- Les anciens contenus passés en inactif par erreur sont remis visibles côté candidat lors du chargement admin, puis rangés dans l’archive admin.
