@@ -2367,7 +2367,7 @@ async function loadResources(){
       return;
     }
     wrap.innerHTML = resourceCache.map(r => {
-      const locked = Boolean(r.locked || (r.is_premium && !hasOpenAccess()));
+      const locked = !hasOpenAccess();
       return `
       <div class="resource-card ${locked ? 'locked' : ''}">
         <div class="resource-icon">${locked ? '🔒' : resourceIcon(r.kind)}</div>
@@ -2377,7 +2377,7 @@ async function loadResources(){
           <div class="resource-meta">
             <span>${escapeHtml(r.category || 'Documents')}</span>
             <span>${formatBytes(r.size)}</span>
-            ${r.is_premium ? '<span class="premium">Premium</span>' : '<span>Gratuit</span>'}
+            <span class="premium">Premium</span>
           </div>
           <button class="mini-btn ${locked ? 'btn-ghost' : ''}" onclick="openResource('${escapeHtml(r.id)}')">${locked ? 'Débloquer Premium' : 'Ouvrir'}</button>
         </div>
@@ -2390,8 +2390,8 @@ async function loadResources(){
 
 async function openResource(id){
   const item = (resourceCache || []).find(r => r.id === id);
-  if (item && (item.locked || (item.is_premium && !hasOpenAccess()))){
-    openPremium(item.title || 'Document Premium');
+  if (!hasOpenAccess()){
+    openPremium(item?.title || 'Document Premium');
     return;
   }
   try{
@@ -3464,7 +3464,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'premium-lock-update-1') location.reload();
+    if (data.build && data.build !== 'candidate-docs-premium-lock-1') location.reload();
   }catch{}
 }
 
@@ -3477,7 +3477,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=premium-lock-update-1')
+    navigator.serviceWorker.register('/sw.js?v=candidate-docs-premium-lock-1')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

@@ -2758,7 +2758,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'premium-lock-update-1',
+    build: 'candidate-docs-premium-lock-1',
     time: new Date().toISOString()
   });
 });
@@ -3895,7 +3895,7 @@ app.post('/api/admin/notifications/test', requireAdmin, async (req, res) => {
 
 app.get('/api/resources', async (req, res, next) => {
   try{
-    const premiumAllowed = await requestHasPremium(req);
+    const premiumAllowed = await premiumAllowedForRequest(req);
     let resources = await loadResourceIndex().catch(err => {
       if (err.status === 503 || /Stockage indisponible/i.test(err.message)) return [];
       throw err;
@@ -3910,7 +3910,7 @@ app.get('/api/resources', async (req, res, next) => {
       return r;
     });
     if (changed) await saveResourceIndex(resources).catch(err => console.warn('Migration archive documents public:', err.message));
-    const lockResource = item => ({ ...item, locked:Boolean(item.is_premium) && !premiumAllowed });
+    const lockResource = item => ({ ...item, is_premium:true, locked:!premiumAllowed });
     const indexed = visibleResourceRows(resources)
       .filter(r => r.is_active !== false)
       .map(publicResource)
@@ -3942,32 +3942,28 @@ app.get('/api/resources/:id/download', async (req, res, next) => {
     if (!item || (item && !item.storage_path && isDailyPdfResourceLike(item))){
       const questionDraft = await loadPublishedDailyQuestionDraftByResourceId(req.params.id);
       if (questionDraft){
-        if (questionDraft.is_premium){
-          const premiumAllowed = await requestHasPremium(req);
-          if (!premiumAllowed) return res.status(402).json({ message:'Ce document est réservé aux comptes Premium' });
-        }
+        const premiumAllowed = await premiumAllowedForRequest(req);
+        if (!premiumAllowed) return res.status(402).json({ message:'Ce document est réservé aux comptes Premium' });
         const pdf = await buildQcmDraftPdf({ title:questionDraft.title, date:questionDraft.date, category:questionDraft.category, level:questionDraft.level, questions:questionDraft.questions });
         const filename = safeFileName(`QCM quotidien — ${questionDraft.category || 'QCM'} — ${questionDraft.level || 'Concours'} — ${questionDraft.date || todayId()}.pdf`);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Length', pdf.length);
         res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`);
-        res.setHeader('X-Premium-Content', questionDraft.is_premium ? 'true' : 'false');
-        res.setHeader('Cache-Control', questionDraft.is_premium ? 'private, no-store' : 'private, max-age=60');
+        res.setHeader('X-Premium-Content', 'true');
+        res.setHeader('Cache-Control', 'private, no-store');
         return res.send(pdf);
       }
       if (!item) return res.status(404).json({ message:'Document introuvable' });
     }
-    if (item.is_premium){
-      const premiumAllowed = await requestHasPremium(req);
-      if (!premiumAllowed) return res.status(402).json({ message:'Ce document est réservé aux comptes Premium' });
-    }
+    const premiumAllowed = await premiumAllowedForRequest(req);
+    if (!premiumAllowed) return res.status(402).json({ message:'Ce document est réservé aux comptes Premium' });
     const file = await downloadResourceObject(item.storage_path);
     const filename = safeFileName(item.file_name || item.title || 'document');
     res.setHeader('Content-Type', item.mime_type || file.contentType || 'application/octet-stream');
     res.setHeader('Content-Length', file.buffer.length);
     res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`);
-    res.setHeader('X-Premium-Content', item.is_premium ? 'true' : 'false');
-    res.setHeader('Cache-Control', item.is_premium ? 'private, no-store' : 'private, max-age=60');
+    res.setHeader('X-Premium-Content', 'true');
+    res.setHeader('Cache-Control', 'private, no-store');
     res.send(file.buffer);
   }catch(err){ next(err); }
 });

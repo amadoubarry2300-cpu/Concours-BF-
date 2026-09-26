@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'premium-lock-update-1';
+const CACHE_VERSION = 'candidate-docs-premium-lock-1';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=premium-lock-update-1',
-  '/js/questions.js?v=premium-lock-update-1',
-  '/js/app.js?v=premium-lock-update-1',
+  '/css/styles.css?v=candidate-docs-premium-lock-1',
+  '/js/questions.js?v=candidate-docs-premium-lock-1',
+  '/js/app.js?v=candidate-docs-premium-lock-1',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

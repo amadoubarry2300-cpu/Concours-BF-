@@ -473,3 +473,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Le téléchargement/ouverture d’un document Premium est bloqué côté serveur sans abonnement actif.
 - Le cache mobile ne conserve plus les réponses ou fichiers marqués Premium, afin d’éviter un accès Premium hors statut autorisé.
 - L’application installée vérifie plus souvent les mises à jour et recharge automatiquement quand une nouvelle version est activée.
+
+## 2026-09-26 — Documents candidat Premium obligatoires
+
+- Côté candidat, tous les documents et fichiers de la rubrique Documents & fichiers sont affichés Premium et verrouillés sans abonnement.
+- L’ouverture/téléchargement public des documents candidat retourne une demande Premium côté serveur.
+- Le cache mobile est rebumpé pour remplacer rapidement les anciens affichages Gratuit/Ouvrir.

@@ -29,15 +29,15 @@ print('health build:', health.get('build'))
 status, headers, resources = get('/api/resources?audit=1')
 assert_true(resources.get('premiumIncluded') is False, 'resources should be non-premium without auth')
 for r in resources.get('resources', []):
-    if r.get('is_premium'):
-        assert_true(r.get('locked') is True, f"premium resource not locked: {r.get('id')}")
-        path = '/api/resources/' + urllib.parse.quote(str(r.get('id')), safe='') + '/download'
-        try:
-            get(path, '*/*')
-            raise AssertionError(f"premium resource download unexpectedly allowed: {r.get('id')}")
-        except urllib.error.HTTPError as e:
-            assert_true(e.code == 402, f"premium resource download should be 402, got {e.code}")
-print('resources:', len(resources.get('resources', [])), 'premium locked:', sum(1 for r in resources.get('resources', []) if r.get('is_premium')))
+    assert_true(r.get('is_premium') is True, f"candidate resource should be marked Premium: {r.get('id')}")
+    assert_true(r.get('locked') is True, f"candidate resource not locked: {r.get('id')}")
+    path = '/api/resources/' + urllib.parse.quote(str(r.get('id')), safe='') + '/download'
+    try:
+        get(path, '*/*')
+        raise AssertionError(f"candidate resource download unexpectedly allowed: {r.get('id')}")
+    except urllib.error.HTTPError as e:
+        assert_true(e.code == 402, f"candidate resource download should be 402, got {e.code}")
+print('resources:', len(resources.get('resources', [])), 'candidate premium locked:', len(resources.get('resources', [])))
 
 status, headers, pubs = get('/api/qcm-publications?audit=1')
 assert_true(pubs.get('premiumIncluded') is False, 'qcm publications should be non-premium without auth')
@@ -52,8 +52,8 @@ leaked = [q for q in questions.get('questions', []) if q.get('is_premium')]
 assert_true(not leaked, f"/api/questions leaked {len(leaked)} premium rows")
 print('questions:', len(questions.get('questions', [])), 'premium leaked: 0')
 
-status, headers, sw = get('/sw.js?v=premium-lock-update-1', '*/*')
-for token in ['premium-lock-update-1', 'X-Premium-Included', 'X-Premium-Content', 'CLEAR_DATA_CACHE', 'networkFirstFile']:
+status, headers, sw = get('/sw.js?v=candidate-docs-premium-lock-1', '*/*')
+for token in ['candidate-docs-premium-lock-1', 'X-Premium-Included', 'X-Premium-Content', 'CLEAR_DATA_CACHE', 'networkFirstFile']:
     assert_true(token in sw, f'service worker missing {token}')
 print('service worker premium cache guards: ok')
 print('AUDIT OK')
