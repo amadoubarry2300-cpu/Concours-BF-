@@ -1134,6 +1134,9 @@ let aiDailyDraftCache = [];
 let showPublishedDailyDrafts = false;
 let currentDailyPdfIndex = -1;
 let currentDailyPdfUrl = '';
+let dailyQuestionEditorDraft = [];
+let dailyQuestionEditorOpen = false;
+let dailyQuestionEditorDirty = false;
 let aiNewsDraftCache = [];
 let resourceCache = [];
 let newsCache = [];
@@ -1611,9 +1614,10 @@ function renderDailyAiDrafts(){
         <span>${escapeHtml(d.level || 'Niveau')}</span>
         ${d.is_premium ? '<span class="premium">Premium</span>' : '<span class="free">Gratuit</span>'}
         ${d.status === 'published' ? '<span class="active">Publié</span>' : '<span>PDF à relire</span>'}
+        ${Number(d.pdf_revision || 0) ? `<span class="active">PDF corrigé · v${Number(d.pdf_revision)}</span>` : ''}
       </div>
       <h4>${escapeHtml(d.title || 'QCM quotidien')}</h4>
-      <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Ouvre le fichier, vérifie les questions, choisis Gratuit ou Premium, puis publie seulement après validation.'}</p>
+      <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Ouvre le fichier, corrige une question si nécessaire, vérifie le nouveau PDF, puis publie seulement après validation.'}</p>
       ${d.status !== 'published' ? `<label class="admin-select-line"><input type="checkbox" ${d.is_premium ? 'checked' : ''} onchange="setDailyDraftPremium(${idx}, this.checked)"><span>Publier en Premium <small>(sinon Gratuit)</small></span></label>` : ''}
       <div class="admin-q-actions">
         <button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>
@@ -1627,7 +1631,7 @@ function renderDailyAiDrafts(){
 async function fetchDailyAiPdfBlob(index){
   const d = aiDailyDraftCache[index];
   if (!d) throw new Error('PDF introuvable');
-  const res = await fetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/pdf?inline=1', { headers:authHeaders({}) });
+  const res = await fetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/pdf?inline=1&v=' + Date.now(), { headers:authHeaders({}), cache:'no-store' });
   if (!res.ok){
     const data = await res.json().catch(()=>({}));
     throw new Error(data.message || 'PDF indisponible');
@@ -1676,6 +1680,192 @@ function renderDailyPdfHtml(d){
     </div>`;
 }
 
+function cloneDailyQuestions(questions){
+  return (Array.isArray(questions) ? questions : []).map(question => ({
+    question_text:String(question?.question_text || ''),
+    option_a:String(question?.option_a || ''),
+    option_b:String(question?.option_b || ''),
+    option_c:String(question?.option_c || ''),
+    option_d:String(question?.option_d || ''),
+    correct_answer:Number(question?.correct_answer || 0),
+    explanation:String(question?.explanation || ''),
+    category:question?.category || '',
+    level:question?.level || '',
+    is_premium:Boolean(question?.is_premium),
+    source:question?.source || ''
+  }));
+}
+
+function invalidateCurrentDailyPdf(){
+  if (currentDailyPdfUrl) URL.revokeObjectURL(currentDailyPdfUrl);
+  currentDailyPdfUrl = '';
+}
+
+function setDailyQuestionEditorStatus(message, tone=''){
+  const status = $('#dailyQuestionEditorStatus');
+  if (!status) return;
+  status.className = `pay-note ${tone}`.trim();
+  status.textContent = message || '';
+}
+
+function updateDailyQuestionEditorMeta(draft){
+  if (!draft) return;
+  $('#dailyPdfTitle') && ($('#dailyPdfTitle').textContent = draft.title || 'QCM quotidien');
+  $('#dailyPdfMeta') && ($('#dailyPdfMeta').textContent = `${draft.date || ''} · ${draft.category || ''} · ${draft.level || ''} · ${Number(draft.count || draft.questions?.length || 0)} QCM${draft.pdf_revision ? ` · version corrigée ${draft.pdf_revision}` : ''}`);
+}
+
+function applyDailyDraftEditorUpdate(index, draft){
+  if (!draft || index < 0) return;
+  aiDailyDraftCache[index] = draft;
+  dailyQuestionEditorDraft = cloneDailyQuestions(draft.questions);
+  dailyQuestionEditorDirty = false;
+  invalidateCurrentDailyPdf();
+  updateDailyQuestionEditorMeta(draft);
+  renderDailyPdfHtml(draft);
+  renderDailyAiDrafts();
+  if (dailyQuestionEditorOpen) renderDailyQuestionEditor();
+}
+
+function toggleDailyQuestionEditor(forceOpen){
+  const draft = aiDailyDraftCache[currentDailyPdfIndex];
+  if (!draft) return;
+  if (draft.status === 'published'){
+    toast('Retire d’abord le PDF du côté candidat avant de le corriger.');
+    return;
+  }
+  dailyQuestionEditorOpen = forceOpen === undefined ? !dailyQuestionEditorOpen : Boolean(forceOpen);
+  if (dailyQuestionEditorOpen && (!dailyQuestionEditorDraft.length || !dailyQuestionEditorDirty)){
+    dailyQuestionEditorDraft = cloneDailyQuestions(draft.questions);
+  }
+  renderDailyQuestionEditor();
+}
+
+function updateDailyQuestionField(index, field, value){
+  const question = dailyQuestionEditorDraft[index];
+  if (!question || !['question_text','option_a','option_b','option_c','option_d','correct_answer','explanation'].includes(field)) return;
+  question[field] = field === 'correct_answer' ? Number(value) : value;
+  dailyQuestionEditorDirty = true;
+  setDailyQuestionEditorStatus('Modifications non enregistrées. Clique sur « Enregistrer et recréer le PDF ».', 'warn');
+}
+
+function resetDailyQuestionEditor(){
+  const draft = aiDailyDraftCache[currentDailyPdfIndex];
+  if (!draft) return;
+  if (dailyQuestionEditorDirty && !confirm('Annuler toutes les corrections non enregistrées ?')) return;
+  dailyQuestionEditorDraft = cloneDailyQuestions(draft.questions);
+  dailyQuestionEditorDirty = false;
+  renderDailyQuestionEditor();
+  setDailyQuestionEditorStatus('Les corrections non enregistrées ont été annulées.');
+}
+
+function removeDailyQuestionFromEditor(index){
+  if (!dailyQuestionEditorDraft[index]) return;
+  if (dailyQuestionEditorDraft.length <= 1){
+    toast('Le PDF doit garder au moins une question.');
+    return;
+  }
+  if (!confirm(`Supprimer la question ${index + 1} du PDF ?`)) return;
+  dailyQuestionEditorDraft.splice(index, 1);
+  dailyQuestionEditorDirty = true;
+  renderDailyQuestionEditor();
+  setDailyQuestionEditorStatus(`Question supprimée. Le nouveau PDF contiendra ${dailyQuestionEditorDraft.length} QCM après enregistrement.`, 'warn');
+}
+
+function renderDailyQuestionEditor(){
+  const editor = $('#dailyQuestionEditor');
+  const toggle = $('#dailyQuestionEditorToggleBtn');
+  const draft = aiDailyDraftCache[currentDailyPdfIndex];
+  if (!editor) return;
+  if (toggle) toggle.textContent = dailyQuestionEditorOpen ? 'Masquer l’éditeur' : 'Corriger les QCM du PDF';
+  editor.style.display = dailyQuestionEditorOpen ? 'block' : 'none';
+  if (!dailyQuestionEditorOpen) return;
+  if (!draft || draft.status === 'published'){
+    editor.innerHTML = '<div class="pay-note warn">Retire d’abord ce contenu du côté candidat avant de le modifier.</div>';
+    return;
+  }
+  if (!dailyQuestionEditorDraft.length) dailyQuestionEditorDraft = cloneDailyQuestions(draft.questions);
+  editor.innerHTML = `
+    <div class="pdf-editor-head">
+      <div><span>Correction du document</span><h3>${dailyQuestionEditorDraft.length} QCM modifiables</h3></div>
+      <p>Ouvre seulement la question à corriger. Les mêmes données serviront au nouveau PDF et aux QCM interactifs.</p>
+    </div>
+    <div class="pay-note" id="dailyQuestionEditorStatus">${dailyQuestionEditorDirty ? 'Modifications non enregistrées.' : 'Aucune correction non enregistrée.'}</div>
+    <div class="pdf-question-editor-list">
+      ${dailyQuestionEditorDraft.map((question, index) => `
+        <details class="pdf-question-editor-card">
+          <summary><b>Question ${index + 1}</b><span>${escapeHtml(String(question.question_text || 'Question sans titre').slice(0, 110))}</span></summary>
+          <div class="pdf-question-editor-body">
+            <label class="field-label">Énoncé</label>
+            <textarea class="input pdf-editor-textarea" oninput="updateDailyQuestionField(${index}, 'question_text', this.value)">${escapeHtml(question.question_text)}</textarea>
+            <div class="pdf-editor-options-grid">
+              ${['a','b','c','d'].map(letter => `<label><span>Option ${letter.toUpperCase()}</span><textarea class="input" oninput="updateDailyQuestionField(${index}, 'option_${letter}', this.value)">${escapeHtml(question[`option_${letter}`])}</textarea></label>`).join('')}
+            </div>
+            <label class="field-label">Bonne réponse</label>
+            <select class="input" onchange="updateDailyQuestionField(${index}, 'correct_answer', this.value)">
+              ${['A','B','C','D'].map((label, answerIndex) => `<option value="${answerIndex}" ${Number(question.correct_answer) === answerIndex ? 'selected' : ''}>${label} — Option ${label}</option>`).join('')}
+            </select>
+            <label class="field-label">Correction détaillée</label>
+            <textarea class="input pdf-editor-textarea correction" oninput="updateDailyQuestionField(${index}, 'explanation', this.value)">${escapeHtml(question.explanation)}</textarea>
+            <div class="admin-q-actions pdf-editor-question-actions">
+              <button class="edit" id="dailyReplaceBtn${index}" onclick="replaceDailyQuestionWithAi(${index})">Remplacer cette question</button>
+              <button class="delete" onclick="removeDailyQuestionFromEditor(${index})">Supprimer cette question</button>
+            </div>
+          </div>
+        </details>`).join('')}
+    </div>
+    <div class="pdf-editor-savebar">
+      <button class="btn btn-green" id="dailyQuestionSaveBtn" onclick="saveDailyQuestionCorrections()">Enregistrer et recréer le PDF</button>
+      <button class="btn btn-ghost" onclick="resetDailyQuestionEditor()">Annuler les modifications</button>
+    </div>`;
+}
+
+async function saveDailyQuestionCorrections(){
+  const index = currentDailyPdfIndex;
+  const draft = aiDailyDraftCache[index];
+  if (!draft || draft.status === 'published') return;
+  const btn = $('#dailyQuestionSaveBtn');
+  setButtonLoading(btn, true, 'Recréation du PDF...');
+  setDailyQuestionEditorStatus('Enregistrement des corrections et création du nouveau PDF...');
+  try{
+    const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(draft.id) + '/questions', {
+      method:'PUT',
+      body:JSON.stringify({ questions:dailyQuestionEditorDraft })
+    });
+    applyDailyDraftEditorUpdate(index, data.draft);
+    setDailyQuestionEditorStatus(`${Number(data.saved || data.draft?.count || 0)} QCM enregistrés. Le PDF corrigé est prêt à être vérifié.`, 'success');
+    toast('PDF corrigé recréé ✅');
+  }catch(err){
+    setDailyQuestionEditorStatus(err.message, 'error');
+    toast(err.message);
+  }finally{
+    setButtonLoading(btn, false);
+  }
+}
+
+async function replaceDailyQuestionWithAi(questionIndex){
+  const index = currentDailyPdfIndex;
+  const draft = aiDailyDraftCache[index];
+  if (!draft || draft.status === 'published' || !dailyQuestionEditorDraft[questionIndex]) return;
+  if (!confirm(`Remplacer entièrement la question ${questionIndex + 1} par une nouvelle question vérifiée ?`)) return;
+  const btn = $(`#dailyReplaceBtn${questionIndex}`);
+  setButtonLoading(btn, true, 'Remplacement...');
+  setDailyQuestionEditorStatus(`Préparation d’une nouvelle question ${questionIndex + 1}...`);
+  try{
+    const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(draft.id) + '/replace-question', {
+      method:'POST',
+      body:JSON.stringify({ index:questionIndex, questions:dailyQuestionEditorDraft })
+    });
+    applyDailyDraftEditorUpdate(index, data.draft);
+    setDailyQuestionEditorStatus(`Question ${questionIndex + 1} remplacée. Le PDF corrigé a été recréé.`, 'success');
+    toast(`Question ${questionIndex + 1} remplacée ✅`);
+  }catch(err){
+    setDailyQuestionEditorStatus(err.message, 'error');
+    toast(err.message);
+  }finally{
+    setButtonLoading(btn, false);
+  }
+}
+
 async function ensureCurrentPdfBlob(){
   if (currentDailyPdfUrl) return currentDailyPdfUrl;
   if (currentDailyPdfIndex < 0) throw new Error('PDF introuvable');
@@ -1688,22 +1878,30 @@ async function openDailyAiPdf(index){
   const d = aiDailyDraftCache[index];
   if (!d) return;
   try{
-    if (currentDailyPdfUrl) URL.revokeObjectURL(currentDailyPdfUrl);
-    currentDailyPdfUrl = '';
+    invalidateCurrentDailyPdf();
     currentDailyPdfIndex = index;
-    $('#dailyPdfTitle') && ($('#dailyPdfTitle').textContent = d.title || 'QCM quotidien');
-    $('#dailyPdfMeta') && ($('#dailyPdfMeta').textContent = `${d.date || ''} · ${d.category || ''} · ${d.level || ''} · ${Number(d.count || 0)} QCM`);
+    dailyQuestionEditorDraft = cloneDailyQuestions(d.questions);
+    dailyQuestionEditorOpen = false;
+    dailyQuestionEditorDirty = false;
+    updateDailyQuestionEditorMeta(d);
     $('#dailyPublishLevel') && ($('#dailyPublishLevel').value = d.level || 'Concours');
     refreshDailyPublishCategoryOptions(d.category || 'Culture générale');
     $('#dailyPublishPremium') && ($('#dailyPublishPremium').checked = Boolean(d.is_premium));
     renderDailyPdfHtml(d);
+    renderDailyQuestionEditor();
+    const editorLaunch = $('#dailyQuestionEditorLaunch');
+    if (editorLaunch) editorLaunch.style.display = d.status === 'published' ? 'none' : 'block';
     show('pdfreview');
     ensureCurrentPdfBlob().catch(()=>{});
   }catch(err){ toast(err.message); }
 }
 
 function closeDailyPdfReview(){
-  if (currentDailyPdfUrl){ URL.revokeObjectURL(currentDailyPdfUrl); currentDailyPdfUrl = ''; }
+  if (dailyQuestionEditorDirty && !confirm('Quitter sans enregistrer les corrections du PDF ?')) return;
+  invalidateCurrentDailyPdf();
+  dailyQuestionEditorDraft = [];
+  dailyQuestionEditorOpen = false;
+  dailyQuestionEditorDirty = false;
   show('admin');
   setAdminTab('ai');
 }
@@ -1738,6 +1936,13 @@ async function openCurrentDailyPdfFull(){
 
 function publishCurrentDailyPdf(){
   if (currentDailyPdfIndex < 0) return;
+  if (dailyQuestionEditorDirty){
+    dailyQuestionEditorOpen = true;
+    renderDailyQuestionEditor();
+    setDailyQuestionEditorStatus('Enregistre d’abord les corrections et recrée le PDF avant de publier.', 'warn');
+    toast('Enregistre d’abord les corrections du PDF.');
+    return;
+  }
   publishDailyAiDraft(currentDailyPdfIndex);
 }
 
@@ -3464,7 +3669,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-quality-gate-1') location.reload();
+    if (data.build && data.build !== 'pdf-qcm-editor-1') location.reload();
   }catch{}
 }
 
@@ -3477,7 +3682,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-quality-gate-1')
+    navigator.serviceWorker.register('/sw.js?v=pdf-qcm-editor-1')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

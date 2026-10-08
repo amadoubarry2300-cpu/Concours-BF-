@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=qcm-quality-gate-1">
+<link rel="manifest" href="/manifest.webmanifest?v=pdf-qcm-editor-1">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=qcm-quality-gate-1">
+<link rel="stylesheet" href="css/styles.css?v=pdf-qcm-editor-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -1149,6 +1149,14 @@
         </div>
       </div>
       <div class="pdf-html-preview" id="dailyPdfHtmlPreview"></div>
+      <div class="pdf-editor-launch" id="dailyQuestionEditorLaunch">
+        <div>
+          <h3>Une erreur dans le PDF ?</h3>
+          <p>Corrige l’énoncé, les options, la bonne réponse ou l’explication, puis recrée le PDF avant publication.</p>
+        </div>
+        <button class="btn btn-ghost" id="dailyQuestionEditorToggleBtn" onclick="toggleDailyQuestionEditor()">Corriger les QCM du PDF</button>
+      </div>
+      <div class="daily-question-editor" id="dailyQuestionEditor" style="display:none"></div>
       <div class="pdf-publish-box">
         <h3>Où publier ces QCM ?</h3>
         <p>Choisis la catégorie et le niveau avant de publier.</p>
@@ -1211,7 +1219,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=qcm-quality-gate-1"></script>
-<script src="js/app.js?v=qcm-quality-gate-1"></script>
+<script src="js/questions.js?v=pdf-qcm-editor-1"></script>
+<script src="js/app.js?v=pdf-qcm-editor-1"></script>
 </body>
 </html>

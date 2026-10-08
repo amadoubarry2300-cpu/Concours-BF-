@@ -1414,6 +1414,9 @@ function publicAiDailyDraft(row){
     model:row.model || '',
     fileName:row.file_name || '',
     created_at:row.created_at,
+    updated_at:row.updated_at || '',
+    corrected_at:row.corrected_at || '',
+    pdf_revision:Number(row.pdf_revision || 0),
     published_at:row.published_at || '',
     questions:Array.isArray(row.questions) ? row.questions : [],
     orphanResource:Boolean(row.orphan_resource),
@@ -2057,6 +2060,85 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
     (questions || []).forEach((q, idx) => drawQuestion(q, idx));
     doc.end();
   });
+}
+
+function normalizeEditedDailyQuestions(rows, draft){
+  if (!Array.isArray(rows) || !rows.length){
+    throw Object.assign(new Error('Le PDF doit contenir au moins un QCM.'), { status:400 });
+  }
+  if (rows.length > AI_QCM_MAX_COUNT){
+    throw Object.assign(new Error(`Le PDF ne peut pas dépasser ${AI_QCM_MAX_COUNT} QCM.`), { status:400 });
+  }
+  const dedupeIndex = createQuestionDedupeIndex();
+  const normalized = [];
+  for (let index = 0; index < rows.length; index++){
+    let question;
+    try{
+      question = normalizeAiQuestion(rows[index], {
+        category:draft?.category || 'Culture générale',
+        level:draft?.level || 'Concours',
+        is_premium:Boolean(draft?.is_premium),
+        source:safePdfTitle(draft?.title || 'QCM quotidien')
+      });
+    }catch(err){
+      throw Object.assign(new Error(`Question ${index + 1} : ${err.message || 'contenu invalide'}`), { status:400 });
+    }
+    const issue = aiQuestionQualityIssue(question, dedupeIndex) || publicQuestionQualityIssue(question);
+    if (issue){
+      throw Object.assign(new Error(`Question ${index + 1} : ${issue}`), { status:400 });
+    }
+    question.category = cleanText(draft?.category || question.category, 80);
+    question.level = cleanText(draft?.level || question.level, 40);
+    question.is_premium = Boolean(draft?.is_premium);
+    question.source = safePdfTitle(draft?.title || question.source || 'QCM quotidien');
+    normalized.push(question);
+    addQuestionToDedupeIndex(question.question_text, dedupeIndex);
+  }
+  return normalized;
+}
+
+async function rebuildDailyAiDraftPdf(draft, questions, overrides = {}){
+  if (!draft?.id) throw Object.assign(new Error('Brouillon PDF introuvable'), { status:404 });
+  const category = cleanText(overrides.category || draft.category || 'Culture générale', 80);
+  const level = cleanText(overrides.level || draft.level || 'Concours', 40);
+  const isPremium = overrides.is_premium === undefined ? Boolean(draft.is_premium) : Boolean(overrides.is_premium);
+  const title = safePdfTitle(overrides.title || `QCM quotidien — ${category} — ${level} — ${draft.date || todayId()}`);
+  const normalizedQuestions = (Array.isArray(questions) ? questions : []).map(question => ({
+    ...question,
+    category,
+    level,
+    is_premium:isPremium,
+    source:title
+  }));
+  const pdfBuffer = await buildQcmDraftPdf({
+    title,
+    date:draft.date || todayId(),
+    category,
+    level,
+    questions:normalizedQuestions
+  });
+  const fileName = safeFileName(`${title}.pdf`);
+  const trackCorrection = overrides.trackCorrection !== false;
+  const nextRevision = trackCorrection ? Number(draft.pdf_revision || 0) + 1 : Number(draft.pdf_revision || 0);
+  const objectPath = `ai-daily/files/${String(draft.date || todayId()).slice(0,4)}/${draft.id}-r${nextRevision}-${Date.now().toString(36)}-${fileName}`;
+  await uploadResourceObject(objectPath, pdfBuffer, 'application/pdf');
+  const now = new Date().toISOString();
+  return {
+    ...draft,
+    title,
+    category,
+    level,
+    count:normalizedQuestions.length,
+    is_premium:isPremium,
+    file_name:fileName,
+    mime_type:'application/pdf',
+    size:pdfBuffer.length,
+    storage_path:objectPath,
+    questions:normalizedQuestions,
+    pdf_revision:nextRevision,
+    corrected_at:trackCorrection ? now : (draft.corrected_at || ''),
+    updated_at:now
+  };
 }
 
 function dailyDraftMatchesPlan(draft, plan){
@@ -2779,7 +2861,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'qcm-quality-gate-1',
+    build: 'pdf-qcm-editor-1',
     time: new Date().toISOString()
   });
 });
@@ -3265,6 +3347,7 @@ app.get('/api/admin/ai/daily/:id/pdf', requireAdmin, async (req, res, next) => {
       if (questionDraft?.questions?.length){
         const pdf = await buildQcmDraftPdf({ title:questionDraft.title, date:questionDraft.date, category:questionDraft.category, level:questionDraft.level, questions:questionDraft.questions });
         res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Cache-Control', 'private, no-store');
         const disposition = req.query?.inline ? 'inline' : 'attachment';
         res.setHeader('Content-Disposition', `${disposition}; filename="qcm-quotidien.pdf"`);
         return res.send(pdf);
@@ -3273,9 +3356,97 @@ app.get('/api/admin/ai/daily/:id/pdf', requireAdmin, async (req, res, next) => {
     }
     const file = await downloadResourceObject(draft.storage_path);
     res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Cache-Control', 'private, no-store');
     const disposition = req.query?.inline ? 'inline' : 'attachment';
     res.setHeader('Content-Disposition', `${disposition}; filename="${safeFileName(draft.file_name || 'qcm-quotidien.pdf')}"`);
     res.send(file.buffer);
+  }catch(err){ next(err); }
+});
+
+app.put('/api/admin/ai/daily/:id/questions', requireAdmin, async (req, res, next) => {
+  try{
+    const drafts = await loadAiDailyIndex();
+    const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
+    if (idx < 0) return res.status(404).json({ message:'Brouillon PDF introuvable' });
+    const draft = drafts[idx];
+    if (draft.status === 'published'){
+      return res.status(409).json({ message:'Retire d’abord ce PDF du côté candidat avant de le corriger.' });
+    }
+    const questions = normalizeEditedDailyQuestions(req.body?.questions, draft);
+    const previousStoragePath = draft.storage_path || '';
+    const updated = await rebuildDailyAiDraftPdf(draft, questions);
+    drafts[idx] = updated;
+    await saveAiDailyIndex(drafts);
+    if (previousStoragePath && previousStoragePath !== updated.storage_path){
+      await deleteResourceObject(previousStoragePath).catch(()=>{});
+    }
+    res.json({
+      ok:true,
+      saved:questions.length,
+      pdfRegenerated:true,
+      draft:publicAiDailyDraft(updated)
+    });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/ai/daily/:id/replace-question', requireAdmin, async (req, res, next) => {
+  try{
+    if (!GEMINI_API_KEY) return res.status(503).json({ message:'Service IA indisponible pour remplacer cette question.' });
+    const drafts = await loadAiDailyIndex();
+    const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
+    if (idx < 0) return res.status(404).json({ message:'Brouillon PDF introuvable' });
+    const draft = drafts[idx];
+    if (draft.status === 'published'){
+      return res.status(409).json({ message:'Retire d’abord ce PDF du côté candidat avant de le corriger.' });
+    }
+    const sourceRows = Array.isArray(req.body?.questions) ? req.body.questions : draft.questions;
+    const questionIndex = Number(req.body?.index);
+    if (!Array.isArray(sourceRows) || !Number.isInteger(questionIndex) || questionIndex < 0 || questionIndex >= sourceRows.length){
+      return res.status(400).json({ message:'Question à remplacer invalide.' });
+    }
+    const originalText = strictCleanAiQcmText(sourceRows[questionIndex]?.question_text || '', 320);
+    const otherQuestionTexts = sourceRows
+      .filter((_question, index) => index !== questionIndex)
+      .map(question => question?.question_text)
+      .filter(Boolean);
+    const draftDedupeIndex = createQuestionDedupeIndex(otherQuestionTexts);
+    let replacement = null;
+    let model = '';
+    let lastIssue = '';
+    for (let attempt = 0; attempt < 3 && !replacement; attempt++){
+      const generated = await generateUniqueAiQuestions({
+        count:1,
+        category:draft.category || 'Culture générale',
+        level:draft.level || 'Concours',
+        theme:`Remplace entièrement cette question jugée incorrecte : « ${originalText} ». Crée une autre question fiable du même module, avec un raisonnement différent et une réponse vérifiée. Tentative ${attempt + 1}.`,
+        publicationName:draft.title || 'QCM quotidien',
+        is_premium:Boolean(draft.is_premium)
+      });
+      model = generated.model || model;
+      const candidate = generated.questions?.[0] || null;
+      const issue = candidate ? (aiQuestionQualityIssue(candidate, draftDedupeIndex) || publicQuestionQualityIssue(candidate)) : 'Aucune question générée';
+      if (!issue) replacement = candidate;
+      else lastIssue = issue;
+    }
+    if (!replacement){
+      return res.status(502).json({ message:`Impossible de préparer une question de remplacement fiable${lastIssue ? ` : ${lastIssue}` : ''}. Réessaie.` });
+    }
+    const nextRows = sourceRows.slice();
+    nextRows[questionIndex] = replacement;
+    const questions = normalizeEditedDailyQuestions(nextRows, draft);
+    const previousStoragePath = draft.storage_path || '';
+    const updated = await rebuildDailyAiDraftPdf(draft, questions);
+    drafts[idx] = { ...updated, model:model || updated.model };
+    await saveAiDailyIndex(drafts);
+    if (previousStoragePath && previousStoragePath !== updated.storage_path){
+      await deleteResourceObject(previousStoragePath).catch(()=>{});
+    }
+    res.json({
+      ok:true,
+      replaced:questionIndex,
+      pdfRegenerated:true,
+      draft:publicAiDailyDraft(drafts[idx])
+    });
   }catch(err){ next(err); }
 });
 
@@ -3285,13 +3456,29 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
     const drafts = await loadAiDailyIndex();
     const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
     if (idx < 0) return res.status(404).json({ message:'Brouillon IA introuvable' });
-    const draft = drafts[idx];
-    const questions = Array.isArray(draft.questions) ? draft.questions : [];
+    let draft = drafts[idx];
+    let questions = Array.isArray(draft.questions) ? draft.questions : [];
     if (!questions.length) return res.status(400).json({ message:'Aucun QCM à publier dans ce brouillon' });
     const publishLevel = cleanText(req.body?.level || draft.level || '', 40) || draft.level;
     const requestedPublishCategory = cleanText(req.body?.category || draft.category || '', 80) || draft.category;
     const publishCategory = categoryAllowedForLevel(requestedPublishCategory, publishLevel) ? requestedPublishCategory : defaultCategoryForLevel(publishLevel, draft.date || todayId());
     const publishPremium = req.body?.is_premium === undefined ? Boolean(draft.is_premium) : Boolean(req.body?.is_premium);
+    if (draft.status !== 'published'){
+      const previousStoragePath = draft.storage_path || '';
+      const publishDraft = { ...draft, category:publishCategory, level:publishLevel, is_premium:publishPremium };
+      questions = normalizeEditedDailyQuestions(questions, publishDraft);
+      draft = await rebuildDailyAiDraftPdf(publishDraft, questions, {
+        category:publishCategory,
+        level:publishLevel,
+        is_premium:publishPremium,
+        trackCorrection:false
+      });
+      drafts[idx] = draft;
+      await saveAiDailyIndex(drafts);
+      if (previousStoragePath && previousStoragePath !== draft.storage_path){
+        await deleteResourceObject(previousStoragePath).catch(()=>{});
+      }
+    }
     const existingPublishedRows = await findPublishedRowsForDailyDraft(draft, { category:publishCategory, level:publishLevel, is_premium:publishPremium });
     const alreadyHasQuestions = Array.isArray(existingPublishedRows) && existingPublishedRows.length > 0;
     let publishedCount = alreadyHasQuestions ? existingPublishedRows.length : 0;

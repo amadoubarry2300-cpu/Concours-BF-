@@ -488,3 +488,14 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Ajout de `tools/audit_qcm_quality.py` pour contrôler la qualité des QCM réellement exposés en production.
 - Le validateur CSV rejette désormais les commentaires internes et hésitations de relecture.
 - Nouveau build/cache : `qcm-quality-gate-1`.
+
+## 2026-10-08 — Correction des QCM avant reconstruction du PDF
+
+- L’écran de vérification du PDF permet maintenant d’ouvrir un éditeur des QCM sources.
+- Chaque question peut être corrigée : énoncé, quatre options, bonne réponse et explication.
+- Une question peut être supprimée ou remplacée seule, sans régénérer les 50 autres QCM.
+- **Enregistrer et recréer le PDF** valide les questions, sauvegarde les corrections et reconstruit le fichier PDF.
+- La publication est bloquée tant que des corrections locales ne sont pas enregistrées.
+- Le PDF et les QCM interactifs publiés utilisent la même liste corrigée.
+- Les PDF administrateur corrigés sont servis sans cache pour éviter de rouvrir une ancienne version.
+- Nouveau build/cache : `pdf-qcm-editor-1`.
