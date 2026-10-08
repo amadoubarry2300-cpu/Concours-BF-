@@ -11,10 +11,10 @@ L’application **Réussite Concours BF** est une application web hébergée sur
 
 État production vérifié :
 
-- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-quality-gate-1>
+- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=pdf-qcm-editor-1>
 - API santé : <https://concoursbf-fawn.vercel.app/health>
-- Dernier build vérifié : `qcm-quality-gate-1`
-- Dernier commit principal : `43427e0 Filter unsafe QCM from candidate APIs`
+- Dernier build vérifié : `pdf-qcm-editor-1`
+- Dernier commit principal : `2900324 Add editable QCM workflow for generated PDFs`
 - Dépôt GitHub : `https://github.com/amadoubarry2300-cpu/Concours-BF-.git`
 - Branche : `main`
 - Vercel déploie automatiquement depuis GitHub.
@@ -33,6 +33,16 @@ Dernière correction importante :
 - Nouveau build déployé et vérifié : `qcm-quality-gate-1`.
 - Audit qualité production : 9 publications, 224 questions contrôlées, 1 600 questions dans la banque candidat, aucun contenu interne/douteux exposé.
 - Audit Premium production : 4 documents candidat verrouillés, 2 publications Premium verrouillées et aucune fuite Premium.
+
+### Mise à jour du 8 octobre 2026 — correction des QCM du PDF
+
+- Dans la vérification du PDF quotidien, l’admin dispose maintenant du bouton **Corriger les QCM du PDF**.
+- Chaque QCM source est modifiable : énoncé, options A à D, bonne réponse et correction détaillée.
+- Une question peut être supprimée ou remplacée seule sans régénérer les autres questions.
+- **Enregistrer et recréer le PDF** sauvegarde les corrections et produit un nouveau fichier sans ancien cache.
+- La publication est bloquée si des corrections locales restent non enregistrées.
+- Le PDF et les QCM interactifs publiés utilisent désormais la même liste corrigée.
+- Build production vérifié : `pdf-qcm-editor-1` ; commit fonctionnel : `2900324`.
 
 ---
 
