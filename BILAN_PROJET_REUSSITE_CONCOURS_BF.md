@@ -11,10 +11,10 @@ L’application **Réussite Concours BF** est une application web hébergée sur
 
 État production vérifié :
 
-- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=candidate-docs-premium-lock-1>
+- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-quality-gate-1>
 - API santé : <https://concoursbf-fawn.vercel.app/health>
-- Dernier build vérifié : `candidate-docs-premium-lock-1`
-- Dernier commit principal : `0991451 Gate candidate documents behind Premium`
+- Dernier build vérifié : `qcm-quality-gate-1`
+- Dernier commit principal : `43427e0 Filter unsafe QCM from candidate APIs`
 - Dépôt GitHub : `https://github.com/amadoubarry2300-cpu/Concours-BF-.git`
 - Branche : `main`
 - Vercel déploie automatiquement depuis GitHub.
@@ -30,8 +30,9 @@ Dernière correction importante :
 - Un audit de la production a détecté sept QCM contenant une réponse fausse, une correction contradictoire ou une remarque de brouillon.
 - Le nouveau filtre candidat écarte automatiquement ces contenus de **Nouveaux QCM** et de `/api/questions`, sans modifier l’interface d’administration.
 - Outil ajouté : `tools/audit_qcm_quality.py`.
-- Nouveau build préparé : `qcm-quality-gate-1`.
-- Les audits locaux Premium et qualité passent ; le déploiement production reste à effectuer dès que l’accès GitHub est rétabli.
+- Nouveau build déployé et vérifié : `qcm-quality-gate-1`.
+- Audit qualité production : 9 publications, 224 questions contrôlées, 1 600 questions dans la banque candidat, aucun contenu interne/douteux exposé.
+- Audit Premium production : 4 documents candidat verrouillés, 2 publications Premium verrouillées et aucune fuite Premium.
 
 ---
 
