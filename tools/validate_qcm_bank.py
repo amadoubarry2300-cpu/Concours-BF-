@@ -8,6 +8,12 @@ REQUIRED = [
 ]
 ALLOWED_STATUS = {'validated','needs_review','rejected'}
 ALLOWED_BOOL = {'true','false','True','False','0','1'}
+FORBIDDEN_REVIEW_TEXT = re.compile(
+    r'\b(?:attends?|revoyons|refaisons|reprenons|recalculons|ajustons|remplaçons)\b'
+    r'|\b(?:à|a)\s+v[ée]rifier\b|\bbrouillon\b|\bintelligence artificielle\b'
+    r'|\boption\s+la\s+plus\s+(?:proche|coh[ée]rente)\b|\bsi\s+n[ée]cessaire\b',
+    re.I
+)
 
 def norm(s):
     return re.sub(r'\s+', ' ', (s or '').strip().lower())
@@ -44,6 +50,9 @@ def validate(path):
             exp=(row.get('explanation') or '').strip()
             if len(exp) < 25:
                 warnings.append(f'Ligne {i}: explication courte')
+            public_text=' '.join([q, *opts, exp])
+            if FORBIDDEN_REVIEW_TEXT.search(public_text):
+                errors.append(f'Ligne {i}: commentaire interne ou hésitation de relecture détecté')
             if row.get('is_premium','') not in ALLOWED_BOOL:
                 errors.append(f'Ligne {i}: is_premium invalide')
             if row.get('review_status','') not in ALLOWED_STATUS:

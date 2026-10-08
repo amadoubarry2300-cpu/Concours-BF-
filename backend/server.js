@@ -1072,6 +1072,27 @@ function aiQuestionQualityIssue(q, dedupeIndex){
   return '';
 }
 
+const PUBLIC_QCM_REVIEW_PATTERNS = [
+  /\b(?:attends?|revoyons|refaisons|reprenons|recalculons|ajustons|remplaçons)\b/i,
+  /\baucune\s+(?:option|r[ée]ponse)\b.{0,100}\bcorrespond/i,
+  /\boption\b.{0,80}\bnon\s+pr[ée]sente\b/i,
+  /\boption\s+la\s+plus\s+(?:proche|coh[ée]rente)\b/i,
+  /\bsi\s+n[ée]cessaire\b/i,
+  /\b(?:corrigeons|modifions)\s+(?:l[’']|la\s+)?(?:[ée]nonc[ée]|option|r[ée]ponse)/i
+];
+
+function publicQuestionQualityIssue(q){
+  const structuralIssue = aiQuestionQualityIssue(q);
+  if (structuralIssue) return structuralIssue;
+  const allText = [q?.question_text, q?.option_a, q?.option_b, q?.option_c, q?.option_d, q?.explanation]
+    .map(value => strictCleanAiQcmText(value, 3000))
+    .join(' ');
+  if (PUBLIC_QCM_REVIEW_PATTERNS.some(pattern => pattern.test(allText))){
+    return 'Correction contenant une hésitation ou une remarque de relecture';
+  }
+  return '';
+}
+
 function normalizeAiQuestion(item, defaults = {}){
   const options = Array.isArray(item?.options) ? item.options : [item?.option_a, item?.option_b, item?.option_c, item?.option_d];
   const correctRaw = item?.correct_answer ?? item?.answer_index ?? item?.answer ?? item?.correctIndex;
@@ -2758,7 +2779,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'candidate-docs-premium-lock-1',
+    build: 'qcm-quality-gate-1',
     time: new Date().toISOString()
   });
 });
@@ -4014,6 +4035,7 @@ app.get('/api/qcm-publications', async (req, res, next) => {
     const rows = await supabaseRequest('questions?select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.desc&limit=800').catch(()=>[]);
     const groups = new Map();
     for (const row of (Array.isArray(rows) ? rows : [])){
+      if (publicQuestionQualityIssue(row)) continue;
       const date = String(row.created_at || new Date().toISOString()).slice(0, 10);
       const name = publicQcmPublicationTitle(row);
       const key = `${name}|${date}|${Boolean(row.is_premium)}|${row.category || ''}|${row.level || ''}`;
@@ -4047,14 +4069,16 @@ app.get('/api/questions', async (req, res, next) => {
 
     const localBank = loadLocalQcmBank();
     if (localBank.length){
-      const filtered = premiumAllowed ? localBank : localBank.filter(q => !q.is_premium);
-      const questions = filtered.map(safeLocalQuestion);
+      const available = premiumAllowed ? localBank : localBank.filter(q => !q.is_premium);
+      const questions = available
+        .filter(q => !publicQuestionQualityIssue(q))
+        .map(safeLocalQuestion);
       if (supabaseReady()){
         const premiumFilter = premiumAllowed ? '' : '&is_premium=eq.false';
         const extraRows = await supabaseRequest(`questions?${premiumFilter ? premiumFilter.slice(1) + '&' : ''}select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.desc`).catch(()=>[]);
         const seen = new Set(questions.map(q => String(q.question_text || '').toLowerCase().trim()));
         if (Array.isArray(extraRows)){
-          extraRows.map(safeQuestion).forEach(q => {
+          extraRows.map(safeQuestion).filter(q => !publicQuestionQualityIssue(q)).forEach(q => {
             const key = String(q.question_text || '').toLowerCase().trim();
             if (key && !seen.has(key)){
               seen.add(key);
@@ -4078,7 +4102,12 @@ app.get('/api/questions', async (req, res, next) => {
     const rows = await supabaseRequest(`questions?${premiumFilter ? premiumFilter.slice(1) + '&' : ''}select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.asc`);
     res.setHeader('X-Premium-Included', premiumAllowed ? 'true' : 'false');
     res.setHeader('Cache-Control', 'private, max-age=30');
-    res.json({ ok:true, source:'supabase', premiumIncluded:premiumAllowed, questions:Array.isArray(rows) ? rows.map(safeQuestion) : [] });
+    res.json({
+      ok:true,
+      source:'supabase',
+      premiumIncluded:premiumAllowed,
+      questions:Array.isArray(rows) ? rows.map(safeQuestion).filter(q => !publicQuestionQualityIssue(q)) : []
+    });
   }catch(err){ next(err); }
 });
 

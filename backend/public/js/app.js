@@ -3464,7 +3464,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'candidate-docs-premium-lock-1') location.reload();
+    if (data.build && data.build !== 'qcm-quality-gate-1') location.reload();
   }catch{}
 }
 
@@ -3477,7 +3477,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=candidate-docs-premium-lock-1')
+    navigator.serviceWorker.register('/sw.js?v=qcm-quality-gate-1')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

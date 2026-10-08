@@ -479,3 +479,12 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Côté candidat, tous les documents et fichiers de la rubrique Documents & fichiers sont affichés Premium et verrouillés sans abonnement.
 - L’ouverture/téléchargement public des documents candidat retourne une demande Premium côté serveur.
 - Le cache mobile est rebumpé pour remplacer rapidement les anciens affichages Gratuit/Ouvrir.
+
+## 2026-10-08 — Filtre qualité des QCM candidats
+
+- Les QCM contenant une hésitation de relecture, une remarque interne, des options répétées ou une structure invalide ne sont plus servis côté candidat.
+- Le filtre protège à la fois **Nouveaux QCM** et la banque générale `/api/questions`.
+- Sept QCM de production contenant des réponses fausses, des corrections contradictoires ou des commentaires de brouillon sont automatiquement écartés.
+- Ajout de `tools/audit_qcm_quality.py` pour contrôler la qualité des QCM réellement exposés en production.
+- Le validateur CSV rejette désormais les commentaires internes et hésitations de relecture.
+- Nouveau build/cache : `qcm-quality-gate-1`.

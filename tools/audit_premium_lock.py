@@ -52,8 +52,8 @@ leaked = [q for q in questions.get('questions', []) if q.get('is_premium')]
 assert_true(not leaked, f"/api/questions leaked {len(leaked)} premium rows")
 print('questions:', len(questions.get('questions', [])), 'premium leaked: 0')
 
-status, headers, sw = get('/sw.js?v=candidate-docs-premium-lock-1', '*/*')
-for token in ['candidate-docs-premium-lock-1', 'X-Premium-Included', 'X-Premium-Content', 'CLEAR_DATA_CACHE', 'networkFirstFile']:
+status, headers, sw = get('/sw.js?v=qcm-quality-gate-1', '*/*')
+for token in ['qcm-quality-gate-1', 'X-Premium-Included', 'X-Premium-Content', 'CLEAR_DATA_CACHE', 'networkFirstFile']:
     assert_true(token in sw, f'service worker missing {token}')
 print('service worker premium cache guards: ok')
 print('AUDIT OK')
