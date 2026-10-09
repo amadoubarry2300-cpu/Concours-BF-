@@ -11,9 +11,9 @@ L’application **Réussite Concours BF** est une application web hébergée sur
 
 État production vérifié :
 
-- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-4>
+- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-5>
 - API santé : <https://concoursbf-fawn.vercel.app/health>
-- Dernier build vérifié : `qcm-verified-v2-4`
+- Dernier build vérifié : `qcm-verified-v2-5`
 - Dernier commit fonctionnel OpenRouter : `2b811e2 Add OpenRouter Claude provider with Gemini fallback`
 - Contrôle de connexion fournisseur : `2dc1e4b Add cached AI provider health check`
 - Correctif runtime Vercel : `ab61662 Export Express app for Vercel runtime`
@@ -121,11 +121,11 @@ Une empreinte SHA-256 lie le verdict à l’énoncé exact, aux quatre options, 
 - `POST /api/admin/ai/daily/:id/verify` relance la vérification d’un brouillon existant.
 - `POST /api/admin/ai/daily/:id/publish` répond `409` si le contrôle V2 échoue.
 - Le PDF et le quiz interactif continuent à provenir du même tableau structuré corrigé.
-- Build/cache V2 : `qcm-verified-v2-4`.
+- Build/cache V2 : `qcm-verified-v2-5`.
 
 #### Correction mobile du 9 octobre 2026 — génération progressive
 
-La création de 50 QCM vérifiés ne s’exécute plus dans une seule requête longue, qui pouvait être interrompue par Vercel et afficher `Failed to fetch` sur téléphone. L’admin initialise maintenant une préparation, puis le navigateur demande automatiquement de petits lots de cinq. Depuis le correctif `qcm-verified-v2-4`, une fonction Vercel effectue soit la génération du lot, soit sa vérification indépendante, jamais les deux appels IA dans la même requête. Le lot brut et le lot accepté sont enregistrés séparément dans Supabase. Un délai réseau fournisseur est arrêté côté serveur avant la limite Vercel. Si OpenRouter échoue et que Gemini est configuré, la requête tente Gemini ; si les deux échouent, les QCM déjà enregistrés restent intacts. Le bouton **Reprendre la préparation** continue au dernier état sauvegardé sans recommencer les QCM déjà contrôlés. Le PDF final n’est créé qu’une fois les 50 QCM vérifiés obtenus.
+La création de 50 QCM vérifiés ne s’exécute plus dans une seule requête longue, qui pouvait être interrompue par Vercel et afficher `Failed to fetch` sur téléphone. L’admin initialise maintenant une préparation, puis le navigateur demande automatiquement de petits lots de cinq. Depuis le correctif `qcm-verified-v2-5`, une fonction Vercel effectue soit la génération du lot, soit sa vérification indépendante, jamais les deux appels IA dans la même requête. Le lot brut et le lot accepté sont enregistrés séparément dans Supabase. Un délai réseau fournisseur est arrêté côté serveur avant la limite Vercel. Si OpenRouter échoue et que Gemini est configuré, la requête tente Gemini ; si les deux échouent, les QCM déjà enregistrés restent intacts. Le bouton **Reprendre la préparation** continue au dernier état sauvegardé sans recommencer les QCM déjà contrôlés. Le PDF final n’est créé qu’une fois les 50 QCM vérifiés obtenus.
 
 Routes concernées :
 
@@ -262,7 +262,7 @@ Ces consignes doivent être respectées dans toute nouvelle discussion :
 - Icônes PWA :
   - `img/pwa-icon-192.png`
   - `img/pwa-icon-512.png`
-- Dernier cache/build : `qcm-verified-v2-4`
+- Dernier cache/build : `qcm-verified-v2-5`
 
 ---
 
@@ -531,7 +531,7 @@ Service worker PWA :
 - cache data network-first ;
 - ne cache pas contenus Premium marqués ;
 - gère `CLEAR_DATA_CACHE` ;
-- version actuelle : `qcm-verified-v2-4`.
+- version actuelle : `qcm-verified-v2-5`.
 
 #### `vercel.json`
 

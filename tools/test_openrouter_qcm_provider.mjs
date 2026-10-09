@@ -71,6 +71,9 @@ assert.deepEqual(requests[0].body.tools[0].parameters.allowed_domains, ['gov.bf'
 assert.equal(requests[0].body.tools[1].type, 'openrouter:web_fetch');
 assert.equal(requests[0].body.provider.data_collection, 'deny');
 assert.equal(requests[0].body.response_format.type, 'json_object');
+assert.deepEqual(requests[0].body.reasoning, { effort:'low' });
+assert.equal(requests[0].body.temperature, undefined);
+assert.equal(requests[0].body.top_p, undefined);
 
 await callAiGenerateParts([
   { text:'Lis ce PDF.' },
@@ -80,6 +83,16 @@ assert.equal(requests[1].body.messages[0].content[1].type, 'file');
 assert.equal(requests[1].body.plugins[0].id, 'file-parser');
 assert.equal(requests[1].body.plugins[0].pdf.engine, 'cloudflare-ai');
 assert.equal(requests[1].body.tools, undefined);
+
+await callAiGenerateParts([{ text:'Vérifie ce QCM.' }], {
+  verifier:true,
+  grounding:false,
+  maxOutputTokens:500
+});
+assert.equal(requests[2].body.model, 'anthropic/claude-sonnet-5.5');
+assert.deepEqual(requests[2].body.reasoning, { effort:'medium' });
+assert.equal(requests[2].body.temperature, undefined);
+assert.equal(requests[2].body.top_p, undefined);
 
 const parsedSources = groundingSourcesFromOpenRouter({
   choices:[{ message:{ annotations:[{ url_citation:{ url:'https://www.insd.bf/source', title:'INSD', content:'Citation' } }] } }]

@@ -510,3 +510,11 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Les questions sans preuve, rejetées ou sous le score minimal restent bloquées avant publication.
 - Nouveau test ciblé : `tools/test_openrouter_qcm_provider.mjs`.
 - Build/cache : `qcm-verified-v2-4`.
+
+## 2026-10-09 — Compatibilité Claude 5.5 et message d’erreur admin
+
+- Suppression de `temperature` et `top_p` pour Claude 5.5, qui les refuse avec sa réflexion adaptative.
+- Utilisation de l’effort `low` pour la génération Haiku et `medium` pour la vérification Sonnet.
+- Le détail fournisseur est maintenant affiché dans l’administration lors d’un lot interrompu, sans exposer les clés.
+- Les QCM déjà validés et la reprise progressive restent inchangés.
+- Build/cache : `qcm-verified-v2-5`.

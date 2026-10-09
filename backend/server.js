@@ -1860,8 +1860,6 @@ async function callOpenRouterGenerateParts(parts, options = {}){
   const requestBody = {
     model,
     messages:[{ role:'user', content:openRouterMessageContent(parts) }],
-    temperature:Number(options.temperature ?? 0.16),
-    top_p:Number(options.topP ?? 0.78),
     max_tokens:Number(options.maxOutputTokens || 10000),
     response_format:{ type:'json_object' },
     provider:{
@@ -1871,6 +1869,14 @@ async function callOpenRouterGenerateParts(parts, options = {}){
     },
     usage:{ include:true }
   };
+  // Claude 5.5 utilise la réflexion adaptative et rejette les valeurs non
+  // standard de temperature/top_p. L'effort remplace ces anciens réglages.
+  if (/^anthropic\/claude-(?:haiku|sonnet|opus)-5\.5$/i.test(model)){
+    requestBody.reasoning = { effort:options.verifier ? 'medium' : 'low' };
+  }else{
+    requestBody.temperature = Number(options.temperature ?? 0.16);
+    requestBody.top_p = Number(options.topP ?? 0.78);
+  }
   if (tools.length){
     requestBody.tools = tools;
     requestBody.max_tool_calls = Math.min(20, OPENROUTER_SEARCH_MAX_USES * 2);
@@ -1998,7 +2004,12 @@ async function callAiGenerateParts(parts, options = {}){
     : options.grounding
       ? 'La recherche et la vérification des sources sont indisponibles pour le moment. Aucun QCM non sourcé ne sera accepté.'
       : 'IA indisponible pour le moment. Réessaie un peu plus tard.';
-  const err = new Error(friendly);
+  const detail = failures.map(row => {
+    const message = strictCleanAiQcmText(row.message, 260)
+      .replace(/(?:sk-or-|sk-ant-|AIza)[A-Za-z0-9._-]+/g, '[clé masquée]');
+    return `${row.provider} (${row.status}) : ${message}`;
+  }).join(' — ');
+  const err = new Error(`${friendly}${detail ? ` Détail fournisseur : ${detail}` : ''}`);
   err.status = quotaFailure ? 429 : 502;
   throw err;
 }
@@ -3685,7 +3696,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-verified-v2-4',
+    build: 'qcm-verified-v2-5',
     time: new Date().toISOString()
   });
 });

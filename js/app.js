@@ -1605,7 +1605,8 @@ async function continueDailyAiGeneration(draft, result){
     }catch(batchError){
       failedBatches += 1;
       if (failedBatches >= 3) throw batchError;
-      if (result) result.innerHTML = `<div class="pay-note warn">Lot interrompu, nouvelle tentative automatique (${failedBatches}/3). Les QCM déjà validés sont conservés.</div>`;
+      const reason = String(batchError?.message || '').trim();
+      if (result) result.innerHTML = `<div class="pay-note warn">Lot interrompu, nouvelle tentative automatique (${failedBatches}/3). Les QCM déjà validés sont conservés.${reason ? `<br><small>Motif : ${escapeHtml(reason)}</small>` : ''}</div>`;
       await new Promise(resolve => setTimeout(resolve, 1500));
     }
   }
@@ -3897,7 +3898,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-verified-v2-4') location.reload();
+    if (data.build && data.build !== 'qcm-verified-v2-5') location.reload();
   }catch{}
 }
 
@@ -3910,7 +3911,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-4')
+    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-5')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
