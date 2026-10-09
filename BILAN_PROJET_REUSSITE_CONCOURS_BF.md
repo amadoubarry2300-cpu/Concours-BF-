@@ -11,10 +11,11 @@ L’application **Réussite Concours BF** est une application web hébergée sur
 
 État production vérifié :
 
-- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=pdf-qcm-editor-1>
+- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-1>
 - API santé : <https://concoursbf-fawn.vercel.app/health>
-- Dernier build vérifié : `pdf-qcm-editor-1`
-- Dernier commit principal : `2900324 Add editable QCM workflow for generated PDFs`
+- Dernier build vérifié : `qcm-verified-v2-1`
+- Dernier commit fonctionnel V2 : `e9bc03e Add source-verified QCM generation gate`
+- Correctif runtime Vercel : `ab61662 Export Express app for Vercel runtime`
 - Dépôt GitHub : `https://github.com/amadoubarry2300-cpu/Concours-BF-.git`
 - Branche : `main`
 - Vercel déploie automatiquement depuis GitHub.

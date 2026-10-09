@@ -52,8 +52,10 @@ leaked = [q for q in questions.get('questions', []) if q.get('is_premium')]
 assert_true(not leaked, f"/api/questions leaked {len(leaked)} premium rows")
 print('questions:', len(questions.get('questions', [])), 'premium leaked: 0')
 
-status, headers, sw = get('/sw.js?v=pdf-qcm-editor-1', '*/*')
-for token in ['pdf-qcm-editor-1', 'X-Premium-Included', 'X-Premium-Content', 'CLEAR_DATA_CACHE', 'networkFirstFile']:
+build = str(health.get('build') or '').strip()
+assert_true(build, 'health build missing')
+status, headers, sw = get('/sw.js?v=' + urllib.parse.quote(build, safe=''), '*/*')
+for token in [build, 'X-Premium-Included', 'X-Premium-Content', 'CLEAR_DATA_CACHE', 'networkFirstFile']:
     assert_true(token in sw, f'service worker missing {token}')
 print('service worker premium cache guards: ok')
 print('AUDIT OK')
