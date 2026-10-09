@@ -499,3 +499,14 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Le PDF et les QCM interactifs publiés utilisent la même liste corrigée.
 - Les PDF administrateur corrigés sont servis sans cache pour éviter de rouvrir une ancienne version.
 - Nouveau build/cache : `pdf-qcm-editor-1`.
+
+## 2026-10-09 — OpenRouter et Claude branchés sur le workflow V2
+
+- OpenRouter devient le fournisseur prioritaire lorsque `OPENROUTER_API_KEY` est configurée dans Vercel.
+- Claude Haiku 5.5 génère les candidats par lots de cinq et Claude Sonnet 5.5 réalise la vérification indépendante.
+- La recherche `openrouter:web_search` et la lecture `openrouter:web_fetch` sont limitées aux domaines officiels ou éducatifs autorisés selon le sujet.
+- Les PDF privés sont transmis en base64 et analysés par le parseur Cloudflare AI d’OpenRouter.
+- Gemini reste disponible comme repli automatique sans modifier le brouillon progressif déjà enregistré.
+- Les questions sans preuve, rejetées ou sous le score minimal restent bloquées avant publication.
+- Nouveau test ciblé : `tools/test_openrouter_qcm_provider.mjs`.
+- Build/cache : `qcm-verified-v2-4`.

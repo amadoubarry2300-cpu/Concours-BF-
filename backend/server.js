@@ -60,9 +60,20 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_FROM = process.env.TWILIO_FROM || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-// QCM vérifiés V2 : privilégier un modèle stable avec raisonnement et recherche web.
+// QCM vérifiés V2 : OpenRouter/Claude en priorité, Gemini en repli automatique.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
 const GEMINI_VERIFIER_MODEL = process.env.GEMINI_VERIFIER_MODEL || 'gemini-3.1-pro-preview';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const OPENROUTER_BASE_URL = String(process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-5.5';
+const OPENROUTER_VERIFIER_MODEL = process.env.OPENROUTER_VERIFIER_MODEL || 'anthropic/claude-sonnet-5.5';
+const OPENROUTER_SEARCH_ENGINE = String(process.env.OPENROUTER_SEARCH_ENGINE || 'parallel').toLowerCase();
+const OPENROUTER_SEARCH_MODE = String(process.env.OPENROUTER_SEARCH_MODE || 'basic').toLowerCase();
+const OPENROUTER_SEARCH_MAX_USES = Math.min(8, Math.max(1, Number(process.env.OPENROUTER_SEARCH_MAX_USES || 5)));
+const OPENROUTER_SEARCH_MAX_RESULTS = Math.min(10, Math.max(2, Number(process.env.OPENROUTER_SEARCH_MAX_RESULTS || 5)));
+const AI_QCM_PROVIDER_SETTING = String(process.env.AI_QCM_PROVIDER || 'auto').trim().toLowerCase();
+const AI_QCM_FALLBACK_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_FALLBACK_ENABLED || 'true'));
+const AI_QCM_TIMEOUT_MS = Math.min(55000, Math.max(15000, Number(process.env.AI_QCM_TIMEOUT_MS || 45000)));
 const AI_QCM_GROUNDING_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_GROUNDING_ENABLED || 'true'));
 const AI_QCM_REQUIRE_VERIFICATION = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_REQUIRE_VERIFICATION || 'true'));
 const AI_QCM_BATCH_SIZE = Math.min(8, Math.max(2, Number(process.env.AI_QCM_BATCH_SIZE || 5)));
@@ -936,6 +947,45 @@ function adminQuestionPayload(body){
   return payload;
 }
 
+function aiProviderOrder(){
+  const available = [];
+  if (OPENROUTER_API_KEY) available.push('openrouter');
+  if (GEMINI_API_KEY) available.push('gemini');
+  if (!available.length) return [];
+  const requested = ['openrouter','gemini'].includes(AI_QCM_PROVIDER_SETTING)
+    ? AI_QCM_PROVIDER_SETTING
+    : (OPENROUTER_API_KEY ? 'openrouter' : 'gemini');
+  const ordered = [requested, ...available].filter((provider, index, rows) => available.includes(provider) && rows.indexOf(provider) === index);
+  return AI_QCM_FALLBACK_ENABLED ? ordered : ordered.slice(0, 1);
+}
+
+function aiProviderConfigured(){
+  return aiProviderOrder().length > 0;
+}
+
+function aiPrimaryProvider(){
+  return aiProviderOrder()[0] || '';
+}
+
+function aiGenerationModel(){
+  return aiPrimaryProvider() === 'openrouter' ? OPENROUTER_MODEL : GEMINI_MODEL;
+}
+
+function aiVerifierModel(){
+  return aiPrimaryProvider() === 'openrouter' ? OPENROUTER_VERIFIER_MODEL : GEMINI_VERIFIER_MODEL;
+}
+
+function aiProviderStatus(){
+  return {
+    configured:aiProviderConfigured(),
+    provider:aiPrimaryProvider(),
+    providers:{ openrouter:Boolean(OPENROUTER_API_KEY), gemini:Boolean(GEMINI_API_KEY) },
+    model:aiGenerationModel(),
+    verifierModel:aiVerifierModel(),
+    fallback:AI_QCM_FALLBACK_ENABLED && aiProviderOrder().length > 1
+  };
+}
+
 function normalizeGeminiModelName(name){
   return String(name || '').replace(/^models\//, '').trim();
 }
@@ -1133,6 +1183,12 @@ function qcmRequiresOfficialBurkinaSource(category='', theme='', question=''){
   if (/burkina|greffier|droit/.test(categoryKey)) return true;
   const text = normalizeQuestionKey(`${theme} ${question}`);
   return /burkina|faso|haute volta|ouagadougou|bobo dioulasso|yaadga|goulmou|guiriko|tannounyan|nakambe|nazinon|kuilse|bankui|djoro/.test(text);
+}
+
+function qcmSearchAllowedDomains(category='', theme=''){
+  const official = ['gov.bf', ...QCM_OFFICIAL_BF_HOSTS];
+  if (qcmRequiresOfficialBurkinaSource(category, theme)) return Array.from(new Set(official));
+  return Array.from(new Set([...official, ...QCM_TRUSTED_EDUCATION_HOSTS]));
 }
 
 function qcmHistoricalContext(value){
@@ -1382,6 +1438,23 @@ function questionRowsForVerification(questions){
   }));
 }
 
+function qcmSourceWasGrounded(sourceUrl, groundingSources = []){
+  const candidate = cleanQcmSourceUrl(sourceUrl);
+  if (!candidate) return false;
+  try{
+    const expected = new URL(candidate);
+    return (groundingSources || []).some(row => {
+      try{
+        const found = new URL(cleanQcmSourceUrl(row?.url || ''));
+        if (found.hostname.toLowerCase().replace(/^www\./, '') !== expected.hostname.toLowerCase().replace(/^www\./, '')) return false;
+        const a = found.pathname.replace(/\/+$/, '') || '/';
+        const b = expected.pathname.replace(/\/+$/, '') || '/';
+        return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+      }catch{ return false; }
+    });
+  }catch{ return false; }
+}
+
 function attachVerificationReview(question, review, model, context = {}){
   const reviewStatus = String(review?.status || '').toUpperCase();
   const score = Number(review?.score ?? review?.factual_score ?? 0);
@@ -1399,20 +1472,25 @@ function attachVerificationReview(question, review, model, context = {}){
     verification_score:Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0,
     verification_reason:strictCleanAiQcmText(review?.reason || (verified ? 'Réponse confirmée par la preuve fournie.' : 'Preuve insuffisante ou réponse non confirmée.'), 1200),
     verified_at:new Date().toISOString(),
-    verified_by:model || GEMINI_VERIFIER_MODEL,
+    verified_by:model || aiVerifierModel(),
     verification_version:AI_QCM_VERIFICATION_VERSION
   };
   candidate.verified_fingerprint = qcmContentFingerprint(candidate);
   const issue = qcmVerificationIssue(candidate, { ...context, requireVerified:true });
-  if (issue){
+  const groundingIssue = context.requireGroundingMatch
+    && ['official_source','trusted_educational_source'].includes(candidate.evidence_type)
+    && !qcmSourceWasGrounded(candidate.source_url, context.groundingSources)
+      ? 'La source annoncée ne figure pas dans les résultats consultés par le vérificateur.'
+      : '';
+  if (issue || groundingIssue){
     candidate.verification_status = 'rejected';
-    candidate.verification_reason = strictCleanAiQcmText(`${candidate.verification_reason} ${issue}`, 1200);
+    candidate.verification_reason = strictCleanAiQcmText(`${candidate.verification_reason} ${issue || groundingIssue}`, 1200);
   }
   return candidate;
 }
 
-async function verifyAiQuestionsWithGemini(questions, { category, level, theme, fromPdf=false, extraParts=[] } = {}){
-  if (!GEMINI_API_KEY || !Array.isArray(questions) || !questions.length){
+async function verifyAiQuestionsWithProvider(questions, { category, level, theme, fromPdf=false, extraParts=[] } = {}){
+  if (!aiProviderConfigured() || !Array.isArray(questions) || !questions.length){
     return { questions:(questions || []).map(q => ({ ...q, verification_status:'rejected', verification_reason:'Vérificateur indisponible.' })), model:'' };
   }
   const currentDate = new Date().toISOString().slice(0, 10);
@@ -1421,13 +1499,14 @@ async function verifyAiQuestionsWithGemini(questions, { category, level, theme, 
   const verifyOptions = {
     verifier:true,
     grounding:AI_QCM_GROUNDING_ENABLED && !fromPdf,
+    allowedDomains:qcmSearchAllowedDomains(category, theme),
     temperature:0.05,
     topP:0.7,
     maxOutputTokens:10000
   };
   const ai = extraParts.length
-    ? await callGeminiGenerateParts([{ text:prompt }, ...extraParts], verifyOptions)
-    : await callGeminiGenerate(prompt, verifyOptions);
+    ? await callAiGenerateParts([{ text:prompt }, ...extraParts], verifyOptions)
+    : await callAiGenerate(prompt, verifyOptions);
   let reviews = [];
   try{
     const parsed = extractJsonFromAi(ai.text);
@@ -1440,7 +1519,13 @@ async function verifyAiQuestionsWithGemini(questions, { category, level, theme, 
     question,
     byIndex.get(index) || { status:'REJECTED', score:0, answer_consistent:false, source_supports_answer:false, reason:'Avis de vérification manquant.' },
     ai.model,
-    { category, level, theme }
+    {
+      category,
+      level,
+      theme,
+      groundingSources:ai.groundingSources || [],
+      requireGroundingMatch:Boolean(verifyOptions.grounding && ai.provider === 'openrouter')
+    }
   ));
   return { questions:verifiedQuestions, model:ai.model, groundingSources:ai.groundingSources || [] };
 }
@@ -1576,13 +1661,14 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
     const prompt = aiQcmPrompt({ count:batchCount, category, level, theme:batchTheme, publicationName, fromPdf, avoidQuestions, existingCount:existingTexts.length });
     const generateOptions = {
       grounding:AI_QCM_GROUNDING_ENABLED && !fromPdf,
+      allowedDomains:qcmSearchAllowedDomains(category, batchTheme),
       temperature:0.16,
       topP:0.78,
       maxOutputTokens:10000
     };
     const ai = extraParts.length
-      ? await callGeminiGenerateParts([{ text:prompt }, ...extraParts], generateOptions)
-      : await callGeminiGenerate(prompt, generateOptions);
+      ? await callAiGenerateParts([{ text:prompt }, ...extraParts], generateOptions)
+      : await callAiGenerate(prompt, generateOptions);
     model = ai.model || model;
     let candidates = [];
     try{
@@ -1594,7 +1680,7 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
     if (!candidates.length) continue;
     let checkedQuestions = candidates;
     if (AI_QCM_REQUIRE_VERIFICATION && !skipVerification){
-      const checked = await verifyAiQuestionsWithGemini(candidates, {
+      const checked = await verifyAiQuestionsWithProvider(candidates, {
         category,
         level,
         theme:batchTheme,
@@ -1646,7 +1732,7 @@ async function verifyExistingQuestionSet(questions, { category, level, theme, fr
   let model = '';
   for (let offset = 0; offset < pending.length; offset += AI_QCM_BATCH_SIZE){
     const indexedBatch = pending.slice(offset, offset + AI_QCM_BATCH_SIZE);
-    const result = await verifyAiQuestionsWithGemini(indexedBatch.map(row => row.question), { category, level, theme, fromPdf, extraParts });
+    const result = await verifyAiQuestionsWithProvider(indexedBatch.map(row => row.question), { category, level, theme, fromPdf, extraParts });
     model = result.model || model;
     indexedBatch.forEach((row, index) => { checked[row.index] = result.questions[index]; });
   }
@@ -1670,6 +1756,139 @@ function groundingSourcesFromGemini(data){
   }
   const seen = new Set();
   return rows.filter(row => !seen.has(row.url) && seen.add(row.url)).slice(0, 30);
+}
+
+function openRouterMessageContent(parts = []){
+  const content = [];
+  for (const part of (Array.isArray(parts) ? parts : [])){
+    if (typeof part?.text === 'string' && part.text.trim()){
+      content.push({ type:'text', text:part.text });
+      continue;
+    }
+    const inline = part?.inline_data || part?.inlineData;
+    if (!inline?.data) continue;
+    const mimeType = String(inline.mime_type || inline.mimeType || 'application/octet-stream').toLowerCase();
+    if (mimeType === 'application/pdf'){
+      content.push({
+        type:'file',
+        file:{ filename:'source.pdf', file_data:`data:${mimeType};base64,${inline.data}` }
+      });
+    }else if (mimeType.startsWith('image/')){
+      content.push({ type:'image_url', image_url:{ url:`data:${mimeType};base64,${inline.data}` } });
+    }
+  }
+  return content.length === 1 && content[0].type === 'text' ? content[0].text : content;
+}
+
+function groundingSourcesFromOpenRouter(data){
+  const rows = [];
+  for (const choice of (data?.choices || [])){
+    const message = choice?.message || {};
+    for (const annotation of (Array.isArray(message.annotations) ? message.annotations : [])){
+      const citation = annotation?.url_citation || annotation?.urlCitation || annotation;
+      const url = cleanQcmSourceUrl(citation?.url || citation?.uri || '');
+      if (!url) continue;
+      rows.push({
+        url,
+        title:strictCleanAiQcmText(citation?.title || '', 300),
+        quote:strictCleanAiQcmText(citation?.content || citation?.text || '', 1600)
+      });
+    }
+  }
+  const seen = new Set();
+  return rows.filter(row => !seen.has(row.url) && seen.add(row.url)).slice(0, 40);
+}
+
+function openRouterTools(options = {}){
+  if (!options.grounding) return [];
+  const allowedDomains = Array.from(new Set((options.allowedDomains || []).map(value => String(value || '').trim()).filter(Boolean))).slice(0, 40);
+  const searchParameters = {
+    engine:OPENROUTER_SEARCH_ENGINE,
+    max_results:OPENROUTER_SEARCH_MAX_RESULTS,
+    max_uses:OPENROUTER_SEARCH_MAX_USES,
+    max_total_results:OPENROUTER_SEARCH_MAX_USES * OPENROUTER_SEARCH_MAX_RESULTS,
+    max_characters:2400
+  };
+  if (OPENROUTER_SEARCH_MODE && ['exa','parallel'].includes(OPENROUTER_SEARCH_ENGINE)) searchParameters.mode = OPENROUTER_SEARCH_MODE;
+  if (allowedDomains.length) searchParameters.allowed_domains = allowedDomains;
+  return [
+    { type:'openrouter:web_search', parameters:searchParameters },
+    {
+      type:'openrouter:web_fetch',
+      parameters:{
+        engine:'openrouter',
+        max_uses:OPENROUTER_SEARCH_MAX_USES,
+        max_content_tokens:6000,
+        ...(allowedDomains.length ? { allowed_domains:allowedDomains } : {})
+      }
+    }
+  ];
+}
+
+async function callOpenRouterGenerateParts(parts, options = {}){
+  if (!OPENROUTER_API_KEY) throw Object.assign(new Error('OpenRouter non configuré'), { status:503 });
+  const model = options.verifier ? OPENROUTER_VERIFIER_MODEL : OPENROUTER_MODEL;
+  const hasPdf = (parts || []).some(part => {
+    const inline = part?.inline_data || part?.inlineData;
+    return String(inline?.mime_type || inline?.mimeType || '').toLowerCase() === 'application/pdf';
+  });
+  const tools = openRouterTools(options);
+  const requestBody = {
+    model,
+    messages:[{ role:'user', content:openRouterMessageContent(parts) }],
+    temperature:Number(options.temperature ?? 0.16),
+    top_p:Number(options.topP ?? 0.78),
+    max_tokens:Number(options.maxOutputTokens || 10000),
+    response_format:{ type:'json_object' },
+    provider:{
+      allow_fallbacks:true,
+      require_parameters:true,
+      data_collection:'deny'
+    },
+    usage:{ include:true }
+  };
+  if (tools.length){
+    requestBody.tools = tools;
+    requestBody.max_tool_calls = Math.min(20, OPENROUTER_SEARCH_MAX_USES * 2);
+  }
+  if (hasPdf){
+    requestBody.plugins = [{ id:'file-parser', pdf:{ engine:'cloudflare-ai' } }];
+  }
+  let res;
+  try{
+    res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+      method:'POST',
+      headers:{
+        'Authorization':`Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type':'application/json',
+        'HTTP-Referer':PUBLIC_BASE_URL,
+        'X-OpenRouter-Title':'Réussite Concours BF'
+      },
+      body:JSON.stringify(requestBody),
+      signal:AbortSignal.timeout(AI_QCM_TIMEOUT_MS)
+    });
+  }catch(err){
+    const message = err?.name === 'TimeoutError' ? 'Délai OpenRouter dépassé' : (err?.message || 'Connexion OpenRouter interrompue');
+    throw Object.assign(new Error(message), { status:err?.name === 'TimeoutError' ? 504 : 502 });
+  }
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok){
+    const message = data?.error?.message || data?.message || `Erreur OpenRouter ${res.status}`;
+    const status = [401,402,403,429].includes(res.status) ? res.status : 502;
+    throw Object.assign(new Error(message), { status });
+  }
+  const content = data?.choices?.[0]?.message?.content;
+  const text = typeof content === 'string'
+    ? content.trim()
+    : (Array.isArray(content) ? content.map(part => part?.text || '').join('\n').trim() : '');
+  if (!text) throw Object.assign(new Error('Réponse OpenRouter vide'), { status:502 });
+  return {
+    provider:'openrouter',
+    model:`openrouter:${data?.model || model}`,
+    text,
+    groundingSources:groundingSourcesFromOpenRouter(data),
+    usage:data?.usage || null
+  };
 }
 
 async function callGeminiGenerateParts(parts, options = {}){
@@ -1696,7 +1915,7 @@ async function callGeminiGenerateParts(parts, options = {}){
           method:'POST',
           headers:{ 'Content-Type':'application/json' },
           body:JSON.stringify(requestBody),
-          signal:AbortSignal.timeout(35000)
+          signal:AbortSignal.timeout(AI_QCM_TIMEOUT_MS)
         });
       }catch(err){
         lastError = err?.name === 'TimeoutError' ? 'Délai IA dépassé' : (err?.message || 'Connexion IA interrompue');
@@ -1717,7 +1936,7 @@ async function callGeminiGenerateParts(parts, options = {}){
         lastError = 'Réponse IA vide';
         break;
       }
-      return { model, text, groundingSources:groundingSourcesFromGemini(data) };
+      return { provider:'gemini', model:`gemini:${model}`, text, groundingSources:groundingSourcesFromGemini(data) };
     }
   }
   console.warn('Gemini generation failed:', lastError);
@@ -1733,6 +1952,35 @@ async function callGeminiGenerateParts(parts, options = {}){
 
 async function callGeminiGenerate(prompt, options = {}){
   return callGeminiGenerateParts([{ text:prompt }], options);
+}
+
+async function callAiGenerateParts(parts, options = {}){
+  const providers = aiProviderOrder();
+  if (!providers.length) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
+  const failures = [];
+  for (const provider of providers){
+    try{
+      return provider === 'openrouter'
+        ? await callOpenRouterGenerateParts(parts, options)
+        : await callGeminiGenerateParts(parts, options);
+    }catch(err){
+      failures.push({ provider, status:Number(err?.status || 502), message:String(err?.message || 'Erreur inconnue') });
+      console.warn(`${provider} generation failed:`, err?.message || err);
+    }
+  }
+  const quotaFailure = failures.some(row => [402,429].includes(row.status) || /quota|credit|rate|limit/i.test(row.message));
+  const friendly = quotaFailure
+    ? 'Crédit ou quota IA atteint pour le moment. Les QCM déjà enregistrés sont conservés.'
+    : options.grounding
+      ? 'La recherche et la vérification des sources sont indisponibles pour le moment. Aucun QCM non sourcé ne sera accepté.'
+      : 'IA indisponible pour le moment. Réessaie un peu plus tard.';
+  const err = new Error(friendly);
+  err.status = quotaFailure ? 429 : 502;
+  throw err;
+}
+
+async function callAiGenerate(prompt, options = {}){
+  return callAiGenerateParts([{ text:prompt }], options);
 }
 
 function todayId(date = new Date()){
@@ -2555,7 +2803,7 @@ function dailyDraftMatchesPlan(draft, plan){
 }
 
 async function startDailyAiQcmDraft({ force=false, overrides={} } = {}){
-  if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
+  if (!aiProviderConfigured()) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour garder les PDF IA quotidiens'), { status:503 });
   const plan = dailyAiPlan(todayId(), overrides);
   const drafts = await loadAiDailyIndex();
@@ -2599,7 +2847,7 @@ async function startDailyAiQcmDraft({ force=false, overrides={} } = {}){
 }
 
 async function generateDailyAiQcmBatch(draftId){
-  if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
+  if (!aiProviderConfigured()) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour garder les PDF IA quotidiens'), { status:503 });
   const drafts = await loadAiDailyIndex();
   const idx = drafts.findIndex(d => d.id === draftId && d.status !== 'deleted');
@@ -2615,9 +2863,9 @@ async function generateDailyAiQcmBatch(draftId){
   if (remaining <= 0){
     draft = { ...draft, status:'draft', pending_questions:[], batch_phase:'complete' };
   }else if (pendingQuestions.length){
-    // Un seul appel Gemini par fonction Vercel : ce passage vérifie le lot
+    // Un seul appel IA par fonction Vercel : ce passage vérifie le lot
     // généré et sauvegardé lors de la requête précédente.
-    const checked = await verifyAiQuestionsWithGemini(pendingQuestions, {
+    const checked = await verifyAiQuestionsWithProvider(pendingQuestions, {
       category:draft.category,
       level:draft.level,
       theme:draft.title
@@ -2695,7 +2943,7 @@ async function generateDailyAiQcmBatch(draftId){
 }
 
 async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
-  if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
+  if (!aiProviderConfigured()) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour garder les PDF IA quotidiens'), { status:503 });
   const plan = dailyAiPlan(todayId(), overrides);
   const drafts = await loadAiDailyIndex();
@@ -2963,10 +3211,10 @@ async function buildOfficialNewsDrafts(limit = 6){
   }
   if (!unique.length) return { candidates:[], items:[], today:todayIso, currentYear };
   let items = [];
-  if (GEMINI_API_KEY){
+  if (aiProviderConfigured()){
     try{
       const prompt = `Tu es assistant de veille pour Réussite Concours BF. Date du jour: ${todayIso}. À partir de cette liste issue de sources officielles, propose au maximum ${limit} propositions d'actualités concours À JOUR UNIQUEMENT. Règles strictes: ne propose aucun communiqué de 2025, 2024 ou année antérieure; ne propose aucune inscription/date limite déjà clôturée avant ${todayIso}; privilégie session ${currentYear}, résultats récents ${currentYear}, ouvertures en cours ou échéances futures; n'invente rien hors des extraits. Si une date limite n'est pas claire, laisse deadline vide et mets status "Info". Réponds uniquement en JSON valide: {"items":[{"title":"...","type":"Concours|Recrutement|Communiqué|Résultat|Calendrier","organization":"...","deadline":"YYYY-MM-DD ou vide","status":"Ouvert|Bientôt|Info|Clôturé","summary":"...","content":"...","sourceUrl":"...","sourceName":"..."}]}\n\nSources filtrées actuelles:\n${JSON.stringify(unique.slice(0, 30), null, 2)}`;
-      const ai = await callGeminiGenerate(prompt);
+      const ai = await callAiGenerate(prompt);
       const parsed = extractJsonFromAi(ai.text);
       const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.items) ? parsed.items : []);
       items = rows
@@ -3408,7 +3656,8 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'qcm-verified-v2-3',
+    ai: aiProviderStatus(),
+    build: 'qcm-verified-v2-4',
     time: new Date().toISOString()
   });
 });
@@ -3836,9 +4085,7 @@ app.get('/api/admin/summary', requireAdmin, async (_req, res, next) => {
 app.get('/api/admin/ai/status', requireAdmin, async (_req, res) => {
   res.json({
     ok:true,
-    configured:Boolean(GEMINI_API_KEY),
-    model:GEMINI_MODEL,
-    verifierModel:GEMINI_VERIFIER_MODEL,
+    ...aiProviderStatus(),
     grounding:AI_QCM_GROUNDING_ENABLED,
     verificationRequired:AI_QCM_REQUIRE_VERIFICATION,
     verificationVersion:AI_QCM_VERIFICATION_VERSION,
@@ -3860,7 +4107,7 @@ app.get('/api/admin/ai/daily', requireAdmin, async (_req, res, next) => {
       .sort((a, b) => String(b.updated_at || b.published_at || b.created_at || '').localeCompare(String(a.updated_at || a.published_at || a.created_at || '')));
     res.json({
       ok:true,
-      configured:Boolean(GEMINI_API_KEY && supabaseReady()),
+      configured:Boolean(aiProviderConfigured() && supabaseReady()),
       settings:{
         count:AI_DAILY_QCM_COUNT,
         mode:AI_DAILY_GROUP_MODE,
@@ -3969,7 +4216,7 @@ app.put('/api/admin/ai/daily/:id/questions', requireAdmin, async (req, res, next
 
 app.post('/api/admin/ai/daily/:id/verify', requireAdmin, async (req, res, next) => {
   try{
-    if (!GEMINI_API_KEY) return res.status(503).json({ message:'Service de vérification indisponible.' });
+    if (!aiProviderConfigured()) return res.status(503).json({ message:'Service de vérification indisponible.' });
     const drafts = await loadAiDailyIndex();
     const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
     if (idx < 0) return res.status(404).json({ message:'Brouillon PDF introuvable' });
@@ -4013,7 +4260,7 @@ app.post('/api/admin/ai/daily/:id/verify', requireAdmin, async (req, res, next) 
 
 app.post('/api/admin/ai/daily/:id/replace-question', requireAdmin, async (req, res, next) => {
   try{
-    if (!GEMINI_API_KEY) return res.status(503).json({ message:'Service IA indisponible pour remplacer cette question.' });
+    if (!aiProviderConfigured()) return res.status(503).json({ message:'Service IA indisponible pour remplacer cette question.' });
     const drafts = await loadAiDailyIndex();
     const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
     if (idx < 0) return res.status(404).json({ message:'Brouillon PDF introuvable' });
@@ -4228,7 +4475,7 @@ app.get('/api/cron/ai-daily-qcm', async (req, res, next) => {
 
 app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
   try{
-    if (!GEMINI_API_KEY) return res.status(503).json({ message:'Service IA indisponible pour le moment. Réessaie plus tard.' });
+    if (!aiProviderConfigured()) return res.status(503).json({ message:'Service IA indisponible pour le moment. Réessaie plus tard.' });
     const level = cleanText(req.body?.level || 'Concours', 40);
     const requestedCategory = cleanText(req.body?.category || 'Culture générale', 80);
     const category = categoryAllowedForLevel(requestedCategory, level) ? requestedCategory : defaultCategoryForLevel(level);
@@ -4245,7 +4492,7 @@ app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
 
 app.post('/api/admin/ai/qcm/verify', requireAdmin, async (req, res, next) => {
   try{
-    if (!GEMINI_API_KEY) return res.status(503).json({ message:'Vérificateur IA indisponible pour le moment.' });
+    if (!aiProviderConfigured()) return res.status(503).json({ message:'Vérificateur IA indisponible pour le moment.' });
     const sourceRows = Array.isArray(req.body?.questions) ? req.body.questions.slice(0, AI_QCM_BATCH_SIZE) : [];
     if (!sourceRows.length) return res.status(400).json({ message:'Aucun QCM à vérifier.' });
     const level = cleanText(req.body?.level || sourceRows[0]?.level || 'Concours', 40);
@@ -4265,7 +4512,7 @@ app.post('/api/admin/ai/qcm/verify', requireAdmin, async (req, res, next) => {
 
 app.post('/api/admin/ai/qcm-pdf', requireAdmin, express.raw({ type:() => true, limit:'8mb' }), async (req, res, next) => {
   try{
-    if (!GEMINI_API_KEY) return res.status(503).json({ message:'Service IA indisponible pour le moment. Réessaie plus tard.' });
+    if (!aiProviderConfigured()) return res.status(503).json({ message:'Service IA indisponible pour le moment. Réessaie plus tard.' });
     const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
     const fileName = safeFileName(headerText(req, 'x-file-name', 180) || 'source.pdf');
     const mimeType = String(req.headers['content-type'] || 'application/pdf').split(';')[0].trim() || 'application/pdf';
@@ -5025,5 +5272,9 @@ export {
   qcmVerificationSummary,
   dailyDraftGenerationIssue,
   isOfficialBurkinaQcmSource,
-  isTrustedEducationalQcmSource
+  isTrustedEducationalQcmSource,
+  aiProviderStatus,
+  callAiGenerateParts,
+  openRouterMessageContent,
+  groundingSourcesFromOpenRouter
 };

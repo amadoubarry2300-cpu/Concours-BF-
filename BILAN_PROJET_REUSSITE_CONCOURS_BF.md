@@ -11,9 +11,9 @@ L’application **Réussite Concours BF** est une application web hébergée sur
 
 État production vérifié :
 
-- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-3>
+- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-4>
 - API santé : <https://concoursbf-fawn.vercel.app/health>
-- Dernier build vérifié : `qcm-verified-v2-3`
+- Dernier build vérifié : `qcm-verified-v2-4`
 - Dernier commit fonctionnel V2 : `e9bc03e Add source-verified QCM generation gate`
 - Correctif runtime Vercel : `ab61662 Export Express app for Vercel runtime`
 - Dépôt GitHub : `https://github.com/amadoubarry2300-cpu/Concours-BF-.git`
@@ -52,8 +52,8 @@ La génération quotidienne a été renforcée pour éviter qu’un modèle plus
 #### Principe retenu
 
 1. Générer par petits lots de cinq QCM.
-2. Utiliser la recherche Google de Gemini, ou le PDF fourni, comme base documentaire.
-3. Lancer un deuxième appel Gemini indépendant qui rend un verdict et ne réécrit pas silencieusement les questions douteuses.
+2. Utiliser la recherche web sourcée d’OpenRouter, la recherche Google de Gemini en repli, ou le PDF fourni comme base documentaire.
+3. Lancer un deuxième appel IA indépendant qui rend un verdict et ne réécrit pas silencieusement les questions douteuses.
 4. Refuser les questions non étayées, ambiguës, obsolètes, contradictoires ou sous le score minimal.
 5. Conserver les preuves et le verdict dans le brouillon quotidien.
 6. Garder une relecture humaine obligatoire.
@@ -61,16 +61,20 @@ La génération quotidienne a été renforcée pour éviter qu’un modèle plus
 
 #### Modèles et configuration
 
-- Génération par défaut : `gemini-3.7-flash`.
-- Vérification par défaut : `gemini-3.1-pro-preview`, avec repli vers les modèles Flash disponibles si le compte API ne l’expose pas.
-- Variable indépendante : `GEMINI_VERIFIER_MODEL`.
+- Fournisseur prioritaire automatique lorsque sa clé est présente : OpenRouter.
+- Génération OpenRouter : `anthropic/claude-haiku-5.5`.
+- Vérification indépendante OpenRouter : `anthropic/claude-sonnet-5.5`.
+- Recherche OpenRouter : outil serveur `openrouter:web_search`, moteur `parallel`, avec domaines autorisés selon la politique de preuve ; lecture des pages par `openrouter:web_fetch`.
+- Analyse PDF OpenRouter : contenu PDF en base64 avec parseur `cloudflare-ai`.
+- Repli conservé : `gemini-3.7-flash` pour la génération et `gemini-3.1-pro-preview` pour la vérification.
+- Sélection : `AI_QCM_PROVIDER=auto` et `AI_QCM_FALLBACK_ENABLED=true`.
 - Recherche : `AI_QCM_GROUNDING_ENABLED=true`.
 - Vérification obligatoire : `AI_QCM_REQUIRE_VERIFICATION=true`.
 - Taille de lot : `AI_QCM_BATCH_SIZE=5`.
 - Score minimal : `AI_QCM_MIN_VERIFICATION_SCORE=90`.
 - Version de politique : `official-sources-v2`.
 
-Les variables complètes et commentaires sont dans `backend/.env.example`. Les secrets réels restent dans Vercel et ne doivent jamais être committés.
+Les variables complètes et commentaires sont dans `backend/.env.example`. Les secrets `OPENROUTER_API_KEY` et `GEMINI_API_KEY` restent dans Vercel et ne doivent jamais être committés.
 
 #### Politique de preuves
 
@@ -116,11 +120,11 @@ Une empreinte SHA-256 lie le verdict à l’énoncé exact, aux quatre options, 
 - `POST /api/admin/ai/daily/:id/verify` relance la vérification d’un brouillon existant.
 - `POST /api/admin/ai/daily/:id/publish` répond `409` si le contrôle V2 échoue.
 - Le PDF et le quiz interactif continuent à provenir du même tableau structuré corrigé.
-- Build/cache V2 : `qcm-verified-v2-3`.
+- Build/cache V2 : `qcm-verified-v2-4`.
 
 #### Correction mobile du 9 octobre 2026 — génération progressive
 
-La création de 50 QCM vérifiés ne s’exécute plus dans une seule requête longue, qui pouvait être interrompue par Vercel et afficher `Failed to fetch` sur téléphone. L’admin initialise maintenant une préparation, puis le navigateur demande automatiquement de petits lots de cinq. Depuis le correctif `qcm-verified-v2-3`, une fonction Vercel effectue soit la génération du lot, soit sa vérification indépendante, jamais les deux appels Gemini dans la même requête. Le lot brut et le lot accepté sont enregistrés séparément dans Supabase. Un délai réseau Gemini est arrêté côté serveur avant la limite Vercel. Si le réseau ou une fonction s’interrompt, le bouton **Reprendre la préparation** continue au dernier état sauvegardé sans recommencer les QCM déjà contrôlés. Le PDF final n’est créé qu’une fois les 50 QCM vérifiés obtenus.
+La création de 50 QCM vérifiés ne s’exécute plus dans une seule requête longue, qui pouvait être interrompue par Vercel et afficher `Failed to fetch` sur téléphone. L’admin initialise maintenant une préparation, puis le navigateur demande automatiquement de petits lots de cinq. Depuis le correctif `qcm-verified-v2-4`, une fonction Vercel effectue soit la génération du lot, soit sa vérification indépendante, jamais les deux appels IA dans la même requête. Le lot brut et le lot accepté sont enregistrés séparément dans Supabase. Un délai réseau fournisseur est arrêté côté serveur avant la limite Vercel. Si OpenRouter échoue et que Gemini est configuré, la requête tente Gemini ; si les deux échouent, les QCM déjà enregistrés restent intacts. Le bouton **Reprendre la préparation** continue au dernier état sauvegardé sans recommencer les QCM déjà contrôlés. Le PDF final n’est créé qu’une fois les 50 QCM vérifiés obtenus.
 
 Routes concernées :
 
@@ -130,13 +134,14 @@ Routes concernées :
 #### Tests V2
 
 - `tools/test_qcm_verification_v2.mjs` contrôle les domaines, le score, la source officielle, les six erreurs connues, le calcul autonome et le blocage d’une empreinte devenue obsolète.
-- Commande : `node tools/test_qcm_verification_v2.mjs`.
+- `tools/test_openrouter_qcm_provider.mjs` contrôle le choix d’OpenRouter, les modèles Claude, la recherche/fetch avec domaines autorisés, le JSON structuré et le transfert d’un PDF.
+- Commandes : `node tools/test_qcm_verification_v2.mjs` puis `node tools/test_openrouter_qcm_provider.mjs`.
 - Les contrôles de syntaxe restent : `node --check backend/server.js` et `node --check js/app.js`.
 - La banque principale de 5 000 QCM reste validée par `python3 tools/validate_qcm_bank.py content/qcm/qcm_bank_5000_v1.csv`.
 
 #### Limite opérationnelle importante
 
-Sans `GEMINI_API_KEY` valide, le serveur peut vérifier sa syntaxe et ses garde-fous locaux, mais il ne peut pas confirmer le cycle réel recherche → génération → vérification. Après chaque modification de modèle ou de clé, tester avec un brouillon admin réel, consulter au moins plusieurs liens officiels, modifier volontairement un QCM pour constater son invalidation, puis confirmer que la publication est refusée tant qu’il n’est pas revérifié.
+Sans `OPENROUTER_API_KEY` ni `GEMINI_API_KEY` valide, le serveur peut vérifier sa syntaxe et ses garde-fous locaux, mais il ne peut pas confirmer le cycle réel recherche → génération → vérification. La présence de la clé peut être confirmée par `/health` sans jamais afficher sa valeur ; sa validité réelle doit être contrôlée avec un lot admin. Après chaque modification de modèle ou de clé, tester avec un brouillon admin réel, consulter au moins plusieurs liens officiels, modifier volontairement un QCM pour constater son invalidation, puis confirmer que la publication est refusée tant qu’il n’est pas revérifié.
 
 ---
 
@@ -241,8 +246,10 @@ Ces consignes doivent être respectées dans toute nouvelle discussion :
 
 ### IA
 
-- Gemini API prévue/utilisée côté admin pour générer :
-  - QCM ;
+- OpenRouter/Claude est le fournisseur prioritaire côté admin ; Gemini reste le repli automatique.
+- Fonctions couvertes :
+  - QCM sourcés ;
+  - vérification indépendante ;
   - QCM depuis PDF ;
   - PDF quotidien ;
   - veille actualités officielles.
@@ -254,7 +261,7 @@ Ces consignes doivent être respectées dans toute nouvelle discussion :
 - Icônes PWA :
   - `img/pwa-icon-192.png`
   - `img/pwa-icon-512.png`
-- Dernier cache/build : `candidate-docs-premium-lock-1`
+- Dernier cache/build : `qcm-verified-v2-4`
 
 ---
 
@@ -523,7 +530,7 @@ Service worker PWA :
 - cache data network-first ;
 - ne cache pas contenus Premium marqués ;
 - gère `CLEAR_DATA_CACHE` ;
-- version actuelle : `qcm-verified-v2-3`.
+- version actuelle : `qcm-verified-v2-4`.
 
 #### `vercel.json`
 
@@ -1182,7 +1189,7 @@ Ne jamais écrire dans GitHub :
 
 - clés Supabase service role ;
 - clés SasPay ;
-- clés Gemini ;
+- clés OpenRouter, Anthropic ou Gemini ;
 - clés SMTP/Brevo/Resend ;
 - token GitHub ;
 - mots de passe Yahoo/Google ;
