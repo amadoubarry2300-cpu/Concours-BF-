@@ -141,7 +141,7 @@ Routes concernées :
 
 #### Limite opérationnelle importante
 
-Sans `OPENROUTER_API_KEY` ni `GEMINI_API_KEY` valide, le serveur peut vérifier sa syntaxe et ses garde-fous locaux, mais il ne peut pas confirmer le cycle réel recherche → génération → vérification. La présence de la clé peut être confirmée par `/health` sans jamais afficher sa valeur ; sa validité réelle doit être contrôlée avec un lot admin. Après chaque modification de modèle ou de clé, tester avec un brouillon admin réel, consulter au moins plusieurs liens officiels, modifier volontairement un QCM pour constater son invalidation, puis confirmer que la publication est refusée tant qu’il n’est pas revérifié.
+Sans `OPENROUTER_API_KEY` ni `GEMINI_API_KEY` valide, le serveur peut vérifier sa syntaxe et ses garde-fous locaux, mais il ne peut pas confirmer le cycle réel recherche → génération → vérification. La présence de la clé peut être confirmée par `/health` sans jamais afficher sa valeur ; `/health?ai=check` valide la connexion au fournisseur sans exposer la clé ni consommer de jetons, avec cache de dix minutes. Le cycle complet doit ensuite être contrôlé avec un lot admin. Après chaque modification de modèle ou de clé, tester avec un brouillon admin réel, consulter au moins plusieurs liens officiels, modifier volontairement un QCM pour constater son invalidation, puis confirmer que la publication est refusée tant qu’il n’est pas revérifié.
 
 ---
 

@@ -986,6 +986,30 @@ function aiProviderStatus(){
   };
 }
 
+let aiConnectionCheckCache = { value:null, expiresAt:0 };
+
+async function checkAiProviderConnection(){
+  if (aiConnectionCheckCache.value && aiConnectionCheckCache.expiresAt > Date.now()) return aiConnectionCheckCache.value;
+  const provider = aiPrimaryProvider();
+  if (!provider) return { provider:'', valid:false, checkedAt:new Date().toISOString() };
+  let valid = false;
+  let status = 0;
+  try{
+    const url = provider === 'openrouter'
+      ? `${OPENROUTER_BASE_URL}/key`
+      : `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const headers = provider === 'openrouter' ? { Authorization:`Bearer ${OPENROUTER_API_KEY}` } : {};
+    const response = await fetch(url, { headers, signal:AbortSignal.timeout(8000) });
+    status = response.status;
+    valid = response.ok;
+  }catch{
+    valid = false;
+  }
+  const value = { provider, valid, status, checkedAt:new Date().toISOString() };
+  aiConnectionCheckCache = { value, expiresAt:Date.now() + 10 * 60 * 1000 };
+  return value;
+}
+
 function normalizeGeminiModelName(name){
   return String(name || '').replace(/^models\//, '').trim();
 }
@@ -3649,7 +3673,10 @@ function safeProfile(row){
   };
 }
 
-app.get('/health', (_req, res) => {
+app.get('/health', async (req, res) => {
+  const aiCheck = String(req.query?.ai || '').toLowerCase() === 'check'
+    ? await checkAiProviderConnection()
+    : undefined;
   res.json({
     ok: true,
     service: 'Réussite Concours BF API',
@@ -3657,6 +3684,7 @@ app.get('/health', (_req, res) => {
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
+    ...(aiCheck ? { aiCheck } : {}),
     build: 'qcm-verified-v2-4',
     time: new Date().toISOString()
   });
