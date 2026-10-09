@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=pdf-qcm-editor-1">
+<link rel="manifest" href="/manifest.webmanifest?v=qcm-verified-v2-1">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=pdf-qcm-editor-1">
+<link rel="stylesheet" href="css/styles.css?v=qcm-verified-v2-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -800,8 +800,8 @@
           <div class="ai-panel-heading">
             <img src="img/ai-qcm-logo.svg" alt="Logo IA QCM">
             <div>
-              <h3>Générer des QCM avec l’IA</h3>
-              <p class="admin-help">Prépare des QCM exigeants à relire avant publication.</p>
+              <h3>Générer des QCM vérifiés</h3>
+              <p class="admin-help">Chaque réponse doit être appuyée par une source ou une démonstration, puis contrôlée une seconde fois avant publication.</p>
             </div>
           </div>
           <div class="admin-stats" id="adminAiStatus">
@@ -813,8 +813,8 @@
           <div class="daily-ai-card">
             <div class="daily-ai-head">
               <div>
-                <h3>QCM PDF quotidiens</h3>
-                <p class="admin-help">Chaque jour, l’outil prépare 50 QCM en PDF. Tu relis, puis tu publies quand c’est bon.</p>
+                <h3>QCM PDF quotidiens vérifiés</h3>
+                <p class="admin-help">Chaque jour, l’outil cherche les preuves, contrôle les réponses par petits lots et bloque toute publication incomplète.</p>
               </div>
               <button class="mini-btn" onclick="loadDailyAiDrafts()">Actualiser</button>
             </div>
@@ -1157,6 +1157,7 @@
         <button class="btn btn-ghost" id="dailyQuestionEditorToggleBtn" onclick="toggleDailyQuestionEditor()">Corriger les QCM du PDF</button>
       </div>
       <div class="daily-question-editor" id="dailyQuestionEditor" style="display:none"></div>
+      <div class="qcm-publication-gate" id="dailyVerificationSummary"></div>
       <div class="pdf-publish-box">
         <h3>Où publier ces QCM ?</h3>
         <p>Choisis la catégorie et le niveau avant de publier.</p>
@@ -1179,7 +1180,7 @@
         </div>
       </div>
       <div class="pdf-review-actions">
-        <button class="btn btn-green btn-block" onclick="publishCurrentDailyPdf()">Publier les QCM vérifiés</button>
+        <button class="btn btn-green btn-block" id="dailyPublishVerifiedBtn" onclick="publishCurrentDailyPdf()">Publier les QCM vérifiés</button>
         <button class="btn btn-ghost btn-block" onclick="openCurrentDailyPdfFull()">Ouvrir le PDF</button>
         <button class="btn btn-ghost btn-block" onclick="downloadCurrentDailyPdf()">Télécharger le PDF</button>
         <button class="btn btn-ghost btn-block" onclick="closeDailyPdfReview()">Retour à l’administration</button>
@@ -1219,7 +1220,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=pdf-qcm-editor-1"></script>
-<script src="js/app.js?v=pdf-qcm-editor-1"></script>
+<script src="js/questions.js?v=qcm-verified-v2-1"></script>
+<script src="js/app.js?v=qcm-verified-v2-1"></script>
 </body>
 </html>

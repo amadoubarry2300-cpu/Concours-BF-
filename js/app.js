@@ -1130,6 +1130,7 @@ let showAdminResourceHistory = false;
 let adminNewsCache = [];
 let aiDraftCache = [];
 let aiDraftSelectedIndexes = new Set();
+let aiDraftEditingIndex = -1;
 let aiDailyDraftCache = [];
 let showPublishedDailyDrafts = false;
 let currentDailyPdfIndex = -1;
@@ -1245,6 +1246,37 @@ async function saveAdminQuestion(){
   try{
     const payload = adminFormPayload();
     const id = payload.id;
+    if (!id && aiDraftEditingIndex >= 0 && aiDraftCache[aiDraftEditingIndex]){
+      const editIndex = aiDraftEditingIndex;
+      const original = aiDraftCache[editIndex];
+      const candidate = {
+        ...original,
+        ...payload,
+        option_a:payload.options[0],
+        option_b:payload.options[1],
+        option_c:payload.options[2],
+        option_d:payload.options[3],
+        verification_status:'stale',
+        verification_score:0,
+        verification_reason:'Question modifiée : nouveau contrôle factuel requis.',
+        verified_fingerprint:''
+      };
+      const checked = await adminFetch('/api/admin/ai/qcm/verify', {
+        method:'POST',
+        body:JSON.stringify({ category:payload.category, level:payload.level, theme:payload.source, questions:[candidate] })
+      });
+      const verifiedQuestion = checked.questions?.[0];
+      if (!verifiedQuestion) throw new Error('Le vérificateur n’a retourné aucun résultat.');
+      aiDraftCache[editIndex] = { ...verifiedQuestion, source:payload.source, is_premium:payload.is_premium, is_active:true, _published:false };
+      const publishable = verifiedQuestion.verification_status === 'verified';
+      resetAdminForm(false);
+      setAdminTab('ai');
+      renderAiDrafts();
+      const aiResult = $('#aiResult');
+      if (aiResult) aiResult.innerHTML = `<div class="pay-note ${publishable ? 'success' : 'warn'}">${publishable ? 'Correction vérifiée. Le QCM peut être publié ✅' : 'Correction enregistrée mais non validée. Modifie-la ou régénère la question.'}</div>`;
+      toast(publishable ? 'Correction vérifiée ✅' : 'Question bloquée par la vérification');
+      return;
+    }
     const method = id ? 'PATCH' : 'POST';
     const url = id ? '/api/admin/questions/' + encodeURIComponent(id) : '/api/admin/questions';
     const data = await adminFetch(url, { method, body:JSON.stringify(payload) });
@@ -1265,6 +1297,7 @@ async function saveAdminQuestion(){
 }
 
 function resetAdminForm(clearMessage = true){
+  aiDraftEditingIndex = -1;
   ['adminQuestionId','adminQuestionText','adminOptionA','adminOptionB','adminOptionC','adminOptionD','adminExplanation','adminSource'].forEach(id=>{ const el=$('#'+id); if (el) el.value=''; });
   $('#adminCorrect') && ($('#adminCorrect').value='0');
   $('#adminPremium') && ($('#adminPremium').checked=false);
@@ -1466,6 +1499,7 @@ async function loadAdminQuestions(){
 }
 
 function editAdminQuestion(index){
+  aiDraftEditingIndex = -1;
   const q = adminQuestionCache[index];
   if (!q) return;
   setAdminTab('create');
@@ -1519,10 +1553,11 @@ async function loadAiStatus(){
   if (!wrap) return;
   try{
     const data = await adminFetch('/api/admin/ai/status');
+    const modelLabel = String(data.model || 'Gemini').replace(/^gemini-/i, '');
     wrap.innerHTML = `
-      <div><b>${data.configured ? 'Prête' : 'Non active'}</b><span>IA QCM</span></div>
-      <div><b>Relecture</b><span>Non publié</span></div>
-      <div><b>Admin</b><span>Validation</span></div>`;
+      <div><b>${data.configured ? modelLabel : 'Non active'}</b><span>Modèle QCM</span></div>
+      <div><b>${data.grounding ? 'Sources' : 'Hors ligne'}</b><span>Recherche factuelle</span></div>
+      <div><b>${data.verificationRequired ? `≥ ${Number(data.minimumScore || 90)}/100` : 'Désactivée'}</b><span>Double vérification</span></div>`;
   }catch(err){
     wrap.innerHTML = `<div><b>Erreur</b><span>${escapeHtml(err.message)}</span></div>`;
   }
@@ -1556,7 +1591,7 @@ async function runDailyAiQcm(){
   const btn = $('#aiDailyRunBtn');
   const result = $('#aiDailyResult');
   setButtonLoading(btn, true, 'Création du PDF...');
-  if (result) result.innerHTML = '<div class="pay-note">L’IA prépare le PDF du jour. Cela peut prendre quelques secondes.</div>';
+  if (result) result.innerHTML = '<div class="pay-note">Préparation par petits lots : recherche des sources, génération, puis double vérification. Garde cette page ouverte.</div>';
   try{
     refreshDailyCategoryOptions();
     const payload = {
@@ -1593,6 +1628,21 @@ function setDailyDraftPremium(index, checked){
   renderDailyAiDrafts();
 }
 
+function dailyVerificationInfo(draft){
+  const total = Number(draft?.verification?.total ?? draft?.questions?.length ?? draft?.count ?? 0);
+  const verified = Number(draft?.verification?.verified || 0);
+  const blocked = Number(draft?.verification?.blocked ?? Math.max(0, total - verified));
+  const publishable = Boolean(draft?.verification?.publishable) && total > 0 && blocked === 0;
+  return { total, verified, blocked, publishable };
+}
+
+function dailyVerificationBadge(draft){
+  const verification = dailyVerificationInfo(draft);
+  return verification.publishable
+    ? `<span class="qcm-verified-badge">✓ ${verification.verified}/${verification.total} sourcés</span>`
+    : `<span class="qcm-blocked-badge">⚠ ${verification.blocked || verification.total} à vérifier</span>`;
+}
+
 function renderDailyAiDrafts(){
   const wrap = $('#aiDailyDraftList');
   if (!wrap) return;
@@ -1614,6 +1664,7 @@ function renderDailyAiDrafts(){
         <span>${escapeHtml(d.level || 'Niveau')}</span>
         ${d.is_premium ? '<span class="premium">Premium</span>' : '<span class="free">Gratuit</span>'}
         ${d.status === 'published' ? '<span class="active">Publié</span>' : '<span>PDF à relire</span>'}
+        ${dailyVerificationBadge(d)}
         ${Number(d.pdf_revision || 0) ? `<span class="active">PDF corrigé · v${Number(d.pdf_revision)}</span>` : ''}
       </div>
       <h4>${escapeHtml(d.title || 'QCM quotidien')}</h4>
@@ -1621,7 +1672,8 @@ function renderDailyAiDrafts(){
       ${d.status !== 'published' ? `<label class="admin-select-line"><input type="checkbox" ${d.is_premium ? 'checked' : ''} onchange="setDailyDraftPremium(${idx}, this.checked)"><span>Publier en Premium <small>(sinon Gratuit)</small></span></label>` : ''}
       <div class="admin-q-actions">
         <button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>
-        ${!(d.orphanResource || d.orphanQuestions) ? `<button class="pause" onclick="publishDailyAiDraft(${idx})">${d.status === 'published' ? 'Synchroniser' : `Publier en ${d.is_premium ? 'Premium' : 'Gratuit'}`}</button>` : ''}
+        ${d.status !== 'published' && !(d.orphanResource || d.orphanQuestions) ? `<button class="edit" onclick="verifyDailyAiDraft(${idx})">Vérifier les sources</button>` : ''}
+        ${!(d.orphanResource || d.orphanQuestions) ? `<button class="pause" onclick="publishDailyAiDraft(${idx})" ${d.status !== 'published' && !dailyVerificationInfo(d).publishable ? 'disabled title="Vérifie toutes les sources avant publication"' : ''}>${d.status === 'published' ? 'Synchroniser' : dailyVerificationInfo(d).publishable ? `Publier en ${d.is_premium ? 'Premium' : 'Gratuit'}` : 'Publication bloquée'}</button>` : ''}
         ${d.status === 'published' ? `<button class="delete" onclick="unpublishDailyAiDraft(${idx})">Supprimer chez candidat</button>` : ''}
         ${!(d.orphanResource || d.orphanQuestions) ? `<button class="delete" onclick="deleteDailyAiDraft(${idx})">${d.status === 'published' ? 'Retirer de l’admin' : 'Supprimer'}</button>` : ''}
       </div>
@@ -1692,7 +1744,19 @@ function cloneDailyQuestions(questions){
     category:question?.category || '',
     level:question?.level || '',
     is_premium:Boolean(question?.is_premium),
-    source:question?.source || ''
+    source:question?.source || '',
+    evidence_type:question?.evidence_type || '',
+    source_title:question?.source_title || '',
+    source_url:question?.source_url || '',
+    source_quote:question?.source_quote || '',
+    source_date:question?.source_date || '',
+    verification_status:question?.verification_status || 'generated',
+    verification_score:Number(question?.verification_score || 0),
+    verification_reason:question?.verification_reason || '',
+    verified_at:question?.verified_at || '',
+    verified_by:question?.verified_by || '',
+    verified_fingerprint:question?.verified_fingerprint || '',
+    verification_version:question?.verification_version || ''
   }));
 }
 
@@ -1712,6 +1776,19 @@ function updateDailyQuestionEditorMeta(draft){
   if (!draft) return;
   $('#dailyPdfTitle') && ($('#dailyPdfTitle').textContent = draft.title || 'QCM quotidien');
   $('#dailyPdfMeta') && ($('#dailyPdfMeta').textContent = `${draft.date || ''} · ${draft.category || ''} · ${draft.level || ''} · ${Number(draft.count || draft.questions?.length || 0)} QCM${draft.pdf_revision ? ` · version corrigée ${draft.pdf_revision}` : ''}`);
+  const verification = dailyVerificationInfo(draft);
+  const summary = $('#dailyVerificationSummary');
+  if (summary){
+    summary.className = `qcm-publication-gate ${verification.publishable ? 'ready' : 'blocked'}`;
+    summary.innerHTML = verification.publishable
+      ? `<b>✓ Publication autorisée</b><span>${verification.verified}/${verification.total} réponses disposent d’une preuve vérifiée.</span>`
+      : `<b>⚠ Publication bloquée</b><span>${verification.blocked || verification.total} question(s) sans validation suffisante. Corrige ou remplace les questions, puis clique sur « Vérifier les sources ».</span>`;
+  }
+  const publishButton = $('#dailyPublishVerifiedBtn');
+  if (publishButton){
+    publishButton.disabled = draft.status !== 'published' && !verification.publishable;
+    publishButton.textContent = draft.status === 'published' ? 'Synchroniser les QCM publiés' : verification.publishable ? 'Publier les QCM vérifiés' : 'Publication bloquée — sources à vérifier';
+  }
 }
 
 function applyDailyDraftEditorUpdate(index, draft){
@@ -1744,8 +1821,11 @@ function updateDailyQuestionField(index, field, value){
   const question = dailyQuestionEditorDraft[index];
   if (!question || !['question_text','option_a','option_b','option_c','option_d','correct_answer','explanation'].includes(field)) return;
   question[field] = field === 'correct_answer' ? Number(value) : value;
+  question.verification_status = 'stale';
+  question.verification_score = 0;
+  question.verification_reason = 'Question modifiée après sa dernière vérification.';
   dailyQuestionEditorDirty = true;
-  setDailyQuestionEditorStatus('Modifications non enregistrées. Clique sur « Enregistrer et recréer le PDF ».', 'warn');
+  setDailyQuestionEditorStatus('Modification non vérifiée. Enregistre, puis relance « Vérifier les sources » avant publication.', 'warn');
 }
 
 function resetDailyQuestionEditor(){
@@ -1771,6 +1851,24 @@ function removeDailyQuestionFromEditor(index){
   setDailyQuestionEditorStatus(`Question supprimée. Le nouveau PDF contiendra ${dailyQuestionEditorDraft.length} QCM après enregistrement.`, 'warn');
 }
 
+function renderQuestionVerificationProof(question){
+  const verified = question?.verification_status === 'verified';
+  const score = Number(question?.verification_score || 0);
+  const sourceUrl = String(question?.source_url || '');
+  const externalSource = /^https?:\/\//i.test(sourceUrl);
+  const title = question?.source_title || (question?.evidence_type === 'calculation' ? 'Calcul contrôlé' : question?.evidence_type === 'language_rule' ? 'Règle de langue contrôlée' : 'Source non fournie');
+  return `
+    <div class="qcm-source-proof ${verified ? 'verified' : 'blocked'}">
+      <div class="qcm-source-proof-head">
+        <b>${verified ? '✓ Vérifié' : '⚠ Non validé'}${score ? ` · ${score}/100` : ''}</b>
+        ${externalSource ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener">Ouvrir la source</a>` : ''}
+      </div>
+      <strong>${escapeHtml(title)}</strong>
+      ${question?.source_quote ? `<p>« ${escapeHtml(question.source_quote)} »</p>` : ''}
+      ${question?.verification_reason ? `<small>${escapeHtml(question.verification_reason)}</small>` : ''}
+    </div>`;
+}
+
 function renderDailyQuestionEditor(){
   const editor = $('#dailyQuestionEditor');
   const toggle = $('#dailyQuestionEditorToggleBtn');
@@ -1787,13 +1885,17 @@ function renderDailyQuestionEditor(){
   editor.innerHTML = `
     <div class="pdf-editor-head">
       <div><span>Correction du document</span><h3>${dailyQuestionEditorDraft.length} QCM modifiables</h3></div>
-      <p>Ouvre seulement la question à corriger. Les mêmes données serviront au nouveau PDF et aux QCM interactifs.</p>
+      <p>Ouvre seulement la question à corriger. Une modification annule sa validation jusqu’au prochain contrôle des sources.</p>
     </div>
-    <div class="pay-note" id="dailyQuestionEditorStatus">${dailyQuestionEditorDirty ? 'Modifications non enregistrées.' : 'Aucune correction non enregistrée.'}</div>
+    <div class="qcm-verification-toolbar">
+      <div>${dailyVerificationBadge({ questions:dailyQuestionEditorDraft, verification:{ total:dailyQuestionEditorDraft.length, verified:dailyQuestionEditorDraft.filter(q => q.verification_status === 'verified').length, blocked:dailyQuestionEditorDraft.filter(q => q.verification_status !== 'verified').length, publishable:dailyQuestionEditorDraft.length > 0 && dailyQuestionEditorDraft.every(q => q.verification_status === 'verified') } })}<small>La publication exige une preuve pour chaque réponse.</small></div>
+      <button class="btn btn-ghost" id="dailyVerifySourcesBtn" onclick="verifyDailyAiDraft(${currentDailyPdfIndex})">Vérifier les sources</button>
+    </div>
+    <div class="pay-note" id="dailyQuestionEditorStatus">${dailyQuestionEditorDirty ? 'Modifications non enregistrées et non vérifiées.' : 'Aucune correction non enregistrée.'}</div>
     <div class="pdf-question-editor-list">
       ${dailyQuestionEditorDraft.map((question, index) => `
         <details class="pdf-question-editor-card">
-          <summary><b>Question ${index + 1}</b><span>${escapeHtml(String(question.question_text || 'Question sans titre').slice(0, 110))}</span></summary>
+          <summary><b>Question ${index + 1} ${question.verification_status === 'verified' ? '✓' : '⚠'}</b><span>${escapeHtml(String(question.question_text || 'Question sans titre').slice(0, 110))}</span></summary>
           <div class="pdf-question-editor-body">
             <label class="field-label">Énoncé</label>
             <textarea class="input pdf-editor-textarea" oninput="updateDailyQuestionField(${index}, 'question_text', this.value)">${escapeHtml(question.question_text)}</textarea>
@@ -1806,6 +1908,7 @@ function renderDailyQuestionEditor(){
             </select>
             <label class="field-label">Correction détaillée</label>
             <textarea class="input pdf-editor-textarea correction" oninput="updateDailyQuestionField(${index}, 'explanation', this.value)">${escapeHtml(question.explanation)}</textarea>
+            ${renderQuestionVerificationProof(question)}
             <div class="admin-q-actions pdf-editor-question-actions">
               <button class="edit" id="dailyReplaceBtn${index}" onclick="replaceDailyQuestionWithAi(${index})">Remplacer cette question</button>
               <button class="delete" onclick="removeDailyQuestionFromEditor(${index})">Supprimer cette question</button>
@@ -1836,6 +1939,46 @@ async function saveDailyQuestionCorrections(){
     toast('PDF corrigé recréé ✅');
   }catch(err){
     setDailyQuestionEditorStatus(err.message, 'error');
+    toast(err.message);
+  }finally{
+    setButtonLoading(btn, false);
+  }
+}
+
+async function verifyDailyAiDraft(index = currentDailyPdfIndex){
+  const draft = aiDailyDraftCache[index];
+  if (!draft || draft.status === 'published') return;
+  if (currentDailyPdfIndex === index && dailyQuestionEditorDirty){
+    dailyQuestionEditorOpen = true;
+    renderDailyQuestionEditor();
+    setDailyQuestionEditorStatus('Enregistre d’abord tes corrections avant de relancer la vérification des sources.', 'warn');
+    toast('Enregistre d’abord les corrections.');
+    return;
+  }
+  if (!confirm(`Vérifier factuellement les ${Number(draft.count || draft.questions?.length || 0)} QCM et leurs sources ? Les questions insuffisamment prouvées seront bloquées.`)) return;
+  const btn = currentDailyPdfIndex === index ? $('#dailyVerifySourcesBtn') : null;
+  setButtonLoading(btn, true, 'Vérification...');
+  if (currentDailyPdfIndex === index) setDailyQuestionEditorStatus('Recherche des sources et double contrôle factuel en cours...');
+  const result = $('#aiDailyResult');
+  if (result) result.innerHTML = '<div class="pay-note">Vérification factuelle des réponses et des sources en cours...</div>';
+  try{
+    const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(draft.id) + '/verify', {
+      method:'POST',
+      body:JSON.stringify({ questions:draft.questions })
+    });
+    if (currentDailyPdfIndex === index) applyDailyDraftEditorUpdate(index, data.draft);
+    else aiDailyDraftCache[index] = data.draft;
+    renderDailyAiDrafts();
+    const verification = data.verification || data.draft?.verification || {};
+    const message = verification.publishable
+      ? `${Number(verification.verified || 0)} QCM sourcés et vérifiés. Publication autorisée.`
+      : `${Number(verification.verified || 0)}/${Number(verification.total || 0)} QCM validés. ${Number(verification.blocked || 0)} question(s) restent bloquées.`;
+    if (currentDailyPdfIndex === index) setDailyQuestionEditorStatus(message, verification.publishable ? 'success' : 'warn');
+    if (result) result.innerHTML = `<div class="pay-note ${verification.publishable ? 'success' : 'warn'}">${escapeHtml(message)}</div>`;
+    toast(verification.publishable ? 'Toutes les sources sont vérifiées ✅' : 'Certaines questions doivent être remplacées.');
+  }catch(err){
+    if (currentDailyPdfIndex === index) setDailyQuestionEditorStatus(err.message, 'error');
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
     toast(err.message);
   }finally{
     setButtonLoading(btn, false);
@@ -1943,12 +2086,25 @@ function publishCurrentDailyPdf(){
     toast('Enregistre d’abord les corrections du PDF.');
     return;
   }
+  const draft = aiDailyDraftCache[currentDailyPdfIndex];
+  if (!dailyVerificationInfo(draft).publishable){
+    dailyQuestionEditorOpen = true;
+    renderDailyQuestionEditor();
+    setDailyQuestionEditorStatus('Publication bloquée : vérifie les sources et remplace les questions rejetées.', 'warn');
+    toast('Toutes les réponses doivent être sourcées et vérifiées.');
+    return;
+  }
   publishDailyAiDraft(currentDailyPdfIndex);
 }
 
 async function publishDailyAiDraft(index){
   const d = aiDailyDraftCache[index];
   if (!d) return;
+  if (d.status !== 'published' && !dailyVerificationInfo(d).publishable){
+    toast('Publication bloquée : vérifie toutes les sources avant publication.');
+    if (currentDailyPdfIndex !== index) openDailyAiPdf(index);
+    return;
+  }
   const reviewOpen = currentDailyPdfIndex === index && $('#pdfreview')?.classList.contains('active');
   const level = reviewOpen ? ($('#dailyPublishLevel')?.value || d.level || 'Concours') : (d.level || 'Concours');
   if (reviewOpen) refreshDailyPublishCategoryOptions();
@@ -2109,10 +2265,11 @@ function renderAiDrafts(){
       <p class="admin-destination-note">Nom du QCM : <b>${escapeHtml(q.source || 'QCM')}</b></p>
       <p class="admin-help"><b>A.</b> ${renderMathText(q.option_a)} · <b>B.</b> ${renderMathText(q.option_b)} · <b>C.</b> ${renderMathText(q.option_c)} · <b>D.</b> ${renderMathText(q.option_d)}</p>
       <p class="admin-help"><b>Correction :</b> ${renderMathText(q.explanation || '')}</p>
+      ${renderQuestionVerificationProof(q)}
       ${!q._published ? `<label class="admin-select-line"><input type="checkbox" ${q.is_premium ? 'checked' : ''} onchange="setAiDraftPremium(${idx}, this.checked)"><span>Publier en Premium <small>(sinon Gratuit)</small></span></label>` : ''}
       <div class="admin-q-actions">
         <button class="edit" onclick="editAiDraft(${idx})">Relire / Modifier</button>
-        <button class="pause" onclick="publishAiDraft(${idx})" ${q._published ? 'disabled' : ''}>${q.is_premium ? 'Publier en Premium' : 'Publier en Gratuit'}</button>
+        <button class="pause" onclick="publishAiDraft(${idx})" ${q._published || q.verification_status !== 'verified' ? 'disabled title="Ce QCM doit être vérifié avant publication"' : ''}>${q.verification_status === 'verified' ? (q.is_premium ? 'Publier en Premium' : 'Publier en Gratuit') : 'Publication bloquée'}</button>
         <button class="delete" onclick="removeAiDraft(${idx})">Retirer</button>
       </div>
     </div>`).join('');
@@ -2163,6 +2320,7 @@ async function bulkAiDrafts(action){
 function editAiDraft(index){
   const q = aiDraftCache[index];
   if (!q) return;
+  aiDraftEditingIndex = index;
   setAdminTab('create');
   $('#adminQuestionId') && ($('#adminQuestionId').value='');
   $('#adminCategory') && ($('#adminCategory').value=q.category || 'Culture générale');
@@ -2178,11 +2336,13 @@ function editAiDraft(index){
   $('#adminPremium') && ($('#adminPremium').checked=Boolean(q.is_premium));
   $('#adminActive') && ($('#adminActive').checked=true);
   $('#adminFormTitle') && ($('#adminFormTitle').textContent='Relire une proposition IA');
+  $('#adminSaveBtn') && ($('#adminSaveBtn').textContent='Enregistrer et revérifier');
 }
 
 async function publishAiDraft(index){
   const q = aiDraftCache[index];
   if (!q || q._published) return;
+  if (q.verification_status !== 'verified') return toast('Publication bloquée : corrige puis fais revérifier ce QCM.');
   try{
     toast('Publication en cours...');
     await adminFetch('/api/admin/questions', { method:'POST', body:JSON.stringify({
@@ -2194,7 +2354,20 @@ async function publishAiDraft(index){
       explanation:q.explanation,
       source:q.source || 'Réussite Concours BF',
       is_premium:Boolean(q.is_premium),
-      is_active:true
+      is_active:true,
+      ai_generated:true,
+      evidence_type:q.evidence_type || '',
+      source_title:q.source_title || '',
+      source_url:q.source_url || '',
+      source_quote:q.source_quote || '',
+      source_date:q.source_date || '',
+      verification_status:q.verification_status || '',
+      verification_score:Number(q.verification_score || 0),
+      verification_reason:q.verification_reason || '',
+      verified_at:q.verified_at || '',
+      verified_by:q.verified_by || '',
+      verified_fingerprint:q.verified_fingerprint || '',
+      verification_version:q.verification_version || ''
     }) });
     q._published = true;
     renderAiDrafts();
@@ -3669,7 +3842,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'pdf-qcm-editor-1') location.reload();
+    if (data.build && data.build !== 'qcm-verified-v2-1') location.reload();
   }catch{}
 }
 
@@ -3682,7 +3855,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=pdf-qcm-editor-1')
+    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-1')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

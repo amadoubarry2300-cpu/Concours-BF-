@@ -1,6 +1,6 @@
 # Bilan général du projet — Réussite Concours BF
 
-_Date du bilan : 2026-09-26_  
+_Date du bilan : 2026-10-08_
 _Projet : application web/mobile installable de préparation aux concours, examens, QCM et documents pour le Burkina Faso._
 
 ---
@@ -43,6 +43,90 @@ Dernière correction importante :
 - La publication est bloquée si des corrections locales restent non enregistrées.
 - Le PDF et les QCM interactifs publiés utilisent désormais la même liste corrigée.
 - Build production vérifié : `pdf-qcm-editor-1` ; commit fonctionnel : `2900324`.
+
+### Mise à jour du 8 octobre 2026 — V2 QCM vérifiés
+
+La génération quotidienne a été renforcée pour éviter qu’un modèle plus puissant soit confondu avec une vraie vérification factuelle.
+
+#### Principe retenu
+
+1. Générer par petits lots de cinq QCM.
+2. Utiliser la recherche Google de Gemini, ou le PDF fourni, comme base documentaire.
+3. Lancer un deuxième appel Gemini indépendant qui rend un verdict et ne réécrit pas silencieusement les questions douteuses.
+4. Refuser les questions non étayées, ambiguës, obsolètes, contradictoires ou sous le score minimal.
+5. Conserver les preuves et le verdict dans le brouillon quotidien.
+6. Garder une relecture humaine obligatoire.
+7. Bloquer la publication côté serveur si une seule question restante n’est pas conforme.
+
+#### Modèles et configuration
+
+- Génération par défaut : `gemini-3.7-flash`.
+- Vérification par défaut : `gemini-3.1-pro-preview`, avec repli vers les modèles Flash disponibles si le compte API ne l’expose pas.
+- Variable indépendante : `GEMINI_VERIFIER_MODEL`.
+- Recherche : `AI_QCM_GROUNDING_ENABLED=true`.
+- Vérification obligatoire : `AI_QCM_REQUIRE_VERIFICATION=true`.
+- Taille de lot : `AI_QCM_BATCH_SIZE=5`.
+- Score minimal : `AI_QCM_MIN_VERIFICATION_SCORE=90`.
+- Version de politique : `official-sources-v2`.
+
+Les variables complètes et commentaires sont dans `backend/.env.example`. Les secrets réels restent dans Vercel et ne doivent jamais être committés.
+
+#### Politique de preuves
+
+Chaque QCM factuel doit garder :
+
+- `evidence_type` ;
+- `source_title` ;
+- `source_url` ;
+- `source_quote` ;
+- `source_date` ;
+- `verification_status` ;
+- `verification_score` ;
+- `verification_reason` ;
+- `verified_at` ;
+- `verified_by` ;
+- `verified_fingerprint` ;
+- `verification_version`.
+
+Pour le Burkina Faso — institutions, administration, droit, histoire, géographie et actualité — la source exigée doit être officielle : domaine gouvernemental burkinabè, Journal officiel, CENI, Présidence, SIG, AN, Cour constitutionnelle ou source officielle équivalente. Un PDF importé est accepté comme preuve lorsqu’il est la source réelle de la question. Pour un calcul autonome ou une règle linguistique stable, le vérificateur doit fournir le calcul ou la règle exacte.
+
+#### Garde-fous déterministes
+
+Le serveur rejette aussi des erreurs connues sans dépendre du jugement du modèle, notamment :
+
+- anciennes régions/provinces utilisées comme situation actuelle après la réforme de juillet 2025 ;
+- Médiateur du Faso présenté comme institution actuelle après sa suppression ;
+- confusion entre officier supérieur et capitaine ;
+- Norbert Zongo présenté comme syndicaliste/homme politique plutôt que journaliste d’investigation ;
+- Soumane Touré présenté comme fondateur initial du PAI ;
+- Deuxième République présentée comme régime interrompu par le CMRPN au lieu de la Troisième.
+
+Ces règles bloquent les formulations actuelles erronées tout en autorisant les questions historiques correctement datées.
+
+#### Intégrité après correction
+
+Une empreinte SHA-256 lie le verdict à l’énoncé exact, aux quatre options, à la bonne réponse, à l’explication et aux métadonnées de preuve. Toute modification manuelle invalide la vérification. L’admin doit alors cliquer sur **Vérifier les sources** avant publication. Cette règle empêche de modifier une question après validation tout en conservant artificiellement son badge.
+
+#### Interface et routes
+
+- La liste admin affiche **Vérifié**, **À vérifier** ou **Bloqué**, la note, le motif, le titre de la source, son lien et la citation.
+- Le candidat ne voit pas ce vocabulaire technique.
+- `POST /api/admin/ai/qcm/verify` revérifie une proposition individuelle après correction.
+- `POST /api/admin/ai/daily/:id/verify` relance la vérification d’un brouillon existant.
+- `POST /api/admin/ai/daily/:id/publish` répond `409` si le contrôle V2 échoue.
+- Le PDF et le quiz interactif continuent à provenir du même tableau structuré corrigé.
+- Build/cache V2 : `qcm-verified-v2-1`.
+
+#### Tests V2
+
+- `tools/test_qcm_verification_v2.mjs` contrôle les domaines, le score, la source officielle, les six erreurs connues, le calcul autonome et le blocage d’une empreinte devenue obsolète.
+- Commande : `node tools/test_qcm_verification_v2.mjs`.
+- Les contrôles de syntaxe restent : `node --check backend/server.js` et `node --check js/app.js`.
+- La banque principale de 5 000 QCM reste validée par `python3 tools/validate_qcm_bank.py content/qcm/qcm_bank_5000_v1.csv`.
+
+#### Limite opérationnelle importante
+
+Sans `GEMINI_API_KEY` valide, le serveur peut vérifier sa syntaxe et ses garde-fous locaux, mais il ne peut pas confirmer le cycle réel recherche → génération → vérification. Après chaque modification de modèle ou de clé, tester avec un brouillon admin réel, consulter au moins plusieurs liens officiels, modifier volontairement un QCM pour constater son invalidation, puis confirmer que la publication est refusée tant qu’il n’est pas revérifié.
 
 ---
 
@@ -429,7 +513,7 @@ Service worker PWA :
 - cache data network-first ;
 - ne cache pas contenus Premium marqués ;
 - gère `CLEAR_DATA_CACHE` ;
-- version actuelle : `candidate-docs-premium-lock-1`.
+- version actuelle : `qcm-verified-v2-1`.
 
 #### `vercel.json`
 
@@ -487,6 +571,8 @@ PATCH  /api/admin/resources/:id
 DELETE /api/admin/resources/:id
 GET    /api/admin/ai/daily
 POST   /api/admin/ai/daily/run
+POST   /api/admin/ai/qcm/verify
+POST   /api/admin/ai/daily/:id/verify
 POST   /api/admin/ai/daily/:id/publish
 GET    /api/admin/news
 POST   /api/admin/news
@@ -538,6 +624,10 @@ Vérifie :
 - `/api/qcm-publications` ;
 - `/api/questions` ;
 - service worker PWA.
+
+#### `tools/test_qcm_verification_v2.mjs`
+
+Tests ciblés du verrou V2 : preuves officielles, score, empreinte après modification, calcul autonome et erreurs factuelles connues.
 
 #### `tools/validate_qcm_bank.py`
 

@@ -60,7 +60,14 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_FROM = process.env.TWILIO_FROM || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+// QCM vérifiés V2 : privilégier un modèle stable avec raisonnement et recherche web.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
+const GEMINI_VERIFIER_MODEL = process.env.GEMINI_VERIFIER_MODEL || 'gemini-3.1-pro-preview';
+const AI_QCM_GROUNDING_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_GROUNDING_ENABLED || 'true'));
+const AI_QCM_REQUIRE_VERIFICATION = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_REQUIRE_VERIFICATION || 'true'));
+const AI_QCM_BATCH_SIZE = Math.min(8, Math.max(2, Number(process.env.AI_QCM_BATCH_SIZE || 5)));
+const AI_QCM_MIN_VERIFICATION_SCORE = Math.min(100, Math.max(70, Number(process.env.AI_QCM_MIN_VERIFICATION_SCORE || 90)));
+const AI_QCM_VERIFICATION_VERSION = 'official-sources-v2';
 const OFFICIAL_NEWS_SOURCES = process.env.OFFICIAL_NEWS_SOURCES || '';
 const AI_DAILY_INDEX_PATH = 'ai-daily/index.json';
 const AI_DAILY_DEFAULT_CATEGORIES = ['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Physique-Chimie','Psychotechnique','Français','SVT','Greffier / Droit'];
@@ -948,13 +955,21 @@ async function listGeminiModels(){
   }
 }
 
-async function geminiModelsToTry(){
-  const preferred = [GEMINI_MODEL, 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'].map(normalizeGeminiModelName).filter(Boolean);
+async function geminiModelsToTry({ verifier=false } = {}){
+  const configured = verifier ? GEMINI_VERIFIER_MODEL : GEMINI_MODEL;
+  // Les modèles récents passent avant l'ancien Flash-Lite même si une ancienne
+  // variable Vercel n'a pas encore été mise à jour.
+  const configuredName = normalizeGeminiModelName(configured);
+  const configuredIsLegacyLite = /gemini-2\.5-flash-lite/i.test(configuredName);
+  const modernFirst = (configuredIsLegacyLite
+    ? ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-2.5-flash', configuredName]
+    : [configuredName, 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'])
+    .map(normalizeGeminiModelName).filter(Boolean);
   const available = await listGeminiModels();
   const availableSet = new Set(available);
   const prioritized = available.length
-    ? preferred.filter(m => availableSet.has(m)).concat(available.filter(m => /flash/i.test(m)), available)
-    : preferred;
+    ? modernFirst.filter(m => availableSet.has(m)).concat(available.filter(m => /(?:3\.[6-9]|2\.5)-flash/i.test(m)), available)
+    : modernFirst;
   return Array.from(new Set(prioritized.map(normalizeGeminiModelName).filter(Boolean)));
 }
 
@@ -1056,6 +1071,186 @@ function strictCleanAiQcmText(value, max = 1200){
     .trim();
 }
 
+const QCM_OFFICIAL_BF_HOSTS = [
+  'presidencedufaso.bf',
+  'assembleenationale.bf',
+  'legiburkina.bf',
+  'insd.bf',
+  'cenatrin.bf',
+  'aib.media'
+];
+const QCM_TRUSTED_EDUCATION_HOSTS = [
+  'unesco.org', 'un.org', 'who.int', 'worldbank.org', 'afdb.org', 'ecowas.int', 'uemoa.int',
+  'au.int', 'oecd.org', 'education.gouv.fr', 'eduscol.education.fr', 'openstax.org', 'khanacademy.org'
+];
+const QCM_REASONING_CATEGORIES = /math|psychotech|physique|chimie|fran[cç]ais/i;
+
+function qcmContentFingerprint(q){
+  const body = [
+    q?.question_text, q?.option_a, q?.option_b, q?.option_c, q?.option_d,
+    Number(q?.correct_answer), q?.explanation,
+    q?.evidence_type, q?.source_title, q?.source_url, q?.source_quote, q?.source_date
+  ].map(value => String(value ?? '').trim())
+    .join('\n');
+  return crypto.createHash('sha256').update(body).digest('hex').slice(0, 24);
+}
+
+function cleanQcmSourceUrl(value){
+  const raw = cleanText(value, 1200);
+  if (/^(?:source-pdf|calculation|language-rule):\/\//i.test(raw)) return raw;
+  try{
+    const url = new URL(raw);
+    return /^https?:$/.test(url.protocol) ? url.toString() : '';
+  }catch{
+    return '';
+  }
+}
+
+function qcmSourceHostname(value){
+  try{ return new URL(value).hostname.toLowerCase().replace(/^www\./, ''); }catch{ return ''; }
+}
+
+function isOfficialBurkinaQcmSource(value){
+  const host = qcmSourceHostname(value);
+  if (!host) return false;
+  return host.endsWith('.gov.bf') || QCM_OFFICIAL_BF_HOSTS.some(allowed => host === allowed || host.endsWith(`.${allowed}`));
+}
+
+function isTrustedEducationalQcmSource(value){
+  if (isOfficialBurkinaQcmSource(value)) return true;
+  const host = qcmSourceHostname(value);
+  if (!host) return false;
+  if (/\.(?:gov|gouv\.fr|gov\.uk|gc\.ca|europa\.eu)$/.test(host)) return true;
+  return QCM_TRUSTED_EDUCATION_HOSTS.some(allowed => host === allowed || host.endsWith(`.${allowed}`));
+}
+
+function qcmRequiresOfficialBurkinaSource(category='', theme='', question=''){
+  const categoryKey = normalizeQuestionKey(category);
+  if (/burkina|greffier|droit/.test(categoryKey)) return true;
+  const text = normalizeQuestionKey(`${theme} ${question}`);
+  return /burkina|faso|haute volta|ouagadougou|bobo dioulasso|yaadga|goulmou|guiriko|tannounyan|nakambe|nazinon|kuilse|bankui|djoro/.test(text);
+}
+
+function qcmHistoricalContext(value){
+  return /\b(?:ancien(?:ne)?|avant|autrefois|jusqu['’]?en|à\s+l['’]époque|appel[ée]e?\s+alors|ex-r[ée]gion|histoire|historique|19\d{2}|20(?:0\d|1\d|2[0-4]))\b/i.test(String(value || ''));
+}
+
+const QCM_OBSOLETE_BF_REGION_PATTERNS = [
+  /r[ée]gion\s+(?:des\s+)?Cascades/i,
+  /r[ée]gion\s+(?:des\s+)?Hauts[- ]Bassins/i,
+  /r[ée]gion\s+du\s+Nord\b/i,
+  /r[ée]gion\s+de\s+l['’]Est\b/i,
+  /r[ée]gion\s+du\s+Centre[- ]Est\b/i,
+  /r[ée]gion\s+du\s+Centre[- ]Nord\b/i,
+  /r[ée]gion\s+du\s+Centre[- ]Ouest\b/i,
+  /r[ée]gion\s+du\s+Centre[- ]Sud\b/i,
+  /r[ée]gion\s+du\s+Plateau[- ]Central\b/i,
+  /r[ée]gion\s+du\s+Sud[- ]Ouest\b/i,
+  /r[ée]gion\s+du\s+Sahel\b/i,
+  /r[ée]gion\s+de\s+la\s+Boucle\s+du\s+Mouhoun\b/i
+];
+
+function qcmDeterministicFactIssue(q){
+  const question = String(q?.question_text || '');
+  const explanation = String(q?.explanation || '');
+  const text = `${question} ${explanation}`;
+  const questionIsHistorical = qcmHistoricalContext(question);
+  const oldRegionIsExplicitContext = /\b(?:ancien(?:ne)?|autrefois|avant|rebaptis[ée]e?|renomm[ée]e?|jusqu['’]?en)\b/i.test(explanation);
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(text)) return 'Caractère de contrôle interdit';
+  if (!questionIsHistorical && !oldRegionIsExplicitContext && QCM_OBSOLETE_BF_REGION_PATTERNS.some(pattern => pattern.test(text))){
+    return 'Ancienne dénomination administrative utilisée comme information actuelle';
+  }
+  if (/\bM[ée]diateur\s+du\s+Faso\b/i.test(text) && !questionIsHistorical && !/suppression|supprim[ée]/i.test(text)){
+    return 'Institution supprimée présentée comme actuelle';
+  }
+  if (/\bConseil\s+[ée]conomique(?:,?\s+social)?(?:\s+et\s+environnemental)?\b|\bCESE?\b/i.test(text)
+      && !questionIsHistorical && !/suppression|supprim[ée]/i.test(text)){
+    return 'Ancienne institution consultative présentée comme actuelle';
+  }
+  if (/officier\s+sup[ée]rieur/i.test(question) && /\bcapitaine\b/i.test(text)){
+    return 'Le grade de capitaine relève des officiers subalternes';
+  }
+  if (/Norbert\s+Zongo/i.test(text) && /syndicaliste|homme\s+politique/i.test(question)){
+    return 'Norbert Zongo doit être présenté comme journaliste d’investigation';
+  }
+  if (/Soumane\s+Tour[ée]/i.test(text) && /fondateur\s+du\s+PAI/i.test(text)){
+    return 'Soumane Touré ne doit pas être présenté comme fondateur initial du PAI';
+  }
+  if (/CMRPN/i.test(text) && /Deuxi[èe]me\s+R[ée]publique/i.test(explanation)){
+    return 'Le CMRPN a interrompu la Troisième République en 1980';
+  }
+  if (/Michel\s+Kafando/i.test(text) && /(?:d['’]|depuis\s+)octobre\s+2014/i.test(text)){
+    return 'Michel Kafando a été désigné et investi en novembre 2014';
+  }
+  return '';
+}
+
+function normalizeQcmVerification(item, question){
+  const evidenceType = strictCleanAiQcmText(item?.evidence_type || item?.verification_method || '', 60).toLowerCase().replace(/\s+/g, '_');
+  const score = Number(item?.verification_score ?? item?.factual_score ?? 0);
+  const statusRaw = strictCleanAiQcmText(item?.verification_status || '', 40).toLowerCase();
+  const sourceUrl = cleanQcmSourceUrl(item?.source_url || item?.sourceUrl || '');
+  const verifiedFingerprint = strictCleanAiQcmText(item?.verified_fingerprint || '', 80);
+  return {
+    evidence_type:evidenceType,
+    source_title:strictCleanAiQcmText(item?.source_title || item?.sourceTitle || '', 400),
+    source_url:sourceUrl,
+    source_quote:strictCleanAiQcmText(item?.source_quote || item?.sourceQuote || '', 1600),
+    source_date:strictCleanAiQcmText(item?.source_date || item?.sourceDate || '', 80),
+    verification_status:['verified','rejected','stale','generated'].includes(statusRaw) ? statusRaw : 'generated',
+    verification_score:Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0,
+    verification_reason:strictCleanAiQcmText(item?.verification_reason || item?.reason || '', 1200),
+    verified_at:strictCleanAiQcmText(item?.verified_at || '', 80),
+    verified_by:strictCleanAiQcmText(item?.verified_by || '', 120),
+    verified_fingerprint:verifiedFingerprint || (statusRaw === 'verified' ? qcmContentFingerprint(question) : ''),
+    verification_version:strictCleanAiQcmText(item?.verification_version || '', 80)
+  };
+}
+
+function qcmVerificationIssue(q, { category='', theme='', requireVerified=true } = {}){
+  const deterministic = qcmDeterministicFactIssue(q);
+  if (deterministic) return deterministic;
+  if (!requireVerified) return '';
+  if (q?.verification_status !== 'verified') return q?.verification_status === 'rejected'
+    ? (q.verification_reason || 'Question rejetée par le contrôle factuel')
+    : 'Question non vérifiée factuellement';
+  if (Number(q?.verification_score || 0) < AI_QCM_MIN_VERIFICATION_SCORE) return `Score factuel inférieur à ${AI_QCM_MIN_VERIFICATION_SCORE}/100`;
+  if (!q?.verified_fingerprint || q.verified_fingerprint !== qcmContentFingerprint(q)) return 'Question modifiée après sa dernière vérification';
+  if (q?.verification_version !== AI_QCM_VERIFICATION_VERSION) return 'Vérification factuelle ancienne ou inconnue';
+  const evidenceType = String(q?.evidence_type || '');
+  const reasoningAllowed = QCM_REASONING_CATEGORIES.test(String(category || q?.category || ''));
+  if (evidenceType === 'source_pdf'){
+    if (!String(q?.source_url || '').startsWith('source-pdf://') || !q?.source_title || String(q?.source_quote || '').length < 18) return 'Passage justificatif du PDF source manquant';
+    if (!q?.source_date) return 'Date du document source manquante (indiquer « non datée » si nécessaire)';
+    return '';
+  }
+  if (['calculation','language_rule'].includes(evidenceType)){
+    if (!reasoningAllowed || String(q?.verification_reason || '').length < 25) return 'Démonstration pédagogique insuffisante';
+    return '';
+  }
+  if (!['official_source','trusted_educational_source'].includes(evidenceType)) return 'Type de preuve non reconnu';
+  if (!q?.source_url || !q?.source_title || String(q?.source_quote || '').length < 18) return 'Source ou extrait justificatif manquant';
+  if (!q?.source_date) return 'Date de la source manquante (indiquer « non datée » si nécessaire)';
+  if (qcmRequiresOfficialBurkinaSource(category || q?.category, theme, q?.question_text)){
+    if (!isOfficialBurkinaQcmSource(q.source_url)) return 'Une source officielle burkinabè est obligatoire';
+  }else if (!isTrustedEducationalQcmSource(q.source_url)){
+    return 'La source ne fait pas partie des sources éducatives reconnues';
+  }
+  return '';
+}
+
+function qcmVerificationSummary(questions, context = {}){
+  const rows = Array.isArray(questions) ? questions : [];
+  const issues = rows.map((question, index) => ({ index, issue:qcmVerificationIssue(question, context) })).filter(row => row.issue);
+  return {
+    total:rows.length,
+    verified:rows.length - issues.length,
+    blocked:issues.length,
+    publishable:rows.length > 0 && issues.length === 0,
+    issues:issues.slice(0, 12)
+  };
+}
+
 function aiQuestionQualityIssue(q, dedupeIndex){
   const question = strictCleanAiQcmText(q?.question_text, 1200);
   const opts = [q?.option_a, q?.option_b, q?.option_c, q?.option_d].map(v => strictCleanAiQcmText(v, 500));
@@ -1068,6 +1263,8 @@ function aiQuestionQualityIssue(q, dedupeIndex){
   const allText = [question, ...opts, explanation].join(' ');
   if (hasForbiddenAiQcmText(allText)) return 'Contenu interne ou commentaire IA détecté';
   if (/\b(?:toutes?\s+les\s+r[ée]ponses|aucune\s+des\s+r[ée]ponses)\b/i.test(allText)) return 'Option trop vague';
+  const factualRuleIssue = qcmDeterministicFactIssue({ ...q, question_text:question, explanation });
+  if (factualRuleIssue) return factualRuleIssue;
   if (isDuplicateQuestionText(question, dedupeIndex)) return 'Question déjà existante ou trop proche';
   return '';
 }
@@ -1101,7 +1298,7 @@ function normalizeAiQuestion(item, defaults = {}){
     const label = String(correctRaw || '').trim().toUpperCase();
     correct = ({A:0, B:1, C:2, D:3})[label] ?? -1;
   }
-  return adminQuestionPayload({
+  const question = adminQuestionPayload({
     category:strictCleanAiQcmText(item?.category || defaults.category, 80),
     level:strictCleanAiQcmText(item?.level || defaults.level, 40),
     question_text:strictCleanAiQcmText(item?.question_text || item?.question, 1200),
@@ -1112,6 +1309,7 @@ function normalizeAiQuestion(item, defaults = {}){
     is_premium:defaults.is_premium,
     is_active:false
   });
+  return { ...question, ...normalizeQcmVerification(item, question) };
 }
 
 function normalizeAiQuestionRows(rows, defaults, count, { dedupeIndex } = {}){
@@ -1149,28 +1347,98 @@ function promptAvoidBlock(avoidQuestions = [], existingCount = 0){
 }
 
 function aiQcmPrompt({ count, category, level, theme, publicationName = '', fromPdf = false, avoidQuestions = [], existingCount = 0 }){
+  const currentDate = new Date().toISOString().slice(0, 10);
+  const officialRequired = qcmRequiresOfficialBurkinaSource(category, theme);
   const sourceLine = fromPdf
-    ? `Lis le PDF joint et génère exactement ${count} QCM en français à partir de son contenu. Si une information n'est pas clairement présente dans le PDF, ne l'invente pas: remplace par une autre question appuyée par le document.`
-    : `Génère exactement ${count} QCM en français.`;
+    ? `Lis le PDF joint et génère exactement ${count} QCM en français uniquement à partir de passages explicites du document. Pour chaque QCM, recopie un court extrait probant du PDF. Si le document ne prouve pas clairement la réponse, n'utilise pas ce fait.`
+    : `Génère exactement ${count} QCM en français. Utilise la recherche web pour contrôler les faits avant de répondre.`;
+  const evidenceRules = fromPdf
+    ? `- evidence_type doit être "source_pdf"; source_url doit être "source-pdf://uploaded-document"; source_title décrit le PDF; source_quote reproduit le passage exact qui prouve la réponse; source_date reprend la date visible du document ou "non datée".`
+    : officialRequired
+      ? `- chaque fait doit être appuyé par une page officielle burkinabè: domaine .gov.bf, presidencedufaso.bf, assembleenationale.bf, legiburkina.bf ou insd.bf; evidence_type="official_source"; fournis l'URL directe, le titre et un extrait probant. Aucune source de blog, réseau social, Wikipédia ou média généraliste.`
+      : `- chaque fait doit avoir une preuve: source officielle ou éducative reconnue avec URL directe, titre et extrait; pour un calcul démontré utilise evidence_type="calculation"; pour une règle de langue démontrée utilise evidence_type="language_rule".`;
   const nameLine = publicationName ? `Nom du QCM demandé: ${publicationName}.` : '';
-  return `Tu es un enseignant expert en préparation aux examens et concours au Burkina Faso.\n${sourceLine}\nCatégorie choisie par l'admin: ${category}. Niveau choisi par l'admin: ${level}. Sujet/thème choisi par l'admin: ${theme}. ${nameLine}\nContraintes strictes:\n- respecte d'abord le formulaire admin: catégorie, niveau, thème et nom du QCM doivent guider le contenu; ne pars pas sur un autre sujet;\n- adapte réellement la difficulté et le vocabulaire au niveau ${level};\n- chaque QCM doit être factuel, clair, non ambigu et adapté au Burkina Faso si pertinent;\n- vérifie la bonne réponse avant de l'écrire: si tu as un doute, remplace entièrement la question;\n- ne mélange jamais deux questions en une seule;\n- niveau exigeant pour une vraie préparation de concours: éviter les questions trop évidentes, les réponses faciles et les généralités;\n- privilégier le raisonnement, les détails utiles, les pièges réalistes et les distracteurs plausibles;\n- pour les mathématiques, statistiques, physique-chimie ou SVT, écris les formules avec une notation lisible: x², y′, √(...), σ, Δ, ≤, ≥, ±, ×; pour les fractions complexes tu peux utiliser \\frac{numérateur}{dénominateur}; évite les écritures brutes comme sqrt(...), r^2 ou e^{2x} quand un symbole lisible existe;\n- pour Burkina Faso, éviter les questions basiques répétitives comme capitale/monnaie sauf si le thème l'exige;\n- aucune remarque interne dans les questions, options ou corrections: ne jamais écrire "attention", "à vérifier", "brouillon", "IA", "je ne peux pas", ni une parenthèse qui corrige la consigne;\n- 4 options obligatoires, toutes différentes;\n- une seule bonne réponse, cohérente avec la correction;\n- correction détaillée, pédagogique, concise et affirmative;\n- éviter toute affirmation incertaine ou inventée;\n- aucun doublon et aucune reformulation d'une question existante.\n${promptAvoidBlock(avoidQuestions, existingCount)}\nRéponds uniquement en JSON valide sous cette forme: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Réussite Concours BF"}]}`;
+  return `Tu es un enseignant expert et rigoureux en préparation aux examens et concours au Burkina Faso. Date de référence: ${currentDate}.\n${sourceLine}\nCatégorie choisie par l'admin: ${category}. Niveau choisi par l'admin: ${level}. Sujet/thème choisi par l'admin: ${theme}. ${nameLine}\nContraintes strictes:\n- respecte le formulaire admin et adapte réellement la difficulté au niveau ${level};\n- produis des faits actuels à la date de référence; une ancienne institution ou dénomination n'est autorisée que dans une question explicitement historique et datée;\n- pour le Burkina Faso en 2026, tiens compte des 17 régions et 47 provinces; les régions actuelles sont Bankui, Djôrô, Goulmou, Guiriko, Kadiogo, Kuilsé, Liptako, Nando, Nakambé, Nazinon, Oubri, Sirba, Soum, Sourou, Tannounyan, Tapoa et Yaadga;\n- ne présente jamais le Médiateur du Faso, le Conseil économique et social ou la Haute Cour de justice comme des institutions actuelles; toute question à leur sujet doit être explicitement historique;\n- chaque QCM doit être clair, non ambigu et ne comporter qu'une seule bonne réponse;\n- l'option correcte doit être explicitement justifiée par la correction et par la preuve;\n- si une preuve manque ou se contredit, abandonne la question au lieu de deviner;\n- ne mélange jamais deux questions en une seule;\n- quatre options obligatoires, toutes différentes et plausibles;\n- correction concise, pédagogique et affirmative;\n- pour les mathématiques et sciences, utilise une notation lisible: x², y′, √(...), σ, Δ, ≤, ≥, ±, ×;\n- aucune remarque interne: ne jamais écrire "attention", "à vérifier", "brouillon", "IA", "je ne peux pas";\n- aucun doublon ni reformulation d'une question existante;\n${evidenceRules}\n${promptAvoidBlock(avoidQuestions, existingCount)}\nRéponds uniquement en JSON valide: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","evidence_type":"official_source|trusted_educational_source|source_pdf|calculation|language_rule","source_title":"...","source_url":"...","source_quote":"...","source_date":"AAAA-MM-JJ ou non datée"}]}`;
 }
+
 function questionRowsForVerification(questions){
-  return (questions || []).map(q => ({
+  return (questions || []).map((q, index) => ({
+    index,
     category:q.category,
     level:q.level,
     question_text:q.question_text,
     options:[q.option_a, q.option_b, q.option_c, q.option_d],
     correct_answer:Number(q.correct_answer),
     explanation:q.explanation,
-    source:'Réussite Concours BF'
+    evidence_type:q.evidence_type || '',
+    source_title:q.source_title || '',
+    source_url:q.source_url || '',
+    source_quote:q.source_quote || '',
+    source_date:q.source_date || ''
   }));
 }
 
-async function verifyAiQuestionsWithGemini(questions, { category, level, theme, count }){
-  if (!GEMINI_API_KEY || !Array.isArray(questions) || !questions.length) return { text:JSON.stringify({ questions:questionRowsForVerification(questions) }), model:'' };
-  const prompt = `Tu es vérificateur pédagogique pour des QCM de concours au Burkina Faso. Vérifie factuellement chaque question, la bonne réponse et la correction. Supprime ou corrige toute question fausse, ambiguë, trop facile, répétitive ou contenant une remarque interne. N'écris jamais "attention", "à vérifier", "IA", "brouillon" ou un commentaire de doute. Si une question n'est pas sûre, remplace-la par une question fiable du même thème. Retourne au maximum ${count} QCM validés. Respecte strictement le formulaire admin. Catégorie: ${category}. Niveau: ${level}. Thème: ${theme}. En mathématiques/sciences, garde une notation lisible: x², y′, √(...), σ, Δ, fractions claires, ≤, ≥, ±, ×. Réponds uniquement en JSON valide: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","source":"Réussite Concours BF"}]}\n\nQCM à contrôler:\n${JSON.stringify(questionRowsForVerification(questions))}`;
-  return callGeminiGenerate(prompt);
+function attachVerificationReview(question, review, model, context = {}){
+  const reviewStatus = String(review?.status || '').toUpperCase();
+  const score = Number(review?.score ?? review?.factual_score ?? 0);
+  const sourceSupports = review?.source_supports_answer === true;
+  const answerConsistent = review?.answer_consistent === true;
+  const verified = reviewStatus === 'VALIDATED' && sourceSupports && answerConsistent && score >= AI_QCM_MIN_VERIFICATION_SCORE;
+  const candidate = {
+    ...question,
+    evidence_type:strictCleanAiQcmText(review?.evidence_type || question.evidence_type || '', 60).toLowerCase().replace(/\s+/g, '_'),
+    source_title:strictCleanAiQcmText(review?.source_title || question.source_title || '', 400),
+    source_url:cleanQcmSourceUrl(review?.source_url || question.source_url || ''),
+    source_quote:strictCleanAiQcmText(review?.source_quote || question.source_quote || '', 1600),
+    source_date:strictCleanAiQcmText(review?.source_date || question.source_date || '', 80),
+    verification_status:verified ? 'verified' : 'rejected',
+    verification_score:Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0,
+    verification_reason:strictCleanAiQcmText(review?.reason || (verified ? 'Réponse confirmée par la preuve fournie.' : 'Preuve insuffisante ou réponse non confirmée.'), 1200),
+    verified_at:new Date().toISOString(),
+    verified_by:model || GEMINI_VERIFIER_MODEL,
+    verification_version:AI_QCM_VERIFICATION_VERSION
+  };
+  candidate.verified_fingerprint = qcmContentFingerprint(candidate);
+  const issue = qcmVerificationIssue(candidate, { ...context, requireVerified:true });
+  if (issue){
+    candidate.verification_status = 'rejected';
+    candidate.verification_reason = strictCleanAiQcmText(`${candidate.verification_reason} ${issue}`, 1200);
+  }
+  return candidate;
+}
+
+async function verifyAiQuestionsWithGemini(questions, { category, level, theme, fromPdf=false, extraParts=[] } = {}){
+  if (!GEMINI_API_KEY || !Array.isArray(questions) || !questions.length){
+    return { questions:(questions || []).map(q => ({ ...q, verification_status:'rejected', verification_reason:'Vérificateur indisponible.' })), model:'' };
+  }
+  const currentDate = new Date().toISOString().slice(0, 10);
+  const officialRequired = qcmRequiresOfficialBurkinaSource(category, theme);
+  const prompt = `Tu es le second vérificateur indépendant de QCM éducatifs. Date de référence: ${currentDate}. Tu ne dois ni réécrire ni remplacer les questions. Pour chaque index, contrôle séparément l'énoncé, les quatre options, l'indice de réponse, l'explication, l'actualité du fait et la preuve. Utilise la recherche web si le QCM ne vient pas d'un PDF. Pour tout contenu sur le Burkina Faso ou son droit, accepte uniquement une source officielle burkinabè et une dénomination administrative actuelle, sauf contexte historique explicite. Pour un calcul, refais le calcul étape par étape. Pour une règle de français, vérifie la règle. Une URL seule ne suffit pas: l'extrait doit réellement prouver l'option indiquée; indique aussi la date de la source ou « non datée ». Rejette au moindre doute, si plusieurs options sont défendables, si la source est inaccessible/non officielle, ou si l'explication contredit la réponse. Seuil d'exigence: ${AI_QCM_MIN_VERIFICATION_SCORE}/100. Catégorie: ${category}. Niveau: ${level}. Thème: ${theme}. Source PDF: ${fromPdf ? 'oui' : 'non'}. Source officielle burkinabè obligatoire: ${officialRequired ? 'oui' : 'selon le sujet'}. Réponds uniquement en JSON valide: {"reviews":[{"index":0,"status":"VALIDATED|REJECTED","score":0,"answer_consistent":true,"source_supports_answer":true,"reason":"...","evidence_type":"official_source|trusted_educational_source|source_pdf|calculation|language_rule","source_title":"...","source_url":"...","source_quote":"...","source_date":"..."}]}. Retourne exactement un avis par index.\n\nQCM à contrôler:\n${JSON.stringify(questionRowsForVerification(questions))}`;
+  const verifyOptions = {
+    verifier:true,
+    grounding:AI_QCM_GROUNDING_ENABLED && !fromPdf,
+    temperature:0.05,
+    topP:0.7,
+    maxOutputTokens:10000
+  };
+  const ai = extraParts.length
+    ? await callGeminiGenerateParts([{ text:prompt }, ...extraParts], verifyOptions)
+    : await callGeminiGenerate(prompt, verifyOptions);
+  let reviews = [];
+  try{
+    const parsed = extractJsonFromAi(ai.text);
+    reviews = Array.isArray(parsed?.reviews) ? parsed.reviews : [];
+  }catch{
+    reviews = [];
+  }
+  const byIndex = new Map(reviews.map(review => [Number(review?.index), review]));
+  const verifiedQuestions = questions.map((question, index) => attachVerificationReview(
+    question,
+    byIndex.get(index) || { status:'REJECTED', score:0, answer_consistent:false, source_supports_answer:false, reason:'Avis de vérification manquant.' },
+    ai.model,
+    { category, level, theme }
+  ));
+  return { questions:verifiedQuestions, model:ai.model, groundingSources:ai.groundingSources || [] };
 }
 
 function rotatingAvoidSample(texts, offset = 0, limit = 70){
@@ -1285,74 +1553,170 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
   const existingTexts = existingRows.map(row => row.question_text);
   const dedupeIndex = createQuestionDedupeIndex(existingTexts);
   const questions = [];
+  const rejected = [];
   let model = '';
+  let verificationModel = '';
   const defaults = { category, level, is_premium, source:'Réussite Concours BF' };
-  // Lots efficaces: prompt plus court, moins de saturation, plus de chances d'atteindre 50 dans Vercel.
-  const maxAttempts = Math.max(fromPdf ? 8 : 10, Math.ceil(target / 8) + 5);
+  // Petits lots : moins d'inventions, une preuve et un contrôle indépendant pour chaque QCM.
+  const maxAttempts = Math.max(5, Math.ceil(target / AI_QCM_BATCH_SIZE) * 2 + 4);
   for (let attempt = 0; questions.length < target && attempt < maxAttempts; attempt++){
     const remaining = target - questions.length;
-    const batchCount = Math.min(18, Math.max(8, Math.min(18, remaining + 6)));
+    const batchCount = Math.min(AI_QCM_BATCH_SIZE, remaining);
     const angle = qcmGenerationAngle(category, attempt);
-    const avoidQuestions = buildAvoidQuestions(existingRows, existingTexts, category, level, questions, attempt);
-    const batchTheme = `${theme || category}. Angle obligatoire du lot ${attempt + 1}: ${angle}. Avant de répondre, contrôle intérieurement chaque bonne réponse et chaque correction. Retourne seulement des QCM validés, nouveaux et différents.`;
+    const avoidQuestions = buildAvoidQuestions(existingRows, existingTexts, category, level, questions, attempt)
+      .concat(rejected.slice(-8).map(row => row.question).filter(Boolean))
+      .slice(0, 45);
+    const batchTheme = `${theme || category}. Angle obligatoire du lot ${attempt + 1}: ${angle}. Chaque réponse doit être prouvée avant d'être proposée.`;
     const prompt = aiQcmPrompt({ count:batchCount, category, level, theme:batchTheme, publicationName, fromPdf, avoidQuestions, existingCount:existingTexts.length });
+    const generateOptions = {
+      grounding:AI_QCM_GROUNDING_ENABLED && !fromPdf,
+      temperature:0.16,
+      topP:0.78,
+      maxOutputTokens:10000
+    };
     const ai = extraParts.length
-      ? await callGeminiGenerateParts([{ text:prompt }, ...extraParts])
-      : await callGeminiGenerate(prompt);
+      ? await callGeminiGenerateParts([{ text:prompt }, ...extraParts], generateOptions)
+      : await callGeminiGenerate(prompt, generateOptions);
     model = ai.model || model;
-    let accepted = [];
+    let candidates = [];
     try{
-      accepted = normalizeAiQuestionList(ai.text, defaults, remaining, { dedupeIndex });
+      candidates = normalizeAiQuestionList(ai.text, defaults, batchCount, { dedupeIndex });
     }catch(err){
-      accepted = [];
+      rejected.push({ question:'', reason:'Réponse de génération non lisible' });
+      continue;
     }
-    questions.push(...accepted.slice(0, remaining));
+    if (!candidates.length) continue;
+    let checkedQuestions = candidates;
+    if (AI_QCM_REQUIRE_VERIFICATION){
+      const checked = await verifyAiQuestionsWithGemini(candidates, {
+        category,
+        level,
+        theme:batchTheme,
+        fromPdf,
+        extraParts:fromPdf ? extraParts : []
+      });
+      checkedQuestions = checked.questions;
+      verificationModel = checked.model || verificationModel;
+    }else{
+      // Désactiver l'appel automatique ne constitue jamais une vérification :
+      // le brouillon reste publiquement bloqué jusqu'à un contrôle explicite.
+      checkedQuestions = candidates.map(question => ({
+        ...question,
+        verification_status:'generated',
+        verification_score:0,
+        verification_reason:'Vérification factuelle à effectuer avant publication.',
+        verified_at:'',
+        verified_by:'',
+        verified_fingerprint:'',
+        verification_version:''
+      }));
+    }
+    for (const question of checkedQuestions){
+      const issue = aiQuestionQualityIssue(question) || qcmVerificationIssue(question, { category, level, theme:batchTheme, requireVerified:AI_QCM_REQUIRE_VERIFICATION });
+      if (issue){
+        rejected.push({ question:question.question_text, reason:issue });
+        continue;
+      }
+      questions.push(question);
+      if (questions.length >= target) break;
+    }
   }
-  return { questions:questions.slice(0, target), model, existingCount:existingTexts.length };
+  return {
+    questions:questions.slice(0, target),
+    model,
+    verificationModel,
+    verification:qcmVerificationSummary(questions.slice(0, target), { category, level, theme, requireVerified:AI_QCM_REQUIRE_VERIFICATION }),
+    rejected:rejected.slice(-20),
+    existingCount:existingTexts.length
+  };
 }
 
-async function callGeminiGenerateParts(parts){
+async function verifyExistingQuestionSet(questions, { category, level, theme, fromPdf=false, extraParts=[] } = {}){
+  const rows = Array.isArray(questions) ? questions : [];
+  const checked = [];
+  let model = '';
+  for (let offset = 0; offset < rows.length; offset += AI_QCM_BATCH_SIZE){
+    const batch = rows.slice(offset, offset + AI_QCM_BATCH_SIZE);
+    const result = await verifyAiQuestionsWithGemini(batch, { category, level, theme, fromPdf, extraParts });
+    model = result.model || model;
+    checked.push(...result.questions);
+  }
+  return {
+    questions:checked,
+    model,
+    verification:qcmVerificationSummary(checked, { category, level, theme, requireVerified:true })
+  };
+}
+
+function groundingSourcesFromGemini(data){
+  const rows = [];
+  for (const candidate of (data?.candidates || [])){
+    const metadata = candidate?.groundingMetadata || candidate?.grounding_metadata || {};
+    for (const chunk of (metadata?.groundingChunks || metadata?.grounding_chunks || [])){
+      const web = chunk?.web || {};
+      const url = cleanQcmSourceUrl(web?.uri || web?.url || '');
+      if (!url) continue;
+      rows.push({ url, title:strictCleanAiQcmText(web?.title || '', 300) });
+    }
+  }
+  const seen = new Set();
+  return rows.filter(row => !seen.has(row.url) && seen.add(row.url)).slice(0, 30);
+}
+
+async function callGeminiGenerateParts(parts, options = {}){
   if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   let lastError = null;
-  const models = await geminiModelsToTry();
+  const models = await geminiModelsToTry({ verifier:Boolean(options.verifier) });
   for (const model of models){
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
     for (const jsonMode of [true, false]){
-      const generationConfig = { temperature:0.28, topP:0.85, maxOutputTokens:12000 };
+      const generationConfig = {
+        temperature:Number(options.temperature ?? 0.16),
+        topP:Number(options.topP ?? 0.78),
+        maxOutputTokens:Number(options.maxOutputTokens || 10000)
+      };
       if (jsonMode) generationConfig.responseMimeType = 'application/json';
+      const requestBody = {
+        contents:[{ role:'user', parts }],
+        generationConfig
+      };
+      if (options.grounding) requestBody.tools = [{ google_search:{} }];
       const res = await fetch(url, {
         method:'POST',
         headers:{ 'Content-Type':'application/json' },
-        body:JSON.stringify({
-          contents:[{ role:'user', parts }],
-          generationConfig
-        })
+        body:JSON.stringify(requestBody)
       });
       const data = await res.json().catch(()=>({}));
       if (!res.ok){
         lastError = data?.error?.message || `Erreur IA ${res.status}`;
-        if (res.status === 400 && jsonMode && /responseMimeType|mime|schema/i.test(lastError || '')) continue;
+        if (res.status === 400 && jsonMode && /responseMimeType|mime|schema|structured/i.test(lastError || '')) continue;
         break;
       }
       const text = (data?.candidates || [])
-        .flatMap(c => c?.content?.parts || [])
+        .flatMap(candidate => candidate?.content?.parts || [])
         .map(part => part?.text || '')
         .join('\n')
         .trim();
-      return { model, text };
+      if (!text){
+        lastError = 'Réponse IA vide';
+        break;
+      }
+      return { model, text, groundingSources:groundingSourcesFromGemini(data) };
     }
   }
   console.warn('Gemini generation failed:', lastError);
   const friendly = /quota|rate|429/i.test(lastError || '')
-    ? 'Quota gratuit IA atteint pour le moment. Réessaie plus tard.'
-    : 'IA indisponible pour le moment. Réessaie un peu plus tard.';
+    ? 'Quota IA atteint pour le moment. Réessaie plus tard.'
+    : options.grounding
+      ? 'La recherche et la vérification des sources sont indisponibles pour le moment. Aucun QCM non sourcé ne sera accepté.'
+      : 'IA indisponible pour le moment. Réessaie un peu plus tard.';
   const err = new Error(friendly);
   err.status = /quota|rate|429/i.test(lastError || '') ? 429 : 502;
   throw err;
 }
 
-async function callGeminiGenerate(prompt){
-  return callGeminiGenerateParts([{ text:prompt }]);
+async function callGeminiGenerate(prompt, options = {}){
+  return callGeminiGenerateParts([{ text:prompt }], options);
 }
 
 function todayId(date = new Date()){
@@ -1402,23 +1766,33 @@ async function saveAiDailyIndex(rows){
 }
 
 function publicAiDailyDraft(row){
+  const questions = Array.isArray(row.questions) ? row.questions : [];
+  const verification = qcmVerificationSummary(questions, {
+    category:row.category,
+    level:row.level,
+    theme:row.title,
+    requireVerified:true
+  });
   return {
     id:row.id,
     date:row.date,
     title:safePdfTitle(row.title || 'QCM quotidien'),
     category:row.category,
     level:row.level,
-    count:Number(row.count || row.questions?.length || 0),
+    count:Number(row.count || questions.length || 0),
     is_premium:Boolean(row.is_premium),
     status:row.status || 'draft',
     model:row.model || '',
+    verificationModel:row.verification_model || '',
+    verification,
+    verificationVersion:AI_QCM_VERIFICATION_VERSION,
     fileName:row.file_name || '',
     created_at:row.created_at,
     updated_at:row.updated_at || '',
     corrected_at:row.corrected_at || '',
     pdf_revision:Number(row.pdf_revision || 0),
     published_at:row.published_at || '',
-    questions:Array.isArray(row.questions) ? row.questions : [],
+    questions,
     orphanResource:Boolean(row.orphan_resource),
     orphanQuestions:Boolean(row.orphan_questions)
   };
@@ -2183,6 +2557,8 @@ async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
     is_premium:plan.is_premium,
     status:'draft',
     model:generated.model,
+    verification_model:generated.verificationModel || '',
+    verification_version:AI_QCM_VERIFICATION_VERSION,
     file_name:fileName,
     mime_type:'application/pdf',
     size:pdfBuffer.length,
@@ -2861,7 +3237,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'pdf-qcm-editor-1',
+    build: 'qcm-verified-v2-1',
     time: new Date().toISOString()
   });
 });
@@ -3287,7 +3663,17 @@ app.get('/api/admin/summary', requireAdmin, async (_req, res, next) => {
 });
 
 app.get('/api/admin/ai/status', requireAdmin, async (_req, res) => {
-  res.json({ ok:true, configured:Boolean(GEMINI_API_KEY), model:GEMINI_MODEL });
+  res.json({
+    ok:true,
+    configured:Boolean(GEMINI_API_KEY),
+    model:GEMINI_MODEL,
+    verifierModel:GEMINI_VERIFIER_MODEL,
+    grounding:AI_QCM_GROUNDING_ENABLED,
+    verificationRequired:AI_QCM_REQUIRE_VERIFICATION,
+    verificationVersion:AI_QCM_VERIFICATION_VERSION,
+    batchSize:AI_QCM_BATCH_SIZE,
+    minimumScore:AI_QCM_MIN_VERIFICATION_SCORE
+  });
 });
 
 app.get('/api/admin/ai/daily', requireAdmin, async (_req, res, next) => {
@@ -3311,6 +3697,13 @@ app.get('/api/admin/ai/daily', requireAdmin, async (_req, res, next) => {
         levels:AI_DAILY_LEVELS,
         levelCategories:levelCategoryMapForClient(),
         is_premium:AI_DAILY_IS_PREMIUM,
+        quality:{
+          grounding:AI_QCM_GROUNDING_ENABLED,
+          verificationRequired:AI_QCM_REQUIRE_VERIFICATION,
+          minimumScore:AI_QCM_MIN_VERIFICATION_SCORE,
+          batchSize:AI_QCM_BATCH_SIZE,
+          version:AI_QCM_VERIFICATION_VERSION
+        },
         cron:'/api/cron/ai-daily-qcm'
       },
       drafts:allDrafts.map(publicAiDailyDraft)
@@ -3389,6 +3782,50 @@ app.put('/api/admin/ai/daily/:id/questions', requireAdmin, async (req, res, next
   }catch(err){ next(err); }
 });
 
+app.post('/api/admin/ai/daily/:id/verify', requireAdmin, async (req, res, next) => {
+  try{
+    if (!GEMINI_API_KEY) return res.status(503).json({ message:'Service de vérification indisponible.' });
+    const drafts = await loadAiDailyIndex();
+    const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
+    if (idx < 0) return res.status(404).json({ message:'Brouillon PDF introuvable' });
+    const draft = drafts[idx];
+    if (draft.status === 'published') return res.status(409).json({ message:'Retire d’abord ce PDF du côté candidat avant de le vérifier à nouveau.' });
+    const sourceRows = Array.isArray(req.body?.questions) ? req.body.questions : draft.questions;
+    if (!Array.isArray(sourceRows) || !sourceRows.length) return res.status(400).json({ message:'Aucun QCM à vérifier.' });
+    const questions = sourceRows.map((row, index) => {
+      try{
+        const question = normalizeAiQuestion(row, {
+          category:draft.category || 'Culture générale',
+          level:draft.level || 'Concours',
+          is_premium:Boolean(draft.is_premium),
+          source:safePdfTitle(draft.title || 'QCM quotidien')
+        });
+        question.category = cleanText(draft.category || question.category, 80);
+        question.level = cleanText(draft.level || question.level, 40);
+        question.is_premium = Boolean(draft.is_premium);
+        question.source = safePdfTitle(draft.title || question.source || 'QCM quotidien');
+        return question;
+      }catch(err){
+        throw Object.assign(new Error(`Question ${index + 1} : ${err.message || 'contenu invalide'}`), { status:400 });
+      }
+    });
+    const checked = await verifyExistingQuestionSet(questions, {
+      category:draft.category || 'Culture générale',
+      level:draft.level || 'Concours',
+      theme:draft.title || draft.category || 'QCM quotidien'
+    });
+    drafts[idx] = {
+      ...draft,
+      questions:checked.questions,
+      verification_model:checked.model || draft.verification_model || '',
+      verification_version:AI_QCM_VERIFICATION_VERSION,
+      updated_at:new Date().toISOString()
+    };
+    await saveAiDailyIndex(drafts);
+    res.json({ ok:true, verification:checked.verification, draft:publicAiDailyDraft(drafts[idx]) });
+  }catch(err){ next(err); }
+});
+
 app.post('/api/admin/ai/daily/:id/replace-question', requireAdmin, async (req, res, next) => {
   try{
     if (!GEMINI_API_KEY) return res.status(503).json({ message:'Service IA indisponible pour remplacer cette question.' });
@@ -3412,6 +3849,7 @@ app.post('/api/admin/ai/daily/:id/replace-question', requireAdmin, async (req, r
     const draftDedupeIndex = createQuestionDedupeIndex(otherQuestionTexts);
     let replacement = null;
     let model = '';
+    let verificationModel = '';
     let lastIssue = '';
     for (let attempt = 0; attempt < 3 && !replacement; attempt++){
       const generated = await generateUniqueAiQuestions({
@@ -3423,6 +3861,7 @@ app.post('/api/admin/ai/daily/:id/replace-question', requireAdmin, async (req, r
         is_premium:Boolean(draft.is_premium)
       });
       model = generated.model || model;
+      verificationModel = generated.verificationModel || verificationModel;
       const candidate = generated.questions?.[0] || null;
       const issue = candidate ? (aiQuestionQualityIssue(candidate, draftDedupeIndex) || publicQuestionQualityIssue(candidate)) : 'Aucune question générée';
       if (!issue) replacement = candidate;
@@ -3436,7 +3875,7 @@ app.post('/api/admin/ai/daily/:id/replace-question', requireAdmin, async (req, r
     const questions = normalizeEditedDailyQuestions(nextRows, draft);
     const previousStoragePath = draft.storage_path || '';
     const updated = await rebuildDailyAiDraftPdf(draft, questions);
-    drafts[idx] = { ...updated, model:model || updated.model };
+    drafts[idx] = { ...updated, model:model || updated.model, verification_model:verificationModel || updated.verification_model || '' };
     await saveAiDailyIndex(drafts);
     if (previousStoragePath && previousStoragePath !== updated.storage_path){
       await deleteResourceObject(previousStoragePath).catch(()=>{});
@@ -3467,6 +3906,19 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
       const previousStoragePath = draft.storage_path || '';
       const publishDraft = { ...draft, category:publishCategory, level:publishLevel, is_premium:publishPremium };
       questions = normalizeEditedDailyQuestions(questions, publishDraft);
+      const verification = qcmVerificationSummary(questions, {
+        category:publishCategory,
+        level:publishLevel,
+        theme:draft.title,
+        requireVerified:true
+      });
+      if (!verification.publishable){
+        const first = verification.issues[0];
+        return res.status(409).json({
+          message:`Publication bloquée : ${verification.blocked} QCM non vérifié(s) ou modifié(s) après vérification.${first ? ` Question ${first.index + 1} : ${first.issue}.` : ''} Lance « Vérifier les sources » puis remplace les questions rejetées.`,
+          verification
+        });
+      }
       draft = await rebuildDailyAiDraftPdf(publishDraft, questions, {
         category:publishCategory,
         level:publishLevel,
@@ -3598,7 +4050,27 @@ app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
     const generated = await generateUniqueAiQuestions({ count, category, level, theme, publicationName, is_premium:isPremiumDraft });
     const questions = generated.questions;
     if (questions.length < count) return res.status(502).json({ message:`Seulement ${questions.length}/${count} QCM fiables et non répétitifs ont été validés. Précise le thème ou relance.` });
-    res.json({ ok:true, model:generated.model, existingCount:generated.existingCount, questions });
+    res.json({ ok:true, model:generated.model, verificationModel:generated.verificationModel, verification:generated.verification, existingCount:generated.existingCount, questions });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/ai/qcm/verify', requireAdmin, async (req, res, next) => {
+  try{
+    if (!GEMINI_API_KEY) return res.status(503).json({ message:'Vérificateur IA indisponible pour le moment.' });
+    const sourceRows = Array.isArray(req.body?.questions) ? req.body.questions.slice(0, AI_QCM_BATCH_SIZE) : [];
+    if (!sourceRows.length) return res.status(400).json({ message:'Aucun QCM à vérifier.' });
+    const level = cleanText(req.body?.level || sourceRows[0]?.level || 'Concours', 40);
+    const requestedCategory = cleanText(req.body?.category || sourceRows[0]?.category || 'Culture générale', 80);
+    const category = categoryAllowedForLevel(requestedCategory, level) ? requestedCategory : defaultCategoryForLevel(level);
+    const theme = cleanText(req.body?.theme || sourceRows[0]?.source || category, 240);
+    const questions = sourceRows.map(row => normalizeAiQuestion(row, {
+      category,
+      level,
+      source:strictCleanAiQcmText(row?.source || 'Réussite Concours BF', 500),
+      is_premium:Boolean(row?.is_premium)
+    }));
+    const checked = await verifyExistingQuestionSet(questions, { category, level, theme });
+    res.json({ ok:true, model:checked.model, verification:checked.verification, questions:checked.questions });
   }catch(err){ next(err); }
 });
 
@@ -3631,7 +4103,7 @@ app.post('/api/admin/ai/qcm-pdf', requireAdmin, express.raw({ type:() => true, l
     });
     const questions = generated.questions;
     if (questions.length < count) return res.status(502).json({ message:`Seulement ${questions.length}/${count} QCM fiables et non répétitifs ont été validés depuis ce PDF. Vérifie que le PDF contient assez de texte ou réduis le nombre.` });
-    res.json({ ok:true, model:generated.model, existingCount:generated.existingCount, fileName, questions });
+    res.json({ ok:true, model:generated.model, verificationModel:generated.verificationModel, verification:generated.verification, existingCount:generated.existingCount, fileName, questions });
   }catch(err){ next(err); }
 });
 
@@ -3689,6 +4161,32 @@ app.post('/api/admin/questions', requireAdmin, async (req, res, next) => {
   try{
     if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
     const payload = adminQuestionPayload(req.body || {});
+    if (req.body?.ai_generated){
+      const candidate = {
+        ...payload,
+        evidence_type:strictCleanAiQcmText(req.body?.evidence_type || '', 60),
+        source_title:strictCleanAiQcmText(req.body?.source_title || '', 400),
+        source_url:cleanQcmSourceUrl(req.body?.source_url || ''),
+        source_quote:strictCleanAiQcmText(req.body?.source_quote || '', 1600),
+        source_date:strictCleanAiQcmText(req.body?.source_date || '', 80),
+        verification_status:strictCleanAiQcmText(req.body?.verification_status || '', 40),
+        verification_score:Number(req.body?.verification_score || 0),
+        verification_reason:strictCleanAiQcmText(req.body?.verification_reason || '', 1200),
+        verified_at:strictCleanAiQcmText(req.body?.verified_at || '', 80),
+        verified_by:strictCleanAiQcmText(req.body?.verified_by || '', 120),
+        verified_fingerprint:strictCleanAiQcmText(req.body?.verified_fingerprint || '', 80),
+        verification_version:strictCleanAiQcmText(req.body?.verification_version || '', 80)
+      };
+      const verificationIssue = qcmVerificationIssue(candidate, {
+        category:payload.category,
+        level:payload.level,
+        theme:payload.source,
+        requireVerified:true
+      });
+      if (verificationIssue){
+        return res.status(409).json({ message:`Publication IA bloquée : ${verificationIssue}. Régénère ou revérifie ce QCM.` });
+      }
+    }
     const existingTexts = await collectExistingQcmTexts({ includeDaily:false });
     if (isDuplicateQuestionText(payload.question_text, createQuestionDedupeIndex(existingTexts))){
       return res.status(409).json({ message:'Ce QCM existe déjà dans l’application ou ressemble trop à une question existante.' });
@@ -4322,6 +4820,19 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ message: err.message || 'Erreur serveur' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Réussite Concours BF API listening on 0.0.0.0:${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test'){
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Réussite Concours BF API listening on 0.0.0.0:${PORT}`);
+  });
+}
+
+export {
+  app,
+  normalizeAiQuestion,
+  qcmContentFingerprint,
+  qcmDeterministicFactIssue,
+  qcmVerificationIssue,
+  qcmVerificationSummary,
+  isOfficialBurkinaQcmSource,
+  isTrustedEducationalQcmSource
+};
