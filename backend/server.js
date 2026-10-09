@@ -76,9 +76,9 @@ const AI_QCM_FALLBACK_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env
 const AI_QCM_TIMEOUT_MS = Math.min(35000, Math.max(15000, Number(process.env.AI_QCM_TIMEOUT_MS || 35000)));
 const AI_QCM_GROUNDING_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_GROUNDING_ENABLED || 'true'));
 const AI_QCM_REQUIRE_VERIFICATION = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_REQUIRE_VERIFICATION || 'true'));
-// Deux QCM au maximum par fonction : avec la recherche sourcée et Claude 5.5,
-// les lots de cinq dépassaient encore 35 secondes sur OpenRouter.
-const AI_QCM_BATCH_SIZE = Math.min(2, Math.max(1, Number(process.env.AI_QCM_BATCH_SIZE || 2)));
+// Un seul QCM sourcé par fonction : chaque recherche reste centrée sur une
+// preuve et évite les longues séries de lots rejetés par le vérificateur.
+const AI_QCM_BATCH_SIZE = 1;
 const AI_QCM_MIN_VERIFICATION_SCORE = Math.min(100, Math.max(70, Number(process.env.AI_QCM_MIN_VERIFICATION_SCORE || 90)));
 const AI_QCM_VERIFICATION_VERSION = 'official-sources-v2';
 const OFFICIAL_NEWS_SOURCES = process.env.OFFICIAL_NEWS_SOURCES || '';
@@ -957,14 +957,17 @@ function adminQuestionPayload(body){
   return payload;
 }
 
-function aiProviderOrder(){
+function aiProviderOrder(preferredProvider = ''){
   const available = [];
   if (OPENROUTER_API_KEY) available.push('openrouter');
   if (GEMINI_API_KEY) available.push('gemini');
   if (!available.length) return [];
-  const requested = ['openrouter','gemini'].includes(AI_QCM_PROVIDER_SETTING)
+  const preferred = ['openrouter','gemini'].includes(String(preferredProvider || '').toLowerCase())
+    ? String(preferredProvider).toLowerCase()
+    : '';
+  const requested = preferred || (['openrouter','gemini'].includes(AI_QCM_PROVIDER_SETTING)
     ? AI_QCM_PROVIDER_SETTING
-    : (OPENROUTER_API_KEY ? 'openrouter' : 'gemini');
+    : (OPENROUTER_API_KEY ? 'openrouter' : 'gemini'));
   const ordered = [requested, ...available].filter((provider, index, rows) => available.includes(provider) && rows.indexOf(provider) === index);
   return AI_QCM_FALLBACK_ENABLED ? ordered : ordered.slice(0, 1);
 }
@@ -978,18 +981,22 @@ function aiPrimaryProvider(){
 }
 
 function aiGenerationModel(){
-  return aiPrimaryProvider() === 'openrouter' ? OPENROUTER_MODEL : GEMINI_MODEL;
+  return GEMINI_API_KEY ? GEMINI_MODEL : OPENROUTER_MODEL;
 }
 
 function aiVerifierModel(){
-  return aiPrimaryProvider() === 'openrouter' ? OPENROUTER_VERIFIER_MODEL : GEMINI_VERIFIER_MODEL;
+  return OPENROUTER_API_KEY ? OPENROUTER_VERIFIER_MODEL : GEMINI_VERIFIER_MODEL;
 }
 
 function aiProviderStatus(){
+  const hybrid = Boolean(OPENROUTER_API_KEY && GEMINI_API_KEY);
   return {
     configured:aiProviderConfigured(),
     provider:aiPrimaryProvider(),
     providers:{ openrouter:Boolean(OPENROUTER_API_KEY), gemini:Boolean(GEMINI_API_KEY) },
+    generationProvider:GEMINI_API_KEY ? 'gemini' : 'openrouter',
+    verificationProvider:OPENROUTER_API_KEY ? 'openrouter' : 'gemini',
+    hybrid,
     model:aiGenerationModel(),
     verifierModel:aiVerifierModel(),
     fallback:AI_QCM_FALLBACK_ENABLED && aiProviderOrder().length > 1
@@ -1532,11 +1539,13 @@ async function verifyAiQuestionsWithProvider(questions, { category, level, theme
   const prompt = `Tu es le second vérificateur indépendant de QCM éducatifs. Date de référence: ${currentDate}. Tu ne dois ni réécrire ni remplacer les questions. Pour chaque index, contrôle séparément l'énoncé, les quatre options, l'indice de réponse, l'explication, l'actualité du fait et la preuve. Utilise la recherche web si le QCM ne vient pas d'un PDF. Pour tout contenu sur le Burkina Faso ou son droit, accepte uniquement une source officielle burkinabè et une dénomination administrative actuelle, sauf contexte historique explicite. Pour un calcul, refais le calcul étape par étape. Pour une règle de français, vérifie la règle. Une URL seule ne suffit pas: l'extrait doit réellement prouver l'option indiquée; indique aussi la date de la source ou « non datée ». Rejette au moindre doute, si plusieurs options sont défendables, si la source est inaccessible/non officielle, ou si l'explication contredit la réponse. Seuil d'exigence: ${AI_QCM_MIN_VERIFICATION_SCORE}/100. Catégorie: ${category}. Niveau: ${level}. Thème: ${theme}. Source PDF: ${fromPdf ? 'oui' : 'non'}. Source officielle burkinabè obligatoire: ${officialRequired ? 'oui' : 'selon le sujet'}. Réponds uniquement en JSON valide: {"reviews":[{"index":0,"status":"VALIDATED|REJECTED","score":0,"answer_consistent":true,"source_supports_answer":true,"reason":"...","evidence_type":"official_source|trusted_educational_source|source_pdf|calculation|language_rule","source_title":"...","source_url":"...","source_quote":"...","source_date":"..."}]}. Retourne exactement un avis par index.\n\nQCM à contrôler:\n${JSON.stringify(questionRowsForVerification(questions))}`;
   const verifyOptions = {
     verifier:true,
+    // Vérification indépendante conservée sur Sonnet 5.5 via OpenRouter.
+    preferredProvider:'openrouter',
     grounding:AI_QCM_GROUNDING_ENABLED && !fromPdf,
     allowedDomains:qcmSearchAllowedDomains(category, theme),
     temperature:0.05,
     topP:0.7,
-    maxOutputTokens:2800
+    maxOutputTokens:2000
   };
   const ai = extraParts.length
     ? await callAiGenerateParts([{ text:prompt }, ...extraParts], verifyOptions)
@@ -1694,11 +1703,14 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
     const batchTheme = `${theme || category}. Angle obligatoire du lot ${attempt + 1}: ${angle}. Chaque réponse doit être prouvée avant d'être proposée.`;
     const prompt = aiQcmPrompt({ count:batchCount, category, level, theme:batchTheme, publicationName, fromPdf, avoidQuestions, existingCount:existingTexts.length });
     const generateOptions = {
+      // Gemini Flash prépare rapidement un QCM ; Haiku reste le repli si
+      // Gemini rencontre un quota. Sonnet vérifie ensuite indépendamment.
+      preferredProvider:'gemini',
       grounding:AI_QCM_GROUNDING_ENABLED && !fromPdf,
       allowedDomains:qcmSearchAllowedDomains(category, batchTheme),
       temperature:0.16,
       topP:0.78,
-      maxOutputTokens:3200
+      maxOutputTokens:2200
     };
     const ai = extraParts.length
       ? await callAiGenerateParts([{ text:prompt }, ...extraParts], generateOptions)
@@ -1987,7 +1999,7 @@ async function callGeminiGenerate(prompt, options = {}){
 }
 
 async function callAiGenerateParts(parts, options = {}){
-  const providers = aiProviderOrder();
+  const providers = aiProviderOrder(options.preferredProvider);
   if (!providers.length) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   const failures = [];
   for (const provider of providers){
@@ -2908,7 +2920,9 @@ async function generateDailyAiQcmBatch(draftId){
   }else if (pendingQuestions.length){
     // Un seul appel IA par fonction Vercel : ce passage vérifie le lot
     // généré et sauvegardé lors de la requête précédente.
-    const checked = await verifyAiQuestionsWithProvider(pendingQuestions, {
+    const verificationBatch = pendingQuestions.slice(0, AI_QCM_BATCH_SIZE);
+    const remainingPending = pendingQuestions.slice(verificationBatch.length);
+    const checked = await verifyAiQuestionsWithProvider(verificationBatch, {
       category:draft.category,
       level:draft.level,
       theme:draft.title
@@ -2926,11 +2940,11 @@ async function generateDailyAiQcmBatch(draftId){
     draft = {
       ...draft,
       questions:questions.concat(accepted).slice(0, target),
-      pending_questions:[],
+      pending_questions:remainingPending,
       count:Math.min(target, questions.length + accepted.length),
       verification_model:checked.model || draft.verification_model || '',
       verification_version:AI_QCM_VERIFICATION_VERSION,
-      batch_phase:'generation',
+      batch_phase:remainingPending.length ? 'verification' : 'generation',
       updated_at:new Date().toISOString()
     };
   }else{
@@ -3704,7 +3718,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-verified-v2-7',
+    build: 'qcm-verified-v2-8',
     time: new Date().toISOString()
   });
 });

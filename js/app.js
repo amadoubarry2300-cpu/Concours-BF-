@@ -1587,26 +1587,51 @@ async function loadDailyAiDrafts(){
   }
 }
 
+function syncDailyDraftLiveProgress(draft){
+  if (!draft?.id) return;
+  const index = aiDailyDraftCache.findIndex(row => row.id === draft.id);
+  if (index >= 0) aiDailyDraftCache[index] = draft;
+  const card = document.querySelector(`[data-daily-draft-id="${CSS.escape(String(draft.id))}"]`);
+  if (!card) return;
+  const progress = Number(draft.generationProgress || draft.questions?.length || 0);
+  const target = Number(draft.generationTarget || 50);
+  const badge = card.querySelector('[data-daily-progress-badge]');
+  const count = card.querySelector('[data-daily-progress-count]');
+  if (badge) badge.textContent = `Préparation ${progress}/${target}`;
+  if (count) count.textContent = `${progress}/${target}`;
+}
+
 async function continueDailyAiGeneration(draft, result){
   let current = draft;
   let failedBatches = 0;
-  for (let attempt = 0; current?.generating && attempt < 80; attempt++){
+  let rejectedRounds = 0;
+  for (let attempt = 0; current?.generating && attempt < 120; attempt++){
     const progress = Number(current.generationProgress || current.questions?.length || 0);
     const target = Number(current.generationTarget || 50);
-    const phase = current.generationPhase === 'verification' ? 'Vérification du lot en cours' : 'Création du prochain lot';
-    if (result) result.innerHTML = `<div class="pay-note">${phase} : <b>${progress}/${target} QCM validés</b>. Chaque étape est enregistrée automatiquement.</div>`;
+    const wasVerification = current.generationPhase === 'verification';
+    const phase = wasVerification ? 'Vérification du QCM en cours' : 'Création du prochain QCM';
+    if (result) result.innerHTML = `<div class="pay-note">${phase} : <b>${progress}/${target} QCM validés</b>. Gemini prépare une question, puis Sonnet contrôle sa preuve.</div>`;
     try{
       const batch = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(current.id) + '/generate-batch', {
         method:'POST',
         body:'{}'
       });
       current = batch.draft;
+      syncDailyDraftLiveProgress(current);
+      const nextProgress = Number(current?.generationProgress || current?.questions?.length || 0);
+      if (wasVerification){
+        rejectedRounds = nextProgress > progress ? 0 : rejectedRounds + 1;
+        if (rejectedRounds >= 3){
+          throw new Error(`Trois questions successives ont été refusées par le contrôle des sources. La préparation est arrêtée à ${nextProgress}/${target} pour éviter une attente inutile. Reclique sur « Reprendre » pour changer d’angle sans perdre les QCM validés.`);
+        }
+      }
       failedBatches = 0;
     }catch(batchError){
+      if (/Trois questions successives/.test(String(batchError?.message || ''))) throw batchError;
       failedBatches += 1;
       if (failedBatches >= 2) throw batchError;
       const reason = String(batchError?.message || '').trim();
-      if (result) result.innerHTML = `<div class="pay-note warn">Lot interrompu, une nouvelle tentative automatique (${failedBatches}/2). Les QCM déjà validés sont conservés.${reason ? `<br><small>Motif : ${escapeHtml(reason)}</small>` : ''}</div>`;
+      if (result) result.innerHTML = `<div class="pay-note warn">QCM interrompu, une nouvelle tentative automatique (${failedBatches}/2). Les QCM déjà validés sont conservés.${reason ? `<br><small>Motif : ${escapeHtml(reason)}</small>` : ''}</div>`;
       await new Promise(resolve => setTimeout(resolve, 800));
     }
   }
@@ -1713,18 +1738,18 @@ function renderDailyAiDrafts(){
     return;
   }
   wrap.innerHTML = `${historyButton ? `<div class="pay-note">${showPublishedDailyDrafts ? 'Historique affiché : les PDF publiés restent dans Nouveaux QCM et Documents.' : 'Les PDF déjà publiés sont rangés dans l’historique pour garder cet espace léger.'} ${historyButton}</div>` : ''}` + visibleEntries.map(({d, idx})=>`
-    <div class="admin-q-item daily-ai-draft ${d.status === 'published' ? 'ai-published' : ''}">
+    <div class="admin-q-item daily-ai-draft ${d.status === 'published' ? 'ai-published' : ''}" data-daily-draft-id="${escapeHtml(d.id || '')}">
       <div class="admin-q-meta">
         <span>${escapeHtml(d.date || '')}</span>
         <span>${escapeHtml(d.category || 'Module')}</span>
         <span>${escapeHtml(d.level || 'Niveau')}</span>
         ${d.is_premium ? '<span class="premium">Premium</span>' : '<span class="free">Gratuit</span>'}
-        ${d.generating ? `<span class="qcm-blocked-badge">Préparation ${Number(d.generationProgress || 0)}/${Number(d.generationTarget || 50)}</span>` : d.status === 'published' ? '<span class="active">Publié</span>' : '<span>PDF à relire</span>'}
+        ${d.generating ? `<span class="qcm-blocked-badge" data-daily-progress-badge>Préparation ${Number(d.generationProgress || 0)}/${Number(d.generationTarget || 50)}</span>` : d.status === 'published' ? '<span class="active">Publié</span>' : '<span>PDF à relire</span>'}
         ${d.generating ? '' : dailyVerificationBadge(d)}
         ${Number(d.pdf_revision || 0) ? `<span class="active">PDF corrigé · v${Number(d.pdf_revision)}</span>` : ''}
       </div>
       <h4>${escapeHtml(d.title || 'QCM quotidien')}</h4>
-      <p class="admin-help">${d.generating ? `<b>${Number(d.generationProgress || 0)}/${Number(d.generationTarget || 50)}</b> QCM vérifiés et enregistrés. Reprends la préparation pour créer le PDF final.` : `<b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Ouvre le fichier, corrige une question si nécessaire, vérifie le nouveau PDF, puis publie seulement après validation.'}`}</p>
+      <p class="admin-help">${d.generating ? `<b data-daily-progress-count>${Number(d.generationProgress || 0)}/${Number(d.generationTarget || 50)}</b> QCM vérifiés et enregistrés. La carte est actualisée après chaque contrôle.` : `<b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Ouvre le fichier, corrige une question si nécessaire, vérifie le nouveau PDF, puis publie seulement après validation.'}`}</p>
       ${d.status !== 'published' && !d.generating ? `<label class="admin-select-line"><input type="checkbox" ${d.is_premium ? 'checked' : ''} onchange="setDailyDraftPremium(${idx}, this.checked)"><span>Publier en Premium <small>(sinon Gratuit)</small></span></label>` : ''}
       <div class="admin-q-actions">
         ${d.generating ? `<button class="edit" data-resume-daily="${escapeHtml(d.id || '')}" onclick="resumeDailyAiGeneration(${idx})">Reprendre la préparation</button>` : `<button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>`}
@@ -3900,7 +3925,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-verified-v2-7') location.reload();
+    if (data.build && data.build !== 'qcm-verified-v2-8') location.reload();
   }catch{}
 }
 
@@ -3913,7 +3938,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-7')
+    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-8')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

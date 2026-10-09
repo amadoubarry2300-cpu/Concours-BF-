@@ -11,9 +11,9 @@ L’application **Réussite Concours BF** est une application web hébergée sur
 
 État production vérifié :
 
-- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-7>
+- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-8>
 - API santé : <https://concoursbf-fawn.vercel.app/health>
-- Dernier build vérifié : `qcm-verified-v2-7`
+- Dernier build vérifié : `qcm-verified-v2-8`
 - Dernier commit fonctionnel OpenRouter : `2b811e2 Add OpenRouter Claude provider with Gemini fallback`
 - Contrôle de connexion fournisseur : `2dc1e4b Add cached AI provider health check`
 - Correctif runtime Vercel : `ab61662 Export Express app for Vercel runtime`
@@ -52,7 +52,7 @@ La génération quotidienne a été renforcée pour éviter qu’un modèle plus
 
 #### Principe retenu
 
-1. Générer par petits lots de deux QCM depuis la V2.7 (cinq auparavant).
+1. Générer par un QCM sourcé par étape depuis la V2.8.
 2. Utiliser la recherche web sourcée d’OpenRouter, la recherche Google de Gemini en repli, ou le PDF fourni comme base documentaire.
 3. Lancer un deuxième appel IA indépendant qui rend un verdict et ne réécrit pas silencieusement les questions douteuses.
 4. Refuser les questions non étayées, ambiguës, obsolètes, contradictoires ou sous le score minimal.
@@ -121,11 +121,11 @@ Une empreinte SHA-256 lie le verdict à l’énoncé exact, aux quatre options, 
 - `POST /api/admin/ai/daily/:id/verify` relance la vérification d’un brouillon existant.
 - `POST /api/admin/ai/daily/:id/publish` répond `409` si le contrôle V2 échoue.
 - Le PDF et le quiz interactif continuent à provenir du même tableau structuré corrigé.
-- Build/cache V2 : `qcm-verified-v2-7`.
+- Build/cache V2 : `qcm-verified-v2-8`.
 
 #### Correction mobile du 9 octobre 2026 — génération progressive
 
-La création de 50 QCM vérifiés ne s’exécute plus dans une seule requête longue, qui pouvait être interrompue par Vercel et afficher `Failed to fetch` sur téléphone. L’admin initialise maintenant une préparation, puis le navigateur demande automatiquement de petits lots de deux depuis la V2.7. Depuis le correctif `qcm-verified-v2-7`, une fonction Vercel effectue soit la génération du lot, soit sa vérification indépendante, jamais les deux appels IA dans la même requête. Le lot brut et le lot accepté sont enregistrés séparément dans Supabase. Un délai réseau fournisseur est arrêté côté serveur avant la limite Vercel. Gemini reste disponible après une panne technique rapide d’OpenRouter ; après un délai déjà long ou une erreur de compte/requête, le serveur remonte immédiatement le motif au lieu de lancer un second appel lent. Les QCM déjà enregistrés restent intacts. Le bouton **Reprendre la préparation** continue au dernier état sauvegardé sans recommencer les QCM déjà contrôlés. Le PDF final n’est créé qu’une fois les 50 QCM vérifiés obtenus.
+La création de 50 QCM vérifiés ne s’exécute plus dans une seule requête longue, qui pouvait être interrompue par Vercel et afficher `Failed to fetch` sur téléphone. L’admin initialise maintenant une préparation, puis le navigateur demande automatiquement de un QCM par étape depuis la V2.8. Depuis le correctif `qcm-verified-v2-8`, une fonction Vercel effectue soit la génération du lot, soit sa vérification indépendante, jamais les deux appels IA dans la même requête. Le lot brut et le lot accepté sont enregistrés séparément dans Supabase. Un délai réseau fournisseur est arrêté côté serveur avant la limite Vercel. Gemini reste disponible après une panne technique rapide d’OpenRouter ; après un délai déjà long ou une erreur de compte/requête, le serveur remonte immédiatement le motif au lieu de lancer un second appel lent. Les QCM déjà enregistrés restent intacts. Le bouton **Reprendre la préparation** continue au dernier état sauvegardé sans recommencer les QCM déjà contrôlés. Le PDF final n’est créé qu’une fois les 50 QCM vérifiés obtenus.
 
 Routes concernées :
 
@@ -262,7 +262,7 @@ Ces consignes doivent être respectées dans toute nouvelle discussion :
 - Icônes PWA :
   - `img/pwa-icon-192.png`
   - `img/pwa-icon-512.png`
-- Dernier cache/build : `qcm-verified-v2-7`
+- Dernier cache/build : `qcm-verified-v2-8`
 
 ---
 
@@ -531,7 +531,7 @@ Service worker PWA :
 - cache data network-first ;
 - ne cache pas contenus Premium marqués ;
 - gère `CLEAR_DATA_CACHE` ;
-- version actuelle : `qcm-verified-v2-7`.
+- version actuelle : `qcm-verified-v2-8`.
 
 #### `vercel.json`
 

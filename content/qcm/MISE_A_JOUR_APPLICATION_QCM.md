@@ -541,3 +541,16 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 Le motif administrateur a confirmé que la clé et les paramètres étaient valides, mais qu’un lot de cinq QCM avec recherche factuelle dépassait encore les 35 secondes accordées à OpenRouter. La V2.7 traite donc deux QCM au maximum par requête, avec un seul passage de recherche donnant jusqu’à six résultats. La génération et la vérification Sonnet restent deux requêtes indépendantes. Les sorties sont plafonnées à 3 200 et 2 800 jetons. La préparation progresse plus souvent et chaque lot reste sous le délai ; les QCM déjà enregistrés ne sont pas recommencés.
 
 Build/cache : `qcm-verified-v2-7`.
+
+## 2026-10-09 — V2.8 hybride Gemini + Sonnet et arrêt anti-boucle
+
+Le palier resté 30 minutes à 6/50 n’était plus un délai fournisseur : les appels aboutissaient, mais plusieurs lots étaient refusés par le contrôle factuel et le navigateur continuait silencieusement jusqu’à 80 étapes. La V2.8 corrige ce cas :
+
+- Gemini Flash génère un seul QCM sourcé à la fois ;
+- Claude Sonnet 5.5 sur OpenRouter conserve la vérification indépendante ;
+- Haiku 5.5 reste disponible si Gemini rencontre un quota ;
+- après trois questions successivement refusées, la préparation s’arrête avec un motif au lieu de tourner inutilement ;
+- la carte du brouillon affiche désormais la progression enregistrée en direct ;
+- les anciens lots de deux déjà en attente sont migrés et vérifiés un par un.
+
+Build/cache : `qcm-verified-v2-8`.
