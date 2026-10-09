@@ -4820,12 +4820,13 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ message: err.message || 'Erreur serveur' });
 });
 
-if (process.env.NODE_ENV !== 'test'){
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL){
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Réussite Concours BF API listening on 0.0.0.0:${PORT}`);
   });
 }
 
+export default app;
 export {
   app,
   normalizeAiQuestion,
