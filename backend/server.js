@@ -69,14 +69,16 @@ const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku
 const OPENROUTER_VERIFIER_MODEL = process.env.OPENROUTER_VERIFIER_MODEL || 'anthropic/claude-sonnet-5.5';
 const OPENROUTER_SEARCH_ENGINE = String(process.env.OPENROUTER_SEARCH_ENGINE || 'parallel').toLowerCase();
 const OPENROUTER_SEARCH_MODE = String(process.env.OPENROUTER_SEARCH_MODE || 'basic').toLowerCase();
-const OPENROUTER_SEARCH_MAX_USES = Math.min(3, Math.max(1, Number(process.env.OPENROUTER_SEARCH_MAX_USES || 3)));
-const OPENROUTER_SEARCH_MAX_RESULTS = Math.min(8, Math.max(2, Number(process.env.OPENROUTER_SEARCH_MAX_RESULTS || 5)));
+const OPENROUTER_SEARCH_MAX_USES = 1;
+const OPENROUTER_SEARCH_MAX_RESULTS = Math.min(8, Math.max(4, Number(process.env.OPENROUTER_SEARCH_MAX_RESULTS || 6)));
 const AI_QCM_PROVIDER_SETTING = String(process.env.AI_QCM_PROVIDER || 'auto').trim().toLowerCase();
 const AI_QCM_FALLBACK_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_FALLBACK_ENABLED || 'true'));
 const AI_QCM_TIMEOUT_MS = Math.min(35000, Math.max(15000, Number(process.env.AI_QCM_TIMEOUT_MS || 35000)));
 const AI_QCM_GROUNDING_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_GROUNDING_ENABLED || 'true'));
 const AI_QCM_REQUIRE_VERIFICATION = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_REQUIRE_VERIFICATION || 'true'));
-const AI_QCM_BATCH_SIZE = Math.min(8, Math.max(2, Number(process.env.AI_QCM_BATCH_SIZE || 5)));
+// Deux QCM au maximum par fonction : avec la recherche sourcée et Claude 5.5,
+// les lots de cinq dépassaient encore 35 secondes sur OpenRouter.
+const AI_QCM_BATCH_SIZE = Math.min(2, Math.max(1, Number(process.env.AI_QCM_BATCH_SIZE || 2)));
 const AI_QCM_MIN_VERIFICATION_SCORE = Math.min(100, Math.max(70, Number(process.env.AI_QCM_MIN_VERIFICATION_SCORE || 90)));
 const AI_QCM_VERIFICATION_VERSION = 'official-sources-v2';
 const OFFICIAL_NEWS_SOURCES = process.env.OFFICIAL_NEWS_SOURCES || '';
@@ -1534,7 +1536,7 @@ async function verifyAiQuestionsWithProvider(questions, { category, level, theme
     allowedDomains:qcmSearchAllowedDomains(category, theme),
     temperature:0.05,
     topP:0.7,
-    maxOutputTokens:5000
+    maxOutputTokens:2800
   };
   const ai = extraParts.length
     ? await callAiGenerateParts([{ text:prompt }, ...extraParts], verifyOptions)
@@ -1696,7 +1698,7 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
       allowedDomains:qcmSearchAllowedDomains(category, batchTheme),
       temperature:0.16,
       topP:0.78,
-      maxOutputTokens:6000
+      maxOutputTokens:3200
     };
     const ai = extraParts.length
       ? await callAiGenerateParts([{ text:prompt }, ...extraParts], generateOptions)
@@ -1839,7 +1841,7 @@ function openRouterTools(options = {}){
     max_results:OPENROUTER_SEARCH_MAX_RESULTS,
     max_uses:OPENROUTER_SEARCH_MAX_USES,
     max_total_results:OPENROUTER_SEARCH_MAX_USES * OPENROUTER_SEARCH_MAX_RESULTS,
-    max_characters:1800
+    max_characters:1400
   };
   if (OPENROUTER_SEARCH_MODE && ['exa','parallel'].includes(OPENROUTER_SEARCH_ENGINE)) searchParameters.mode = OPENROUTER_SEARCH_MODE;
   if (allowedDomains.length) searchParameters.allowed_domains = allowedDomains;
@@ -3702,7 +3704,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-verified-v2-6',
+    build: 'qcm-verified-v2-7',
     time: new Date().toISOString()
   });
 });

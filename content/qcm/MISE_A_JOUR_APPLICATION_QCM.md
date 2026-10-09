@@ -535,3 +535,9 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - L’API confirme désormais l’effacement dans Supabase Storage et la persistance de l’index avant de répondre succès.
 - Un échec de stockage n’est plus masqué par un faux message « supprimé ».
 - Les marqueurs de suppression empêchent un PDF quotidien publié de réapparaître depuis une source secondaire.
+
+## 2026-10-09 — Correction définitive du délai OpenRouter 504
+
+Le motif administrateur a confirmé que la clé et les paramètres étaient valides, mais qu’un lot de cinq QCM avec recherche factuelle dépassait encore les 35 secondes accordées à OpenRouter. La V2.7 traite donc deux QCM au maximum par requête, avec un seul passage de recherche donnant jusqu’à six résultats. La génération et la vérification Sonnet restent deux requêtes indépendantes. Les sorties sont plafonnées à 3 200 et 2 800 jetons. La préparation progresse plus souvent et chaque lot reste sous le délai ; les QCM déjà enregistrés ne sont pas recommencés.
+
+Build/cache : `qcm-verified-v2-7`.
