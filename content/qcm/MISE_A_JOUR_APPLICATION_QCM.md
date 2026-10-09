@@ -518,3 +518,20 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Le détail fournisseur est maintenant affiché dans l’administration lors d’un lot interrompu, sans exposer les clés.
 - Les QCM déjà validés et la reprise progressive restent inchangés.
 - Build/cache : `qcm-verified-v2-5`.
+
+## 2026-10-09 — Lots OpenRouter accélérés
+
+- La recherche de chaque appel est plafonnée à trois recherches et cinq résultats par recherche.
+- Les citations extractives de la recherche remplacent la boucle supplémentaire de lecture URL dans le même appel.
+- Les sorties sont réduites à 6 000 jetons pour la génération et 5 000 pour la vérification.
+- Haiku et Sonnet utilisent l’effort `low` pour rester sous la durée Vercel, tout en conservant deux appels indépendants.
+- Après un délai long ou une erreur de compte/requête OpenRouter, Gemini n’est plus appelé dans la même fonction ; le motif remonte immédiatement.
+- L’interface ne fait plus que deux tentatives courtes et affiche le motif exact dans l’administration.
+- Build/cache : `qcm-verified-v2-6`.
+
+## Suppression permanente des documents
+
+- Les listes de documents sont rechargées sans cache après chaque suppression.
+- L’API confirme désormais l’effacement dans Supabase Storage et la persistance de l’index avant de répondre succès.
+- Un échec de stockage n’est plus masqué par un faux message « supprimé ».
+- Les marqueurs de suppression empêchent un PDF quotidien publié de réapparaître depuis une source secondaire.

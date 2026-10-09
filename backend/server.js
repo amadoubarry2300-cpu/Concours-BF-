@@ -69,11 +69,11 @@ const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku
 const OPENROUTER_VERIFIER_MODEL = process.env.OPENROUTER_VERIFIER_MODEL || 'anthropic/claude-sonnet-5.5';
 const OPENROUTER_SEARCH_ENGINE = String(process.env.OPENROUTER_SEARCH_ENGINE || 'parallel').toLowerCase();
 const OPENROUTER_SEARCH_MODE = String(process.env.OPENROUTER_SEARCH_MODE || 'basic').toLowerCase();
-const OPENROUTER_SEARCH_MAX_USES = Math.min(8, Math.max(1, Number(process.env.OPENROUTER_SEARCH_MAX_USES || 5)));
-const OPENROUTER_SEARCH_MAX_RESULTS = Math.min(10, Math.max(2, Number(process.env.OPENROUTER_SEARCH_MAX_RESULTS || 5)));
+const OPENROUTER_SEARCH_MAX_USES = Math.min(3, Math.max(1, Number(process.env.OPENROUTER_SEARCH_MAX_USES || 3)));
+const OPENROUTER_SEARCH_MAX_RESULTS = Math.min(8, Math.max(2, Number(process.env.OPENROUTER_SEARCH_MAX_RESULTS || 5)));
 const AI_QCM_PROVIDER_SETTING = String(process.env.AI_QCM_PROVIDER || 'auto').trim().toLowerCase();
 const AI_QCM_FALLBACK_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_FALLBACK_ENABLED || 'true'));
-const AI_QCM_TIMEOUT_MS = Math.min(55000, Math.max(15000, Number(process.env.AI_QCM_TIMEOUT_MS || 45000)));
+const AI_QCM_TIMEOUT_MS = Math.min(35000, Math.max(15000, Number(process.env.AI_QCM_TIMEOUT_MS || 35000)));
 const AI_QCM_GROUNDING_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_GROUNDING_ENABLED || 'true'));
 const AI_QCM_REQUIRE_VERIFICATION = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_REQUIRE_VERIFICATION || 'true'));
 const AI_QCM_BATCH_SIZE = Math.min(8, Math.max(2, Number(process.env.AI_QCM_BATCH_SIZE || 5)));
@@ -262,12 +262,20 @@ async function downloadResourceObject(objectPath){
 }
 
 async function deleteResourceObject(objectPath){
+  if (!objectPath) return false;
   await ensureResourceBucket();
-  await fetch(`${storageBaseUrl()}/object/${encodeURIComponent(RESOURCE_BUCKET)}`, {
+  const response = await fetch(`${storageBaseUrl()}/object/${encodeURIComponent(RESOURCE_BUCKET)}`, {
     method:'DELETE',
     headers:storageHeaders({'Content-Type':'application/json'}),
     body:JSON.stringify({ prefixes:[objectPath] })
-  }).catch(()=>{});
+  });
+  if (!response.ok && response.status !== 404){
+    const data = await response.json().catch(()=>({}));
+    const err = new Error(data?.message || data?.error || 'Suppression du fichier impossible');
+    err.status = response.status || 502;
+    throw err;
+  }
+  return true;
 }
 
 async function loadResourceIndex(){
@@ -1526,7 +1534,7 @@ async function verifyAiQuestionsWithProvider(questions, { category, level, theme
     allowedDomains:qcmSearchAllowedDomains(category, theme),
     temperature:0.05,
     topP:0.7,
-    maxOutputTokens:10000
+    maxOutputTokens:5000
   };
   const ai = extraParts.length
     ? await callAiGenerateParts([{ text:prompt }, ...extraParts], verifyOptions)
@@ -1688,7 +1696,7 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
       allowedDomains:qcmSearchAllowedDomains(category, batchTheme),
       temperature:0.16,
       topP:0.78,
-      maxOutputTokens:10000
+      maxOutputTokens:6000
     };
     const ai = extraParts.length
       ? await callAiGenerateParts([{ text:prompt }, ...extraParts], generateOptions)
@@ -1831,22 +1839,14 @@ function openRouterTools(options = {}){
     max_results:OPENROUTER_SEARCH_MAX_RESULTS,
     max_uses:OPENROUTER_SEARCH_MAX_USES,
     max_total_results:OPENROUTER_SEARCH_MAX_USES * OPENROUTER_SEARCH_MAX_RESULTS,
-    max_characters:2400
+    max_characters:1800
   };
   if (OPENROUTER_SEARCH_MODE && ['exa','parallel'].includes(OPENROUTER_SEARCH_ENGINE)) searchParameters.mode = OPENROUTER_SEARCH_MODE;
   if (allowedDomains.length) searchParameters.allowed_domains = allowedDomains;
-  return [
-    { type:'openrouter:web_search', parameters:searchParameters },
-    {
-      type:'openrouter:web_fetch',
-      parameters:{
-        engine:'openrouter',
-        max_uses:OPENROUTER_SEARCH_MAX_USES,
-        max_content_tokens:6000,
-        ...(allowedDomains.length ? { allowed_domains:allowedDomains } : {})
-      }
-    }
-  ];
+  // Les extraits de recherche OpenRouter sont des citations extractives. Un
+  // second outil web_fetch dans le même appel doublait les boucles et faisait
+  // dépasser le délai Vercel sans renforcer le garde-fou de publication.
+  return [{ type:'openrouter:web_search', parameters:searchParameters }];
 }
 
 async function callOpenRouterGenerateParts(parts, options = {}){
@@ -1872,14 +1872,14 @@ async function callOpenRouterGenerateParts(parts, options = {}){
   // Claude 5.5 utilise la réflexion adaptative et rejette les valeurs non
   // standard de temperature/top_p. L'effort remplace ces anciens réglages.
   if (/^anthropic\/claude-(?:haiku|sonnet|opus)-5\.5$/i.test(model)){
-    requestBody.reasoning = { effort:options.verifier ? 'medium' : 'low' };
+    requestBody.reasoning = { effort:'low' };
   }else{
     requestBody.temperature = Number(options.temperature ?? 0.16);
     requestBody.top_p = Number(options.topP ?? 0.78);
   }
   if (tools.length){
     requestBody.tools = tools;
-    requestBody.max_tool_calls = Math.min(20, OPENROUTER_SEARCH_MAX_USES * 2);
+    requestBody.max_tool_calls = OPENROUTER_SEARCH_MAX_USES;
   }
   if (hasPdf){
     requestBody.plugins = [{ id:'file-parser', pdf:{ engine:'cloudflare-ai' } }];
@@ -1904,7 +1904,7 @@ async function callOpenRouterGenerateParts(parts, options = {}){
   const data = await res.json().catch(()=>({}));
   if (!res.ok){
     const message = data?.error?.message || data?.message || `Erreur OpenRouter ${res.status}`;
-    const status = [401,402,403,429].includes(res.status) ? res.status : 502;
+    const status = res.status >= 400 && res.status < 500 ? res.status : 502;
     throw Object.assign(new Error(message), { status });
   }
   const content = data?.choices?.[0]?.message?.content;
@@ -1989,13 +1989,19 @@ async function callAiGenerateParts(parts, options = {}){
   if (!providers.length) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   const failures = [];
   for (const provider of providers){
+    const startedAt = Date.now();
     try{
       return provider === 'openrouter'
         ? await callOpenRouterGenerateParts(parts, options)
         : await callGeminiGenerateParts(parts, options);
     }catch(err){
-      failures.push({ provider, status:Number(err?.status || 502), message:String(err?.message || 'Erreur inconnue') });
+      const status = Number(err?.status || 502);
+      failures.push({ provider, status, message:String(err?.message || 'Erreur inconnue') });
       console.warn(`${provider} generation failed:`, err?.message || err);
+      // Ne pas enchaîner un deuxième appel long après un délai OpenRouter ou
+      // une erreur de compte/requête : cela dépassait la fonction Vercel et
+      // provoquait les répétitions « Lot interrompu » pendant plusieurs minutes.
+      if (provider === 'openrouter' && (status === 504 || (status >= 400 && status < 500) || Date.now() - startedAt > 20000)) break;
     }
   }
   const quotaFailure = failures.some(row => [402,429].includes(row.status) || /quota|credit|rate|limit/i.test(row.message));
@@ -2460,7 +2466,7 @@ async function deleteDailyDraftResource(draft){
   const id = dailyDraftResourceId(draft);
   const ids = new Set([id, draft?.resource_id, draft?.id].filter(Boolean));
   const item = resources.find(r => !r.is_deleted && (ids.has(r.id) || ids.has(r.source_draft_id)));
-  if (item?.storage_path) await deleteResourceObject(item.storage_path).catch(()=>{});
+  if (item?.storage_path) await deleteResourceObject(item.storage_path);
   const title = safePdfTitle(item?.title || draft?.title || `QCM quotidien — ${draft?.category || 'QCM'} — ${draft?.level || 'Concours'} — ${draft?.date || todayId()}`);
   const marker = resourceDeletionMarker({ id, sourceDraftId:draft?.id, title, dailyLike:true });
   const next = removeResourceDeletionMarkers(resources.filter(r => !ids.has(r.id) && !ids.has(r.source_draft_id)), { id, sourceDraftId:draft?.id, title });
@@ -3696,7 +3702,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-verified-v2-5',
+    build: 'qcm-verified-v2-6',
     time: new Date().toISOString()
   });
 });
@@ -4497,10 +4503,12 @@ app.delete('/api/admin/ai/daily/:id', requireAdmin, async (req, res, next) => {
     if (draft.status === 'published'){
       await ensureDailyDraftResource(draft, { category:draft.category, level:draft.level, is_premium:draft.is_premium, author_phone:req.phone }).catch(()=>{});
     }
-    if (draft.storage_path) await deleteResourceObject(draft.storage_path).catch(()=>{});
+    if (draft.storage_path) await deleteResourceObject(draft.storage_path);
     drafts.splice(idx, 1);
     await saveAiDailyIndex(drafts);
-    res.json({ ok:true });
+    const persisted = await loadAiDailyIndex();
+    if (persisted.some(row => row.id === draft.id)) throw Object.assign(new Error('Le PDF existe encore après la suppression. Réessaie.'), { status:502 });
+    res.json({ ok:true, deleted:true, id:draft.id });
   }catch(err){ next(err); }
 });
 
@@ -4885,14 +4893,20 @@ app.delete('/api/admin/resources/:id', requireAdmin, async (req, res, next) => {
     const targetTitle = safePdfTitle(item?.title || dailyDraft?.title || questionDraft?.title || 'Document');
     const targetDraftId = item?.source_draft_id || dailyDraft?.id || questionDraft?.id || '';
     const dailyLike = isDailyPdfResourceLike(item || dailyDraft || questionDraft || { id:targetId, title:targetTitle });
-    if (item?.storage_path) await deleteResourceObject(item.storage_path).catch(()=>{});
-    if (dailyDraft?.storage_path) await deleteResourceObject(dailyDraft.storage_path).catch(()=>{});
+    // Un document indexé possède sa propre copie de stockage : on confirme sa
+    // suppression avant d’annoncer le succès. Le PDF source d’un brouillon IA
+    // reste seulement dans l’espace de correction admin.
+    if (item?.storage_path) await deleteResourceObject(item.storage_path);
     const marker = resourceDeletionMarker({ id:targetId, sourceDraftId:targetDraftId, title:targetTitle, dailyLike });
     resources = removeResourceDeletionMarkers(resources, { id:targetId, sourceDraftId:targetDraftId, title:targetTitle })
-      .filter(r => r.id !== targetId && r.source_draft_id !== targetDraftId);
+      .filter(r => r.id !== targetId && (!targetDraftId || r.source_draft_id !== targetDraftId));
     resources.unshift(marker);
     await saveResourceIndex(resources);
-    res.json({ ok:true, deleted:true, id:targetId });
+    const persisted = await loadResourceIndex();
+    const stillVisible = visibleResourceRows(persisted).some(r => r.id === targetId || (targetDraftId && r.source_draft_id === targetDraftId));
+    if (stillVisible) throw Object.assign(new Error('Le document existe encore après la suppression. Réessaie.'), { status:502 });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok:true, deleted:true, id:targetId, persisted:true });
   }catch(err){ next(err); }
 });
 
@@ -5100,7 +5114,8 @@ app.get('/api/resources', async (req, res, next) => {
       .filter(r => r.is_active !== false)
       .map(lockResource);
     res.setHeader('X-Premium-Included', premiumAllowed ? 'true' : 'false');
-    res.setHeader('Cache-Control', 'private, max-age=30');
+    // La liste ne doit jamais réafficher un fichier supprimé depuis un cache navigateur.
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
     res.json({ ok:true, premiumIncluded:premiumAllowed, resources:mergePublicResources(indexed, dailyResources) });
   }catch(err){ next(err); }
 });

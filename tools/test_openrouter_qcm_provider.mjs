@@ -68,7 +68,9 @@ assert.equal(requests[0].options.headers.Authorization, 'Bearer test-openrouter-
 assert.equal(requests[0].body.model, 'anthropic/claude-haiku-5.5');
 assert.equal(requests[0].body.tools[0].type, 'openrouter:web_search');
 assert.deepEqual(requests[0].body.tools[0].parameters.allowed_domains, ['gov.bf', 'education.gov.bf']);
-assert.equal(requests[0].body.tools[1].type, 'openrouter:web_fetch');
+assert.equal(requests[0].body.tools.length, 1);
+assert.equal(requests[0].body.tools[0].parameters.max_uses, 3);
+assert.equal(requests[0].body.max_tool_calls, 3);
 assert.equal(requests[0].body.provider.data_collection, 'deny');
 assert.equal(requests[0].body.response_format.type, 'json_object');
 assert.deepEqual(requests[0].body.reasoning, { effort:'low' });
@@ -90,7 +92,7 @@ await callAiGenerateParts([{ text:'Vérifie ce QCM.' }], {
   maxOutputTokens:500
 });
 assert.equal(requests[2].body.model, 'anthropic/claude-sonnet-5.5');
-assert.deepEqual(requests[2].body.reasoning, { effort:'medium' });
+assert.deepEqual(requests[2].body.reasoning, { effort:'low' });
 assert.equal(requests[2].body.temperature, undefined);
 assert.equal(requests[2].body.top_p, undefined);
 

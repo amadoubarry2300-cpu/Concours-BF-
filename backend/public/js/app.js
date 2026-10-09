@@ -1604,10 +1604,10 @@ async function continueDailyAiGeneration(draft, result){
       failedBatches = 0;
     }catch(batchError){
       failedBatches += 1;
-      if (failedBatches >= 3) throw batchError;
+      if (failedBatches >= 2) throw batchError;
       const reason = String(batchError?.message || '').trim();
-      if (result) result.innerHTML = `<div class="pay-note warn">Lot interrompu, nouvelle tentative automatique (${failedBatches}/3). Les QCM déjà validés sont conservés.${reason ? `<br><small>Motif : ${escapeHtml(reason)}</small>` : ''}</div>`;
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      if (result) result.innerHTML = `<div class="pay-note warn">Lot interrompu, une nouvelle tentative automatique (${failedBatches}/2). Les QCM déjà validés sont conservés.${reason ? `<br><small>Motif : ${escapeHtml(reason)}</small>` : ''}</div>`;
+      await new Promise(resolve => setTimeout(resolve, 800));
     }
   }
   if (current?.generating){
@@ -2227,11 +2227,12 @@ async function deleteDailyAiDraft(index){
   if (!confirm(msg)) return;
   try{
     toast('Suppression en cours...');
-    await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id), { method:'DELETE' });
+    const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id), { method:'DELETE', cache:'no-store' });
+    if (!data.deleted) throw new Error('La suppression du PDF n’a pas été confirmée par le serveur.');
     aiDailyDraftCache.splice(index, 1);
     renderDailyAiDrafts();
-    setTimeout(()=>Promise.allSettled([loadDailyAiDrafts(), d.status === 'published' ? loadResources() : Promise.resolve()]), 350);
-    toast(d.status === 'published' ? 'Retiré de l’administration ✅' : 'PDF supprimé');
+    await Promise.allSettled([loadDailyAiDrafts(), d.status === 'published' ? loadResources() : Promise.resolve()]);
+    toast(d.status === 'published' ? 'Retiré de l’administration ✅' : 'PDF supprimé définitivement ✅');
   }catch(err){ toast(err.message); }
 }
 
@@ -2792,7 +2793,7 @@ async function loadResources(){
   if (!wrap) return;
   wrap.innerHTML = '<div class="empty">Chargement des documents...</div>';
   try{
-    const res = await fetch('/api/resources', { headers:authHeaders({}) });
+    const res = await fetch('/api/resources?v=' + Date.now(), { headers:authHeaders({}), cache:'no-store' });
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Documents indisponibles');
     resourceCache = data.resources || [];
@@ -2960,7 +2961,7 @@ async function loadAdminResources(){
   if (!wrap) return;
   wrap.innerHTML = '<div class="empty">Chargement des documents...</div>';
   try{
-    const data = await adminFetch('/api/admin/resources');
+    const data = await adminFetch('/api/admin/resources?v=' + Date.now(), { cache:'no-store' });
     adminResourceCache = data.resources || [];
     renderAdminResourcesFromCache();
   }catch(err){
@@ -2971,14 +2972,15 @@ async function loadAdminResources(){
 async function deleteAdminResource(index){
   const r = adminResourceCache[index];
   if (!r) return;
-  if (!confirm('Supprimer définitivement ce document ?')) return;
+  if (!confirm('Supprimer définitivement ce document de « Documents & fichiers » ? Il disparaîtra aussi chez les candidats.')) return;
   try{
-    toast('Suppression du document...');
-    await adminFetch('/api/admin/resources/' + encodeURIComponent(r.id), { method:'DELETE' });
-    adminResourceCache = adminResourceCache.filter(item => item.id !== r.id);
+    toast('Suppression définitive du document...');
+    const data = await adminFetch('/api/admin/resources/' + encodeURIComponent(r.id), { method:'DELETE', cache:'no-store' });
+    if (!data.deleted || !data.persisted) throw new Error('La suppression n’a pas été confirmée par le serveur.');
+    adminResourceCache = adminResourceCache.filter(item => item.id !== r.id && item.title !== r.title);
     resourceCache = resourceCache.filter(item => item.id !== r.id && item.title !== r.title);
-    await Promise.allSettled([loadAdminResources(), loadResources()]);
-    toast('Document supprimé ✅');
+    await Promise.all([loadAdminResources(), loadResources()]);
+    toast('Document supprimé définitivement ✅');
   }catch(err){ toast(err.message); }
 }
 
@@ -3898,7 +3900,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-verified-v2-5') location.reload();
+    if (data.build && data.build !== 'qcm-verified-v2-6') location.reload();
   }catch{}
 }
 
@@ -3911,7 +3913,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-5')
+    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-6')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
