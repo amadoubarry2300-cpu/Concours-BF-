@@ -1590,10 +1590,11 @@ async function loadDailyAiDrafts(){
 async function continueDailyAiGeneration(draft, result){
   let current = draft;
   let failedBatches = 0;
-  for (let attempt = 0; current?.generating && attempt < 30; attempt++){
+  for (let attempt = 0; current?.generating && attempt < 80; attempt++){
     const progress = Number(current.generationProgress || current.questions?.length || 0);
     const target = Number(current.generationTarget || 50);
-    if (result) result.innerHTML = `<div class="pay-note">Génération vérifiée en cours : <b>${progress}/${target} QCM</b>. Chaque lot est enregistré automatiquement.</div>`;
+    const phase = current.generationPhase === 'verification' ? 'Vérification du lot en cours' : 'Création du prochain lot';
+    if (result) result.innerHTML = `<div class="pay-note">${phase} : <b>${progress}/${target} QCM validés</b>. Chaque étape est enregistrée automatiquement.</div>`;
     try{
       const batch = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(current.id) + '/generate-batch', {
         method:'POST',
@@ -3896,7 +3897,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-verified-v2-2') location.reload();
+    if (data.build && data.build !== 'qcm-verified-v2-3') location.reload();
   }catch{}
 }
 
@@ -3909,7 +3910,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-2')
+    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-3')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

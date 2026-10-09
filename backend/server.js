@@ -972,12 +972,9 @@ async function geminiModelsToTry({ verifier=false } = {}){
     ? ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-2.5-flash', configuredName]
     : [configuredName, 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'])
     .map(normalizeGeminiModelName).filter(Boolean);
-  const available = await listGeminiModels();
-  const availableSet = new Set(available);
-  const prioritized = available.length
-    ? modernFirst.filter(m => availableSet.has(m)).concat(available.filter(m => /(?:3\.[6-9]|2\.5)-flash/i.test(m)), available)
-    : modernFirst;
-  return Array.from(new Set(prioritized.map(normalizeGeminiModelName).filter(Boolean)));
+  // Éviter un appel réseau de catalogue à chaque fonction serverless : les
+  // modèles sont essayés directement dans l'ordre, avec repli automatique.
+  return Array.from(new Set(modernFirst.map(normalizeGeminiModelName).filter(Boolean)));
 }
 
 function extractJsonFromAi(text){
@@ -1554,7 +1551,7 @@ async function validateQuestionsForPublication(questions){
   return { accepted, rejected, existingCount:existingTexts.length };
 }
 
-async function generateUniqueAiQuestions({ count, category, level, theme, publicationName = '', fromPdf = false, extraParts = [], is_premium = false, attemptLimit = 0 }){
+async function generateUniqueAiQuestions({ count, category, level, theme, publicationName = '', fromPdf = false, extraParts = [], is_premium = false, attemptLimit = 0, skipVerification = false }){
   const target = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(count || 1)));
   const existingRows = await collectExistingQcmRows();
   const existingTexts = existingRows.map(row => row.question_text);
@@ -1596,7 +1593,7 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
     }
     if (!candidates.length) continue;
     let checkedQuestions = candidates;
-    if (AI_QCM_REQUIRE_VERIFICATION){
+    if (AI_QCM_REQUIRE_VERIFICATION && !skipVerification){
       const checked = await verifyAiQuestionsWithGemini(candidates, {
         category,
         level,
@@ -1621,7 +1618,7 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
       }));
     }
     for (const question of checkedQuestions){
-      const issue = aiQuestionQualityIssue(question) || qcmVerificationIssue(question, { category, level, theme:batchTheme, requireVerified:AI_QCM_REQUIRE_VERIFICATION });
+      const issue = aiQuestionQualityIssue(question) || qcmVerificationIssue(question, { category, level, theme:batchTheme, requireVerified:AI_QCM_REQUIRE_VERIFICATION && !skipVerification });
       if (issue){
         rejected.push({ question:question.question_text, reason:issue });
         continue;
@@ -1634,7 +1631,7 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
     questions:questions.slice(0, target),
     model,
     verificationModel,
-    verification:qcmVerificationSummary(questions.slice(0, target), { category, level, theme, requireVerified:AI_QCM_REQUIRE_VERIFICATION }),
+    verification:qcmVerificationSummary(questions.slice(0, target), { category, level, theme, requireVerified:AI_QCM_REQUIRE_VERIFICATION && !skipVerification }),
     rejected:rejected.slice(-20),
     existingCount:existingTexts.length
   };
@@ -1699,7 +1696,7 @@ async function callGeminiGenerateParts(parts, options = {}){
           method:'POST',
           headers:{ 'Content-Type':'application/json' },
           body:JSON.stringify(requestBody),
-          signal:AbortSignal.timeout(50000)
+          signal:AbortSignal.timeout(35000)
         });
       }catch(err){
         lastError = err?.name === 'TimeoutError' ? 'Délai IA dépassé' : (err?.message || 'Connexion IA interrompue');
@@ -1808,6 +1805,8 @@ function publicAiDailyDraft(row){
     generationTarget:Number(row.generation_target || row.count || questions.length || 0),
     generationProgress:questions.length,
     generating:(row.status || '') === 'generating',
+    generationPhase:(Array.isArray(row.pending_questions) && row.pending_questions.length) ? 'verification' : (row.batch_phase || 'generation'),
+    pendingCount:Array.isArray(row.pending_questions) ? row.pending_questions.length : 0,
     fileName:row.file_name || '',
     created_at:row.created_at,
     updated_at:row.updated_at || '',
@@ -2588,6 +2587,8 @@ async function startDailyAiQcmDraft({ force=false, overrides={} } = {}){
     size:0,
     storage_path:'',
     questions:[],
+    pending_questions:[],
+    batch_phase:'generation',
     created_at:now,
     updated_at:now
   };
@@ -2610,9 +2611,40 @@ async function generateDailyAiQcmBatch(draftId){
     return { draft, ready:questions.length >= target, added:0, target };
   }
   const remaining = target - questions.length;
+  const pendingQuestions = Array.isArray(draft.pending_questions) ? draft.pending_questions : [];
   if (remaining <= 0){
-    draft.status = 'draft';
+    draft = { ...draft, status:'draft', pending_questions:[], batch_phase:'complete' };
+  }else if (pendingQuestions.length){
+    // Un seul appel Gemini par fonction Vercel : ce passage vérifie le lot
+    // généré et sauvegardé lors de la requête précédente.
+    const checked = await verifyAiQuestionsWithGemini(pendingQuestions, {
+      category:draft.category,
+      level:draft.level,
+      theme:draft.title
+    });
+    const accepted = [];
+    const dedupeIndex = createQuestionDedupeIndex(questions.map(q => q.question_text));
+    for (const question of checked.questions){
+      const issue = aiQuestionQualityIssue(question, dedupeIndex)
+        || qcmVerificationIssue(question, { category:draft.category, level:draft.level, theme:draft.title, requireVerified:true });
+      if (issue) continue;
+      accepted.push(question);
+      addQuestionToDedupeIndex(question.question_text, dedupeIndex);
+      if (accepted.length >= remaining) break;
+    }
+    draft = {
+      ...draft,
+      questions:questions.concat(accepted).slice(0, target),
+      pending_questions:[],
+      count:Math.min(target, questions.length + accepted.length),
+      verification_model:checked.model || draft.verification_model || '',
+      verification_version:AI_QCM_VERIFICATION_VERSION,
+      batch_phase:'generation',
+      updated_at:new Date().toISOString()
+    };
   }else{
+    // Cette requête ne fait que la génération. Le lot brut est enregistré
+    // avant son contrôle afin qu'une coupure mobile ne le perde jamais.
     const generated = await generateUniqueAiQuestions({
       count:Math.min(AI_QCM_BATCH_SIZE, remaining),
       category:draft.category,
@@ -2620,22 +2652,21 @@ async function generateDailyAiQcmBatch(draftId){
       theme:`${draft.title}. Lot progressif ${Math.floor(questions.length / AI_QCM_BATCH_SIZE) + 1}.`,
       publicationName:draft.title,
       is_premium:Boolean(draft.is_premium),
-      attemptLimit:1
+      attemptLimit:1,
+      skipVerification:true
     });
     if (!generated.questions.length){
-      throw Object.assign(new Error(`Aucun nouveau QCM n’a franchi le contrôle des sources. ${questions.length}/${target} sont conservés : relance pour continuer.`), { status:502 });
+      throw Object.assign(new Error(`Aucun nouveau QCM n’a pu être préparé. ${questions.length}/${target} sont conservés : relance pour continuer.`), { status:502 });
     }
     draft = {
       ...draft,
-      questions:questions.concat(generated.questions).slice(0, target),
-      count:Math.min(target, questions.length + generated.questions.length),
+      pending_questions:generated.questions,
       model:generated.model || draft.model || '',
-      verification_model:generated.verificationModel || draft.verification_model || '',
-      verification_version:AI_QCM_VERIFICATION_VERSION,
+      batch_phase:'verification',
       updated_at:new Date().toISOString()
     };
   }
-  const complete = draft.questions.length >= target;
+  const complete = draft.questions.length >= target && !(draft.pending_questions || []).length;
   if (complete){
     const pdfBuffer = await buildQcmDraftPdf({
       title:draft.title,
@@ -3377,7 +3408,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'qcm-verified-v2-2',
+    build: 'qcm-verified-v2-3',
     time: new Date().toISOString()
   });
 });
