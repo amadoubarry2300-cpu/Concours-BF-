@@ -14,7 +14,8 @@ L’application **Réussite Concours BF** est une application web hébergée sur
 - URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-4>
 - API santé : <https://concoursbf-fawn.vercel.app/health>
 - Dernier build vérifié : `qcm-verified-v2-4`
-- Dernier commit fonctionnel V2 : `e9bc03e Add source-verified QCM generation gate`
+- Dernier commit fonctionnel OpenRouter : `2b811e2 Add OpenRouter Claude provider with Gemini fallback`
+- Contrôle de connexion fournisseur : `2dc1e4b Add cached AI provider health check`
 - Correctif runtime Vercel : `ab61662 Export Express app for Vercel runtime`
 - Dépôt GitHub : `https://github.com/amadoubarry2300-cpu/Concours-BF-.git`
 - Branche : `main`
@@ -74,7 +75,7 @@ La génération quotidienne a été renforcée pour éviter qu’un modèle plus
 - Score minimal : `AI_QCM_MIN_VERIFICATION_SCORE=90`.
 - Version de politique : `official-sources-v2`.
 
-Les variables complètes et commentaires sont dans `backend/.env.example`. Les secrets `OPENROUTER_API_KEY` et `GEMINI_API_KEY` restent dans Vercel et ne doivent jamais être committés.
+Les variables complètes et commentaires sont dans `backend/.env.example`. Les secrets `OPENROUTER_API_KEY` et `GEMINI_API_KEY` restent dans Vercel et ne doivent jamais être committés. Le contrôle de production du 9 octobre 2026 a confirmé `provider=openrouter`, les deux modèles Claude attendus, le repli Gemini actif et `aiCheck.valid=true` avec statut HTTP 200.
 
 #### Politique de preuves
 
