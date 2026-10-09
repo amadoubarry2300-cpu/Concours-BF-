@@ -1587,6 +1587,54 @@ async function loadDailyAiDrafts(){
   }
 }
 
+async function continueDailyAiGeneration(draft, result){
+  let current = draft;
+  let failedBatches = 0;
+  for (let attempt = 0; current?.generating && attempt < 30; attempt++){
+    const progress = Number(current.generationProgress || current.questions?.length || 0);
+    const target = Number(current.generationTarget || 50);
+    if (result) result.innerHTML = `<div class="pay-note">Génération vérifiée en cours : <b>${progress}/${target} QCM</b>. Chaque lot est enregistré automatiquement.</div>`;
+    try{
+      const batch = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(current.id) + '/generate-batch', {
+        method:'POST',
+        body:'{}'
+      });
+      current = batch.draft;
+      failedBatches = 0;
+    }catch(batchError){
+      failedBatches += 1;
+      if (failedBatches >= 3) throw batchError;
+      if (result) result.innerHTML = `<div class="pay-note warn">Lot interrompu, nouvelle tentative automatique (${failedBatches}/3). Les QCM déjà validés sont conservés.</div>`;
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+  }
+  if (current?.generating){
+    throw new Error(`Préparation interrompue à ${Number(current.generationProgress || current.questions?.length || 0)}/${Number(current.generationTarget || 50)} QCM. Relance la préparation pour reprendre sans perdre les questions validées.`);
+  }
+  return current;
+}
+
+async function resumeDailyAiGeneration(index){
+  const draft = aiDailyDraftCache[index];
+  if (!draft?.generating) return;
+  const result = $('#aiDailyResult');
+  const btn = document.querySelector(`[data-resume-daily="${CSS.escape(String(draft.id || ''))}"]`);
+  setButtonLoading(btn, true, 'Reprise...');
+  try{
+    const completed = await continueDailyAiGeneration(draft, result);
+    if (result) result.innerHTML = `<div class="pay-note success">PDF prêt ✅ ${completed?.count || 0} QCM vérifiés à relire avant publication.</div>`;
+    await loadDailyAiDrafts();
+  }catch(err){
+    const message = err?.message === 'Failed to fetch'
+      ? 'La connexion a été interrompue. Reclique sur « Reprendre » : les lots déjà validés sont conservés.'
+      : err.message;
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(message)}</div>`;
+    await loadDailyAiDrafts().catch(()=>{});
+  }finally{
+    setButtonLoading(btn, false);
+  }
+}
+
 async function runDailyAiQcm(){
   const btn = $('#aiDailyRunBtn');
   const result = $('#aiDailyResult');
@@ -1603,14 +1651,20 @@ async function runDailyAiQcm(){
       force:Boolean($('#aiDailyForce')?.checked)
     };
     const data = await adminFetch('/api/admin/ai/daily/run', { method:'POST', body:JSON.stringify(payload) });
-    if (result){
-      result.innerHTML = data.skipped
-        ? '<div class="pay-note warn">Le PDF du jour existe déjà. Coche “Régénérer aujourd’hui” si tu veux le refaire.</div>'
-        : `<div class="pay-note success">PDF prêt ✅ ${data.draft?.count || 0} QCM à relire avant publication.</div>`;
+    if (data.skipped){
+      if (result) result.innerHTML = '<div class="pay-note warn">Le PDF du jour existe déjà. Coche “Régénérer aujourd’hui” si tu veux le refaire.</div>';
+      await loadDailyAiDrafts();
+      return;
     }
+    const draft = await continueDailyAiGeneration(data.draft, result);
+    if (result) result.innerHTML = `<div class="pay-note success">PDF prêt ✅ ${draft?.count || 0} QCM vérifiés à relire avant publication.</div>`;
     await loadDailyAiDrafts();
   }catch(err){
-    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
+    const message = err?.message === 'Failed to fetch'
+      ? 'La connexion a été interrompue. Reclique sur le bouton : la préparation reprendra au dernier lot enregistré.'
+      : err.message;
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(message)}</div>`;
+    await loadDailyAiDrafts().catch(()=>{});
   }finally{
     setButtonLoading(btn, false);
   }
@@ -1663,17 +1717,17 @@ function renderDailyAiDrafts(){
         <span>${escapeHtml(d.category || 'Module')}</span>
         <span>${escapeHtml(d.level || 'Niveau')}</span>
         ${d.is_premium ? '<span class="premium">Premium</span>' : '<span class="free">Gratuit</span>'}
-        ${d.status === 'published' ? '<span class="active">Publié</span>' : '<span>PDF à relire</span>'}
-        ${dailyVerificationBadge(d)}
+        ${d.generating ? `<span class="qcm-blocked-badge">Préparation ${Number(d.generationProgress || 0)}/${Number(d.generationTarget || 50)}</span>` : d.status === 'published' ? '<span class="active">Publié</span>' : '<span>PDF à relire</span>'}
+        ${d.generating ? '' : dailyVerificationBadge(d)}
         ${Number(d.pdf_revision || 0) ? `<span class="active">PDF corrigé · v${Number(d.pdf_revision)}</span>` : ''}
       </div>
       <h4>${escapeHtml(d.title || 'QCM quotidien')}</h4>
-      <p class="admin-help"><b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Ouvre le fichier, corrige une question si nécessaire, vérifie le nouveau PDF, puis publie seulement après validation.'}</p>
-      ${d.status !== 'published' ? `<label class="admin-select-line"><input type="checkbox" ${d.is_premium ? 'checked' : ''} onchange="setDailyDraftPremium(${idx}, this.checked)"><span>Publier en Premium <small>(sinon Gratuit)</small></span></label>` : ''}
+      <p class="admin-help">${d.generating ? `<b>${Number(d.generationProgress || 0)}/${Number(d.generationTarget || 50)}</b> QCM vérifiés et enregistrés. Reprends la préparation pour créer le PDF final.` : `<b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Ouvre le fichier, corrige une question si nécessaire, vérifie le nouveau PDF, puis publie seulement après validation.'}`}</p>
+      ${d.status !== 'published' && !d.generating ? `<label class="admin-select-line"><input type="checkbox" ${d.is_premium ? 'checked' : ''} onchange="setDailyDraftPremium(${idx}, this.checked)"><span>Publier en Premium <small>(sinon Gratuit)</small></span></label>` : ''}
       <div class="admin-q-actions">
-        <button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>
-        ${d.status !== 'published' && !(d.orphanResource || d.orphanQuestions) ? `<button class="edit" onclick="verifyDailyAiDraft(${idx})">Vérifier les sources</button>` : ''}
-        ${!(d.orphanResource || d.orphanQuestions) ? `<button class="pause" onclick="publishDailyAiDraft(${idx})" ${d.status !== 'published' && !dailyVerificationInfo(d).publishable ? 'disabled title="Vérifie toutes les sources avant publication"' : ''}>${d.status === 'published' ? 'Synchroniser' : dailyVerificationInfo(d).publishable ? `Publier en ${d.is_premium ? 'Premium' : 'Gratuit'}` : 'Publication bloquée'}</button>` : ''}
+        ${d.generating ? `<button class="edit" data-resume-daily="${escapeHtml(d.id || '')}" onclick="resumeDailyAiGeneration(${idx})">Reprendre la préparation</button>` : `<button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>`}
+        ${!d.generating && d.status !== 'published' && !(d.orphanResource || d.orphanQuestions) ? `<button class="edit" onclick="verifyDailyAiDraft(${idx})">Vérifier les sources</button>` : ''}
+        ${!d.generating && !(d.orphanResource || d.orphanQuestions) ? `<button class="pause" onclick="publishDailyAiDraft(${idx})" ${d.status !== 'published' && !dailyVerificationInfo(d).publishable ? 'disabled title="Vérifie toutes les sources avant publication"' : ''}>${d.status === 'published' ? 'Synchroniser' : dailyVerificationInfo(d).publishable ? `Publier en ${d.is_premium ? 'Premium' : 'Gratuit'}` : 'Publication bloquée'}</button>` : ''}
         ${d.status === 'published' ? `<button class="delete" onclick="unpublishDailyAiDraft(${idx})">Supprimer chez candidat</button>` : ''}
         ${!(d.orphanResource || d.orphanQuestions) ? `<button class="delete" onclick="deleteDailyAiDraft(${idx})">${d.status === 'published' ? 'Retirer de l’admin' : 'Supprimer'}</button>` : ''}
       </div>
@@ -3842,7 +3896,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-verified-v2-1') location.reload();
+    if (data.build && data.build !== 'qcm-verified-v2-2') location.reload();
   }catch{}
 }
 
@@ -3855,7 +3909,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-1')
+    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-2')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

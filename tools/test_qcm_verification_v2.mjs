@@ -6,6 +6,7 @@ const {
   qcmDeterministicFactIssue,
   qcmVerificationIssue,
   qcmVerificationSummary,
+  dailyDraftGenerationIssue,
   isOfficialBurkinaQcmSource,
   isTrustedEducationalQcmSource
 } = await import('../backend/server.js');
@@ -33,6 +34,10 @@ const baseQuestion = {
   verification_version:'official-sources-v2'
 };
 baseQuestion.verified_fingerprint = qcmContentFingerprint(baseQuestion);
+
+assert.match(dailyDraftGenerationIssue({ status:'generating', generation_target:50, questions:[baseQuestion] }), /1\/50/);
+assert.match(dailyDraftGenerationIssue({ status:'draft', generation_target:50, questions:Array(49).fill(baseQuestion) }), /49\/50/);
+assert.equal(dailyDraftGenerationIssue({ status:'draft', generation_target:50, questions:Array(50).fill(baseQuestion) }), '');
 
 assert.equal(isOfficialBurkinaQcmSource(baseQuestion.source_url), true);
 assert.equal(isTrustedEducationalQcmSource('https://www.unesco.org/fr/education'), true);

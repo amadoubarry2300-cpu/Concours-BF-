@@ -940,16 +940,23 @@ function normalizeGeminiModelName(name){
   return String(name || '').replace(/^models\//, '').trim();
 }
 
+let geminiModelListCache = { rows:[], expiresAt:0 };
+
 async function listGeminiModels(){
   if (!GEMINI_API_KEY) return [];
+  if (geminiModelListCache.expiresAt > Date.now() && geminiModelListCache.rows.length){
+    return geminiModelListCache.rows;
+  }
   try{
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(GEMINI_API_KEY)}`);
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(GEMINI_API_KEY)}`, { signal:AbortSignal.timeout(20000) });
     const data = await res.json().catch(()=>({}));
     if (!res.ok || !Array.isArray(data.models)) return [];
-    return data.models
+    const rows = data.models
       .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
       .map(m => normalizeGeminiModelName(m.name))
       .filter(Boolean);
+    geminiModelListCache = { rows, expiresAt:Date.now() + 10 * 60 * 1000 };
+    return rows;
   }catch{
     return [];
   }
@@ -1547,7 +1554,7 @@ async function validateQuestionsForPublication(questions){
   return { accepted, rejected, existingCount:existingTexts.length };
 }
 
-async function generateUniqueAiQuestions({ count, category, level, theme, publicationName = '', fromPdf = false, extraParts = [], is_premium = false }){
+async function generateUniqueAiQuestions({ count, category, level, theme, publicationName = '', fromPdf = false, extraParts = [], is_premium = false, attemptLimit = 0 }){
   const target = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(count || 1)));
   const existingRows = await collectExistingQcmRows();
   const existingTexts = existingRows.map(row => row.question_text);
@@ -1558,7 +1565,9 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
   let verificationModel = '';
   const defaults = { category, level, is_premium, source:'Réussite Concours BF' };
   // Petits lots : moins d'inventions, une preuve et un contrôle indépendant pour chaque QCM.
-  const maxAttempts = Math.max(5, Math.ceil(target / AI_QCM_BATCH_SIZE) * 2 + 4);
+  const maxAttempts = attemptLimit > 0
+    ? Math.max(1, Math.min(8, Number(attemptLimit)))
+    : Math.max(5, Math.ceil(target / AI_QCM_BATCH_SIZE) * 2 + 4);
   for (let attempt = 0; questions.length < target && attempt < maxAttempts; attempt++){
     const remaining = target - questions.length;
     const batchCount = Math.min(AI_QCM_BATCH_SIZE, remaining);
@@ -1633,13 +1642,16 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
 
 async function verifyExistingQuestionSet(questions, { category, level, theme, fromPdf=false, extraParts=[] } = {}){
   const rows = Array.isArray(questions) ? questions : [];
-  const checked = [];
+  const checked = rows.slice();
+  const pending = rows
+    .map((question, index) => ({ question, index }))
+    .filter(({ question }) => Boolean(qcmVerificationIssue(question, { category, level, theme, requireVerified:true })));
   let model = '';
-  for (let offset = 0; offset < rows.length; offset += AI_QCM_BATCH_SIZE){
-    const batch = rows.slice(offset, offset + AI_QCM_BATCH_SIZE);
-    const result = await verifyAiQuestionsWithGemini(batch, { category, level, theme, fromPdf, extraParts });
+  for (let offset = 0; offset < pending.length; offset += AI_QCM_BATCH_SIZE){
+    const indexedBatch = pending.slice(offset, offset + AI_QCM_BATCH_SIZE);
+    const result = await verifyAiQuestionsWithGemini(indexedBatch.map(row => row.question), { category, level, theme, fromPdf, extraParts });
     model = result.model || model;
-    checked.push(...result.questions);
+    indexedBatch.forEach((row, index) => { checked[row.index] = result.questions[index]; });
   }
   return {
     questions:checked,
@@ -1681,11 +1693,18 @@ async function callGeminiGenerateParts(parts, options = {}){
         generationConfig
       };
       if (options.grounding) requestBody.tools = [{ google_search:{} }];
-      const res = await fetch(url, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body:JSON.stringify(requestBody)
-      });
+      let res;
+      try{
+        res = await fetch(url, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body:JSON.stringify(requestBody),
+          signal:AbortSignal.timeout(50000)
+        });
+      }catch(err){
+        lastError = err?.name === 'TimeoutError' ? 'Délai IA dépassé' : (err?.message || 'Connexion IA interrompue');
+        break;
+      }
       const data = await res.json().catch(()=>({}));
       if (!res.ok){
         lastError = data?.error?.message || `Erreur IA ${res.status}`;
@@ -1786,6 +1805,9 @@ function publicAiDailyDraft(row){
     verificationModel:row.verification_model || '',
     verification,
     verificationVersion:AI_QCM_VERIFICATION_VERSION,
+    generationTarget:Number(row.generation_target || row.count || questions.length || 0),
+    generationProgress:questions.length,
+    generating:(row.status || '') === 'generating',
     fileName:row.file_name || '',
     created_at:row.created_at,
     updated_at:row.updated_at || '',
@@ -2503,6 +2525,7 @@ async function rebuildDailyAiDraftPdf(draft, questions, overrides = {}){
     category,
     level,
     count:normalizedQuestions.length,
+    generation_target:normalizedQuestions.length,
     is_premium:isPremium,
     file_name:fileName,
     mime_type:'application/pdf',
@@ -2515,12 +2538,129 @@ async function rebuildDailyAiDraftPdf(draft, questions, overrides = {}){
   };
 }
 
+function dailyDraftGenerationIssue(draft){
+  const questions = Array.isArray(draft?.questions) ? draft.questions : [];
+  const target = Number(draft?.generation_target || questions.length || 0);
+  if (draft?.status === 'generating' || (target > 0 && questions.length < target)){
+    return `Préparation incomplète : ${questions.length}/${target || 50} QCM enregistrés`;
+  }
+  return '';
+}
+
 function dailyDraftMatchesPlan(draft, plan){
   return draft?.status !== 'deleted'
     && String(draft.date || '') === String(plan.date || '')
     && String(draft.category || '') === String(plan.category || '')
     && String(draft.level || '') === String(plan.level || '')
     && Boolean(draft.is_premium) === Boolean(plan.is_premium);
+}
+
+async function startDailyAiQcmDraft({ force=false, overrides={} } = {}){
+  if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
+  if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour garder les PDF IA quotidiens'), { status:503 });
+  const plan = dailyAiPlan(todayId(), overrides);
+  const drafts = await loadAiDailyIndex();
+  const existing = drafts.find(d => dailyDraftMatchesPlan(d, plan));
+  if (existing?.status === 'generating'){
+    return { draft:existing, skipped:false, resumed:true, plan };
+  }
+  if (existing && !force){
+    return { draft:existing, skipped:true, resumed:false, plan };
+  }
+  const title = `QCM quotidien — ${plan.category} — ${plan.level} — ${plan.date}`;
+  const id = 'daily-' + plan.date.replace(/\D/g, '') + '-' + crypto.randomBytes(4).toString('hex');
+  const now = new Date().toISOString();
+  const draft = {
+    id,
+    date:plan.date,
+    title,
+    category:plan.category,
+    level:plan.level,
+    count:0,
+    generation_target:plan.count,
+    is_premium:plan.is_premium,
+    status:'generating',
+    model:'',
+    verification_model:'',
+    verification_version:AI_QCM_VERIFICATION_VERSION,
+    file_name:'',
+    mime_type:'application/pdf',
+    size:0,
+    storage_path:'',
+    questions:[],
+    created_at:now,
+    updated_at:now
+  };
+  const filtered = drafts.filter(d => d.id !== existing?.id);
+  filtered.unshift(draft);
+  await saveAiDailyIndex(filtered.slice(0, 90));
+  return { draft, skipped:false, resumed:false, plan };
+}
+
+async function generateDailyAiQcmBatch(draftId){
+  if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
+  if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour garder les PDF IA quotidiens'), { status:503 });
+  const drafts = await loadAiDailyIndex();
+  const idx = drafts.findIndex(d => d.id === draftId && d.status !== 'deleted');
+  if (idx < 0) throw Object.assign(new Error('Préparation quotidienne introuvable'), { status:404 });
+  let draft = drafts[idx];
+  const questions = Array.isArray(draft.questions) ? draft.questions : [];
+  const target = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(draft.generation_target || 50)));
+  if (draft.status !== 'generating'){
+    return { draft, ready:questions.length >= target, added:0, target };
+  }
+  const remaining = target - questions.length;
+  if (remaining <= 0){
+    draft.status = 'draft';
+  }else{
+    const generated = await generateUniqueAiQuestions({
+      count:Math.min(AI_QCM_BATCH_SIZE, remaining),
+      category:draft.category,
+      level:draft.level,
+      theme:`${draft.title}. Lot progressif ${Math.floor(questions.length / AI_QCM_BATCH_SIZE) + 1}.`,
+      publicationName:draft.title,
+      is_premium:Boolean(draft.is_premium),
+      attemptLimit:1
+    });
+    if (!generated.questions.length){
+      throw Object.assign(new Error(`Aucun nouveau QCM n’a franchi le contrôle des sources. ${questions.length}/${target} sont conservés : relance pour continuer.`), { status:502 });
+    }
+    draft = {
+      ...draft,
+      questions:questions.concat(generated.questions).slice(0, target),
+      count:Math.min(target, questions.length + generated.questions.length),
+      model:generated.model || draft.model || '',
+      verification_model:generated.verificationModel || draft.verification_model || '',
+      verification_version:AI_QCM_VERIFICATION_VERSION,
+      updated_at:new Date().toISOString()
+    };
+  }
+  const complete = draft.questions.length >= target;
+  if (complete){
+    const pdfBuffer = await buildQcmDraftPdf({
+      title:draft.title,
+      date:draft.date,
+      category:draft.category,
+      level:draft.level,
+      questions:draft.questions
+    });
+    const fileName = safeFileName(`${draft.title}.pdf`);
+    const objectPath = `ai-daily/files/${String(draft.date || todayId()).slice(0,4)}/${draft.id}-${Date.now().toString(36)}-${fileName}`;
+    await uploadResourceObject(objectPath, pdfBuffer, 'application/pdf');
+    draft = {
+      ...draft,
+      status:'draft',
+      count:draft.questions.length,
+      file_name:fileName,
+      mime_type:'application/pdf',
+      size:pdfBuffer.length,
+      storage_path:objectPath,
+      updated_at:new Date().toISOString()
+    };
+  }
+  drafts[idx] = draft;
+  await saveAiDailyIndex(drafts);
+  return { draft, ready:complete, added:draft.questions.length - questions.length, target };
 }
 
 async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
@@ -3237,7 +3377,7 @@ app.get('/health', (_req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
-    build: 'qcm-verified-v2-1',
+    build: 'qcm-verified-v2-2',
     time: new Date().toISOString()
   });
 });
@@ -3721,8 +3861,22 @@ app.post('/api/admin/ai/daily/run', requireAdmin, async (req, res, next) => {
       theme:req.body?.theme,
       is_premium:req.body?.is_premium
     };
-    const result = await generateDailyAiQcmDraft({ force:Boolean(req.body?.force), overrides });
-    res.json({ ok:true, skipped:result.skipped, plan:result.plan, draft:publicAiDailyDraft(result.draft) });
+    const result = await startDailyAiQcmDraft({ force:Boolean(req.body?.force), overrides });
+    res.json({ ok:true, skipped:result.skipped, resumed:result.resumed, plan:result.plan, draft:publicAiDailyDraft(result.draft) });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/ai/daily/:id/generate-batch', requireAdmin, async (req, res, next) => {
+  try{
+    const result = await generateDailyAiQcmBatch(req.params.id);
+    res.json({
+      ok:true,
+      ready:result.ready,
+      added:result.added,
+      target:result.target,
+      progress:Number(result.draft?.questions?.length || 0),
+      draft:publicAiDailyDraft(result.draft)
+    });
   }catch(err){ next(err); }
 });
 
@@ -3897,6 +4051,10 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
     if (idx < 0) return res.status(404).json({ message:'Brouillon IA introuvable' });
     let draft = drafts[idx];
     let questions = Array.isArray(draft.questions) ? draft.questions : [];
+    const generationIssue = dailyDraftGenerationIssue(draft);
+    if (generationIssue){
+      return res.status(409).json({ message:`${generationIssue}. Reprends la génération avant de publier.` });
+    }
     if (!questions.length) return res.status(400).json({ message:'Aucun QCM à publier dans ce brouillon' });
     const publishLevel = cleanText(req.body?.level || draft.level || '', 40) || draft.level;
     const requestedPublishCategory = cleanText(req.body?.category || draft.category || '', 80) || draft.category;
@@ -4834,6 +4992,7 @@ export {
   qcmDeterministicFactIssue,
   qcmVerificationIssue,
   qcmVerificationSummary,
+  dailyDraftGenerationIssue,
   isOfficialBurkinaQcmSource,
   isTrustedEducationalQcmSource
 };

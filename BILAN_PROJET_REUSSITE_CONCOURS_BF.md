@@ -1,6 +1,6 @@
 # Bilan général du projet — Réussite Concours BF
 
-_Date du bilan : 2026-10-08_
+_Date du bilan : 2026-10-09_
 _Projet : application web/mobile installable de préparation aux concours, examens, QCM et documents pour le Burkina Faso._
 
 ---
@@ -11,9 +11,9 @@ L’application **Réussite Concours BF** est une application web hébergée sur
 
 État production vérifié :
 
-- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-1>
+- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-2>
 - API santé : <https://concoursbf-fawn.vercel.app/health>
-- Dernier build vérifié : `qcm-verified-v2-1`
+- Dernier build vérifié : `qcm-verified-v2-2`
 - Dernier commit fonctionnel V2 : `e9bc03e Add source-verified QCM generation gate`
 - Correctif runtime Vercel : `ab61662 Export Express app for Vercel runtime`
 - Dépôt GitHub : `https://github.com/amadoubarry2300-cpu/Concours-BF-.git`
@@ -116,7 +116,16 @@ Une empreinte SHA-256 lie le verdict à l’énoncé exact, aux quatre options, 
 - `POST /api/admin/ai/daily/:id/verify` relance la vérification d’un brouillon existant.
 - `POST /api/admin/ai/daily/:id/publish` répond `409` si le contrôle V2 échoue.
 - Le PDF et le quiz interactif continuent à provenir du même tableau structuré corrigé.
-- Build/cache V2 : `qcm-verified-v2-1`.
+- Build/cache V2 : `qcm-verified-v2-2`.
+
+#### Correction mobile du 9 octobre 2026 — génération progressive
+
+La création de 50 QCM vérifiés ne s’exécute plus dans une seule requête longue, qui pouvait être interrompue par Vercel et afficher `Failed to fetch` sur téléphone. L’admin initialise maintenant une préparation, puis le navigateur demande automatiquement de petits lots de cinq. Chaque lot validé est enregistré dans Supabase. Si le réseau ou une fonction Vercel s’interrompt, le bouton **Reprendre la préparation** continue au dernier nombre sauvegardé sans recommencer les QCM déjà contrôlés. Le PDF final n’est créé qu’une fois les 50 QCM vérifiés obtenus.
+
+Routes concernées :
+
+- `POST /api/admin/ai/daily/run` initialise ou reprend la préparation ;
+- `POST /api/admin/ai/daily/:id/generate-batch` produit et enregistre un petit lot vérifié.
 
 #### Tests V2
 
@@ -514,7 +523,7 @@ Service worker PWA :
 - cache data network-first ;
 - ne cache pas contenus Premium marqués ;
 - gère `CLEAR_DATA_CACHE` ;
-- version actuelle : `qcm-verified-v2-1`.
+- version actuelle : `qcm-verified-v2-2`.
 
 #### `vercel.json`
 
