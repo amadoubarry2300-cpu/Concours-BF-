@@ -92,9 +92,10 @@ const AI_QCM_SINGLE_GEMINI_MODE = !AI_QCM_SINGLE_GROQ_MODE
 const AI_QCM_TIMEOUT_MS = Math.min(35000, Math.max(15000, Number(process.env.AI_QCM_TIMEOUT_MS || 35000)));
 const AI_QCM_GROUNDING_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_GROUNDING_ENABLED || 'true'));
 const AI_QCM_REQUIRE_VERIFICATION = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_REQUIRE_VERIFICATION || 'true'));
-// GPT-OSS 120B prépare cinq QCM sourcés par appel ; le contrôle déterministe
-// local n'effectue aucun second appel payant pour les lots quotidiens.
-const AI_QCM_BATCH_SIZE = Math.min(5, Math.max(1, Number(process.env.AI_QCM_BATCH_SIZE || 5)));
+// Le palier gratuit Groq est limité à 8 000 jetons/minute. Trois QCM au plus
+// par appel gardent recherche, rédaction et JSON sous ce plafond ; le contrôle
+// déterministe local n'effectue aucun second appel IA pour les lots quotidiens.
+const AI_QCM_BATCH_SIZE = Math.min(3, Math.max(1, Number(process.env.AI_QCM_BATCH_SIZE || 3)));
 const AI_QCM_MIN_VERIFICATION_SCORE = Math.min(100, Math.max(70, Number(process.env.AI_QCM_MIN_VERIFICATION_SCORE || 90)));
 const AI_QCM_VERIFICATION_VERSION = 'official-sources-v2';
 const OFFICIAL_NEWS_SOURCES = process.env.OFFICIAL_NEWS_SOURCES || '';
@@ -1519,9 +1520,9 @@ function normalizeAiQuestionList(aiText, defaults, count, options = {}){
 
 function promptAvoidBlock(avoidQuestions = [], existingCount = 0){
   const rows = (avoidQuestions || [])
-    .map(q => strictCleanAiQcmText(q, 220))
+    .map(q => strictCleanAiQcmText(q, 150))
     .filter(Boolean)
-    .slice(0, 35);
+    .slice(0, 12);
   const header = existingCount > 0
     ? `\nLa base de l'application contient déjà environ ${existingCount} QCM. Tu dois créer des questions nouvelles, sans reformuler les anciennes.`
     : '';
@@ -1771,10 +1772,12 @@ function qcmGenerationAngle(category, attempt){
 function buildAvoidQuestions(existingRows, existingTexts, category, level, questions, attempt){
   const relevant = relevantExistingQcmTexts(existingRows, category, level);
   const avoid = [];
-  avoid.push(...rotatingAvoidSample(relevant, attempt * 17, 24));
-  avoid.push(...rotatingAvoidSample(existingTexts, attempt * 53, 8));
-  avoid.push(...questions.map(q => q.question_text));
-  return Array.from(new Set(avoid.map(q => strictCleanAiQcmText(q, 180)).filter(Boolean))).slice(0, 40);
+  // Échantillon compact : la déduplication complète reste faite côté serveur,
+  // sans envoyer des milliers de jetons à Groq à chaque petit lot.
+  avoid.push(...rotatingAvoidSample(relevant, attempt * 17, 7));
+  avoid.push(...rotatingAvoidSample(existingTexts, attempt * 53, 2));
+  avoid.push(...questions.slice(-3).map(q => q.question_text));
+  return Array.from(new Set(avoid.map(q => strictCleanAiQcmText(q, 150)).filter(Boolean))).slice(0, 12);
 }
 
 async function validateQuestionsForPublication(questions){
@@ -1825,7 +1828,7 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
       allowedDomains:qcmSearchAllowedDomains(category, batchTheme),
       temperature:0.16,
       topP:0.78,
-      maxOutputTokens:5000
+      maxOutputTokens:2400
     };
     const ai = extraParts.length
       ? await callAiGenerateParts([{ text:prompt }, ...extraParts], generateOptions)
@@ -2022,10 +2025,22 @@ async function callGroqGenerateParts(parts, options = {}){
     const detail = strictCleanAiQcmText(data?.error?.message || data?.message || `Erreur Groq ${res.status}`, 500)
       .replace(/gsk_[A-Za-z0-9._-]+/g, '[clé masquée]');
     const quotaFailure = res.status === 429 || /quota|rate|limit|tokens per/i.test(detail);
-    const message = quotaFailure
-      ? `Quota Groq atteint pour le moment. Les QCM déjà enregistrés sont conservés. Détail Groq (${res.status}) : ${detail}`
-      : `Groq est indisponible pour le moment. Les QCM déjà enregistrés sont conservés. Détail Groq (${res.status}) : ${detail}`;
-    throw Object.assign(new Error(message), { status:res.status >= 400 && res.status < 500 ? res.status : 502 });
+    if (quotaFailure){
+      const retryHeader = Number.parseFloat(String(res.headers.get('retry-after') || ''));
+      const retryFromMessage = Number.parseFloat((detail.match(/try again in\s+([\d.]+)s/i) || [,''])[1]);
+      const retryAfterSeconds = Math.min(60, Math.max(5, Math.ceil(Number.isFinite(retryHeader) ? retryHeader : (Number.isFinite(retryFromMessage) ? retryFromMessage : 20)) + 1));
+      throw Object.assign(
+        new Error(`Limite gratuite temporaire de Groq. Reprise automatique dans ${retryAfterSeconds} secondes ; les QCM déjà enregistrés sont conservés.`),
+        { status:429, retryAfterSeconds }
+      );
+    }
+    const safeDetail = detail
+      .replace(/org_[A-Za-z0-9_-]+/g, '[organisation masquée]')
+      .replace(/https?:\/\/\S+/gi, '[lien masqué]');
+    throw Object.assign(
+      new Error(`Groq est indisponible pour le moment. Les QCM déjà enregistrés sont conservés. Détail (${res.status}) : ${safeDetail}`),
+      { status:res.status >= 400 && res.status < 500 ? res.status : 502 }
+    );
   }
   const responseContent = data?.choices?.[0]?.message?.content;
   const text = typeof responseContent === 'string'
@@ -2264,7 +2279,12 @@ async function callAiGenerateParts(parts, options = {}){
       return await callGeminiGenerateParts(parts, options);
     }catch(err){
       const status = Number(err?.status || 502);
-      failures.push({ provider, status, message:String(err?.message || 'Erreur inconnue') });
+      failures.push({
+        provider,
+        status,
+        message:String(err?.message || 'Erreur inconnue'),
+        retryAfterSeconds:Number(err?.retryAfterSeconds || 0)
+      });
       console.warn(`${provider} generation failed:`, err?.message || err);
       // Ne pas enchaîner un deuxième appel long après un délai fournisseur ou
       // une erreur de compte/requête : cela dépasserait la fonction Vercel et
@@ -2274,7 +2294,10 @@ async function callAiGenerateParts(parts, options = {}){
   }
   if ((AI_QCM_SINGLE_GROQ_MODE || AI_QCM_SINGLE_GEMINI_MODE) && failures.length === 1){
     const only = failures[0];
-    throw Object.assign(new Error(only.message), { status:only.status });
+    throw Object.assign(new Error(only.message), {
+      status:only.status,
+      retryAfterSeconds:only.retryAfterSeconds || 0
+    });
   }
   const quotaFailure = failures.some(row => [402,429].includes(row.status) || /quota|credit|rate|limit/i.test(row.message));
   const friendly = quotaFailure
@@ -2289,6 +2312,7 @@ async function callAiGenerateParts(parts, options = {}){
   }).join(' — ');
   const err = new Error(`${friendly}${detail ? ` Détail fournisseur : ${detail}` : ''}`);
   err.status = quotaFailure ? 429 : 502;
+  err.retryAfterSeconds = Math.max(0, ...failures.map(row => Number(row.retryAfterSeconds || 0)));
   throw err;
 }
 
@@ -3978,7 +4002,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'groq-qcm-v1-13',
+    build: 'groq-free-limit-v1-14',
     time: new Date().toISOString()
   });
 });
@@ -5583,7 +5607,12 @@ app.get('*', (req, res, next) => {
 
 app.use((err, _req, res, _next) => {
   console.error(err);
-  res.status(err.status || 500).json({ message: err.message || 'Erreur serveur' });
+  const payload = { message:err.message || 'Erreur serveur' };
+  if (Number(err?.retryAfterSeconds || 0) > 0){
+    payload.retryAfterSeconds = Math.min(60, Math.max(1, Math.ceil(Number(err.retryAfterSeconds))));
+    res.setHeader('Retry-After', String(payload.retryAfterSeconds));
+  }
+  res.status(err.status || 500).json(payload);
 });
 
 if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL){

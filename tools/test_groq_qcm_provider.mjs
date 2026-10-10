@@ -17,6 +17,11 @@ globalThis.fetch = async (url, options = {}) => {
   const href = String(url);
   const body = options.body ? JSON.parse(String(options.body)) : {};
   requests.push({ url:href, headers:options.headers || {}, body });
+  if (String(body?.messages?.[0]?.content || '').includes('FORCE_RATE_LIMIT')){
+    return new Response(JSON.stringify({
+      error:{ message:'Rate limit reached for organization org_test on tokens per minute (TPM). Please try again in 16.2s. Upgrade at https://console.groq.com/settings/billing' }
+    }), { status:429, headers:{ 'content-type':'application/json', 'retry-after':'17' } });
+  }
   return new Response(JSON.stringify({
     model:'openai/gpt-oss-120b',
     choices:[{
@@ -115,5 +120,16 @@ const parsedSources = groundingSourcesFromGroq({
   ] } }] } }]
 });
 assert.deepEqual(parsedSources, [{ url:'https://www.insd.bf/source', title:'INSD', quote:'Citation' }]);
+
+await assert.rejects(
+  () => callAiGenerateParts([{ text:'FORCE_RATE_LIMIT' }], { grounding:true, maxOutputTokens:500 }),
+  error => {
+    assert.equal(error.status, 429);
+    assert.equal(error.retryAfterSeconds, 18);
+    assert.match(error.message, /Reprise automatique dans 18 secondes/i);
+    assert.doesNotMatch(error.message, /org_test|billing|Upgrade/i);
+    return true;
+  }
+);
 
 console.log('Groq QCM provider tests: OK');
