@@ -11,9 +11,9 @@ L’application **Réussite Concours BF** est une application web hébergée sur
 
 État production vérifié :
 
-- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-9>
+- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-10>
 - API santé : <https://concoursbf-fawn.vercel.app/health>
-- Dernier build vérifié : `qcm-verified-v2-9`
+- Dernier build vérifié : `qcm-verified-v2-10`
 - Dernier commit fonctionnel OpenRouter : `2b811e2 Add OpenRouter Claude provider with Gemini fallback`
 - Contrôle de connexion fournisseur : `2dc1e4b Add cached AI provider health check`
 - Correctif runtime Vercel : `ab61662 Export Express app for Vercel runtime`
@@ -118,7 +118,7 @@ Une empreinte SHA-256 lie le verdict à l’énoncé exact, aux quatre options, 
 - `POST /api/admin/ai/daily/:id/verify` relance la vérification d’un brouillon existant.
 - `POST /api/admin/ai/daily/:id/publish` répond `409` si le contrôle V2 échoue.
 - Le PDF et le quiz interactif continuent à provenir du même tableau structuré corrigé.
-- Build/cache V2 : `qcm-verified-v2-9`.
+- Build/cache V2 : `qcm-verified-v2-10`.
 
 #### Correction mobile du 9 octobre 2026 — génération progressive
 
@@ -260,7 +260,7 @@ Ces consignes doivent être respectées dans toute nouvelle discussion :
 - Icônes PWA :
   - `img/pwa-icon-192.png`
   - `img/pwa-icon-512.png`
-- Dernier cache/build : `qcm-verified-v2-9`
+- Dernier cache/build : `qcm-verified-v2-10`
 
 ---
 
@@ -529,7 +529,7 @@ Service worker PWA :
 - cache data network-first ;
 - ne cache pas contenus Premium marqués ;
 - gère `CLEAR_DATA_CACHE` ;
-- version actuelle : `qcm-verified-v2-9`.
+- version actuelle : `qcm-verified-v2-10`.
 
 #### `vercel.json`
 

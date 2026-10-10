@@ -568,3 +568,16 @@ Build/cache : `qcm-verified-v2-8`.
 - Trois lots sans aucun QCM accepté arrêtent la boucle et affichent un motif clair.
 
 Build/cache : `qcm-verified-v2-9`.
+
+## 2026-10-10 — V2.10 compatibilité recherche Gemini
+
+La première tentative Gemini seule a renvoyé une erreur 502 générique avant toute création. Le correctif :
+
+- consulte le catalogue réel des modèles accessibles par la clé ;
+- sélectionne automatiquement un modèle Gemini Flash texte réellement disponible ;
+- n’utilise plus `responseMimeType=application/json` avec Google Search, combinaison non prise en charge par plusieurs modèles ;
+- conserve le JSON strict par instruction dans le prompt ;
+- augmente la sortie à 5 000 jetons pour cinq QCM ;
+- affiche désormais le motif Gemini sous-jacent, nettoyé, si tous les modèles échouent.
+
+Build/cache : `qcm-verified-v2-10`.

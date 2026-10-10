@@ -1061,18 +1061,27 @@ async function listGeminiModels(){
 }
 
 async function geminiModelsToTry({ verifier=false } = {}){
-  const configured = verifier ? GEMINI_VERIFIER_MODEL : GEMINI_MODEL;
-  // Les modèles récents passent avant l'ancien Flash-Lite même si une ancienne
-  // variable Vercel n'a pas encore été mise à jour.
-  const configuredName = normalizeGeminiModelName(configured);
-  const configuredIsLegacyLite = /gemini-2\.5-flash-lite/i.test(configuredName);
-  const modernFirst = (configuredIsLegacyLite
-    ? ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-2.5-flash', configuredName]
-    : [configuredName, 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'])
-    .map(normalizeGeminiModelName).filter(Boolean);
-  // Éviter un appel réseau de catalogue à chaque fonction serverless : les
-  // modèles sont essayés directement dans l'ordre, avec repli automatique.
-  return Array.from(new Set(modernFirst.map(normalizeGeminiModelName).filter(Boolean)));
+  const configured = normalizeGeminiModelName(verifier ? GEMINI_VERIFIER_MODEL : GEMINI_MODEL);
+  const preferred = [
+    configured,
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-2.5-flash-lite'
+  ].map(normalizeGeminiModelName).filter(Boolean);
+  // Le nom configuré peut ne plus exister. Le catalogue réel de la clé évite
+  // alors d'enchaîner uniquement des 404 et choisit un modèle Flash texte.
+  const available = await listGeminiModels();
+  const compatible = available
+    .filter(name => /^gemini-/i.test(name))
+    .filter(name => /flash/i.test(name))
+    .filter(name => !/image|tts|audio|live|embedding/i.test(name));
+  const availableSet = new Set(available);
+  const exactPreferred = preferred.filter(name => availableSet.has(name));
+  const discovered = [...exactPreferred, ...compatible];
+  const ordered = discovered.length ? discovered : preferred;
+  return Array.from(new Set(ordered.map(normalizeGeminiModelName).filter(Boolean)));
 }
 
 function extractJsonFromAi(text){
@@ -1739,7 +1748,7 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
       allowedDomains:qcmSearchAllowedDomains(category, batchTheme),
       temperature:0.16,
       topP:0.78,
-      maxOutputTokens:2200
+      maxOutputTokens:5000
     };
     const ai = extraParts.length
       ? await callAiGenerateParts([{ text:prompt }, ...extraParts], generateOptions)
@@ -1972,20 +1981,21 @@ async function callOpenRouterGenerateParts(parts, options = {}){
 async function callGeminiGenerateParts(parts, options = {}){
   if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   let lastError = null;
+  let lastStatus = 502;
   const models = await geminiModelsToTry({ verifier:Boolean(options.verifier) });
   for (const model of models){
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-    for (const jsonMode of [true, false]){
+    // Google Search et responseMimeType JSON ne sont pas compatibles sur
+    // plusieurs modèles Gemini. Le mode sourcé demande donc du JSON par prompt.
+    const jsonModes = options.grounding ? [false] : [true, false];
+    for (const jsonMode of jsonModes){
       const generationConfig = {
         temperature:Number(options.temperature ?? 0.16),
         topP:Number(options.topP ?? 0.78),
         maxOutputTokens:Number(options.maxOutputTokens || 10000)
       };
       if (jsonMode) generationConfig.responseMimeType = 'application/json';
-      const requestBody = {
-        contents:[{ role:'user', parts }],
-        generationConfig
-      };
+      const requestBody = { contents:[{ role:'user', parts }], generationConfig };
       if (options.grounding) requestBody.tools = [{ google_search:{} }];
       let res;
       try{
@@ -1996,12 +2006,14 @@ async function callGeminiGenerateParts(parts, options = {}){
           signal:AbortSignal.timeout(AI_QCM_TIMEOUT_MS)
         });
       }catch(err){
-        lastError = err?.name === 'TimeoutError' ? 'Délai IA dépassé' : (err?.message || 'Connexion IA interrompue');
+        lastStatus = err?.name === 'TimeoutError' ? 504 : 502;
+        lastError = err?.name === 'TimeoutError' ? 'Délai Gemini dépassé' : (err?.message || 'Connexion Gemini interrompue');
         break;
       }
       const data = await res.json().catch(()=>({}));
       if (!res.ok){
-        lastError = data?.error?.message || `Erreur IA ${res.status}`;
+        lastStatus = Number(res.status || 502);
+        lastError = data?.error?.message || `Erreur Gemini ${res.status}`;
         if (res.status === 400 && jsonMode && /responseMimeType|mime|schema|structured/i.test(lastError || '')) continue;
         break;
       }
@@ -2011,20 +2023,25 @@ async function callGeminiGenerateParts(parts, options = {}){
         .join('\n')
         .trim();
       if (!text){
-        lastError = 'Réponse IA vide';
+        lastStatus = 502;
+        const finishReasons = (data?.candidates || []).map(candidate => candidate?.finishReason).filter(Boolean).join(', ');
+        lastError = finishReasons ? `Réponse Gemini vide (${finishReasons})` : 'Réponse Gemini vide';
         break;
       }
       return { provider:'gemini', model:`gemini:${model}`, text, groundingSources:groundingSourcesFromGemini(data) };
     }
   }
-  console.warn('Gemini generation failed:', lastError);
-  const friendly = /quota|rate|429/i.test(lastError || '')
-    ? 'Quota IA atteint pour le moment. Réessaie plus tard.'
+  const cleanDetail = strictCleanAiQcmText(lastError || 'Aucun modèle Gemini compatible', 300)
+    .replace(/AIza[A-Za-z0-9._-]+/g, '[clé masquée]');
+  console.warn('Gemini generation failed:', cleanDetail);
+  const quotaFailure = lastStatus === 429 || /quota|rate|resource exhausted|limit/i.test(cleanDetail);
+  const friendly = quotaFailure
+    ? 'Quota Gemini atteint pour le moment. Les QCM déjà enregistrés sont conservés.'
     : options.grounding
-      ? 'La recherche et la vérification des sources sont indisponibles pour le moment. Aucun QCM non sourcé ne sera accepté.'
-      : 'IA indisponible pour le moment. Réessaie un peu plus tard.';
-  const err = new Error(friendly);
-  err.status = /quota|rate|429/i.test(lastError || '') ? 429 : 502;
+      ? 'La recherche Gemini est indisponible pour le moment. Aucun QCM non sourcé ne sera accepté.'
+      : 'Gemini est indisponible pour le moment. Réessaie un peu plus tard.';
+  const err = new Error(`${friendly} Détail Gemini (${lastStatus}) : ${cleanDetail}`);
+  err.status = quotaFailure ? 429 : (lastStatus >= 400 && lastStatus < 500 ? lastStatus : 502);
   throw err;
 }
 
@@ -2053,6 +2070,10 @@ async function callAiGenerateParts(parts, options = {}){
       // provoquait les répétitions « Lot interrompu » pendant plusieurs minutes.
       if (provider === 'openrouter' && (status === 504 || (status >= 400 && status < 500) || Date.now() - startedAt > 20000)) break;
     }
+  }
+  if (AI_QCM_SINGLE_GEMINI_MODE && failures.length === 1){
+    const only = failures[0];
+    throw Object.assign(new Error(only.message), { status:only.status });
   }
   const quotaFailure = failures.some(row => [402,429].includes(row.status) || /quota|credit|rate|limit/i.test(row.message));
   const friendly = quotaFailure
@@ -3755,7 +3776,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-verified-v2-9',
+    build: 'qcm-verified-v2-10',
     time: new Date().toISOString()
   });
 });

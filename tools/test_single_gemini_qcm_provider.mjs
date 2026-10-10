@@ -15,6 +15,11 @@ globalThis.fetch = async (url, options = {}) => {
   const href = String(url);
   const body = options.body ? JSON.parse(String(options.body)) : {};
   requests.push({ url:href, body });
+  if (href.includes('generativelanguage.googleapis.com/v1beta/models?')){
+    return new Response(JSON.stringify({
+      models:[{ name:'models/gemini-2.5-flash', supportedGenerationMethods:['generateContent'] }]
+    }), { status:200, headers:{ 'content-type':'application/json' } });
+  }
   if (href.includes('generativelanguage.googleapis.com')){
     return new Response(JSON.stringify({
       candidates:[{ content:{ parts:[{ text:'{"questions":[]}' }] } }]
@@ -43,8 +48,10 @@ const generated = await callAiGenerateParts([{ text:'Génère un QCM.' }], {
   maxOutputTokens:500
 });
 assert.equal(generated.provider, 'gemini');
-assert.match(requests[0].url, /generativelanguage\.googleapis\.com/);
-assert.deepEqual(requests[0].body.tools, [{ google_search:{} }]);
+assert.match(requests[0].url, /generativelanguage\.googleapis\.com\/v1beta\/models\?/);
+assert.match(requests[1].url, /models\/gemini-2\.5-flash:generateContent/);
+assert.deepEqual(requests[1].body.tools, [{ google_search:{} }]);
+assert.equal(requests[1].body.generationConfig.responseMimeType, undefined);
 
 const checked = await callAiGenerateParts([{ text:'Contrôle ce QCM.' }], {
   preferredProvider:'openrouter',
@@ -53,7 +60,7 @@ const checked = await callAiGenerateParts([{ text:'Contrôle ce QCM.' }], {
   maxOutputTokens:500
 });
 assert.equal(checked.provider, 'gemini');
-assert.match(requests[1].url, /generativelanguage\.googleapis\.com/);
+assert.match(requests[2].url, /generativelanguage\.googleapis\.com/);
 assert.equal(requests.some(request => request.url.includes('openrouter.ai')), false);
 
 console.log('Single Gemini QCM provider tests: OK');
