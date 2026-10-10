@@ -587,3 +587,13 @@ Build/cache : `qcm-verified-v2-10`.
 Redéploiement demandé après remplacement de `GEMINI_API_KEY` dans les variables Vercel. La clé OpenRouter supprimée n'est plus requise par le mode Gemini seul.
 
 Build/cache : `qcm-verified-v2-11`.
+
+## 2026-10-10 — V2.12 stabilité des boutons
+
+- Toutes les requêtes de l’interface ont désormais un délai maximal de 60 secondes.
+- Tout bouton chargé est automatiquement réactivé après 65 secondes, même si une API ne répond plus.
+- Les erreurs Gemini 403, 429 et les délais ne déclenchent plus une seconde tentative inutile.
+- Le serveur n’essaie plus tous les modèles après une erreur de quota ou de droits liée au projet Google.
+- Les messages d’erreur conservent le statut HTTP et la progression déjà enregistrée.
+
+Build/cache : `qcm-verified-v2-12`.

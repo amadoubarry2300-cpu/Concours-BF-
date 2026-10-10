@@ -1983,7 +1983,7 @@ async function callGeminiGenerateParts(parts, options = {}){
   let lastError = null;
   let lastStatus = 502;
   const models = await geminiModelsToTry({ verifier:Boolean(options.verifier) });
-  for (const model of models){
+  modelLoop: for (const model of models){
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
     // Google Search et responseMimeType JSON ne sont pas compatibles sur
     // plusieurs modèles Gemini. Le mode sourcé demande donc du JSON par prompt.
@@ -2008,13 +2008,16 @@ async function callGeminiGenerateParts(parts, options = {}){
       }catch(err){
         lastStatus = err?.name === 'TimeoutError' ? 504 : 502;
         lastError = err?.name === 'TimeoutError' ? 'Délai Gemini dépassé' : (err?.message || 'Connexion Gemini interrompue');
-        break;
+        break modelLoop;
       }
       const data = await res.json().catch(()=>({}));
       if (!res.ok){
         lastStatus = Number(res.status || 502);
         lastError = data?.error?.message || `Erreur Gemini ${res.status}`;
         if (res.status === 400 && jsonMode && /responseMimeType|mime|schema|structured/i.test(lastError || '')) continue;
+        // Le quota et les droits sont liés au projet Google : essayer tous les
+        // modèles après un 429/403 ne peut pas réussir et bloque les boutons.
+        if (res.status === 429 || res.status === 403) break modelLoop;
         break;
       }
       const text = (data?.candidates || [])
@@ -3776,7 +3779,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-verified-v2-11',
+    build: 'qcm-verified-v2-12',
     time: new Date().toISOString()
   });
 });

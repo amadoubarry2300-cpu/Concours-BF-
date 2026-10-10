@@ -378,13 +378,41 @@ function activatePremium(days, txRef, provider){
 
 function setButtonLoading(btn, loading, label){
   if (!btn) return;
+  if (btn._loadingWatchdog) clearTimeout(btn._loadingWatchdog);
   if (loading){
     btn.dataset.label = btn.textContent;
     btn.textContent = label || 'Chargement...';
     btn.disabled = true;
+    // Aucun bouton ne doit rester bloqué indéfiniment si le réseau ou une API
+    // cesse de répondre. Les fonctions normales le réactivent bien avant.
+    btn._loadingWatchdog = setTimeout(() => {
+      btn.textContent = btn.dataset.label || btn.textContent;
+      btn.disabled = false;
+      btn._loadingWatchdog = null;
+    }, 65000);
   } else {
     btn.textContent = btn.dataset.label || btn.textContent;
     btn.disabled = false;
+    btn._loadingWatchdog = null;
+  }
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 60000){
+  if (options.signal) return fetch(url, options);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try{
+    return await fetch(url, { ...options, signal:controller.signal });
+  }catch(err){
+    if (err?.name === 'AbortError'){
+      const timeoutError = new Error('Le serveur met trop de temps à répondre. Le bouton est de nouveau disponible : réessaie sans perdre les données enregistrées.');
+      timeoutError.name = 'TimeoutError';
+      timeoutError.status = 504;
+      throw timeoutError;
+    }
+    throw err;
+  }finally{
+    clearTimeout(timer);
   }
 }
 
@@ -395,7 +423,7 @@ function authHeaders(extra = {}){
 }
 
 async function apiPost(path, body){
-  const res = await fetch(path, {
+  const res = await fetchWithTimeout(path, {
     method:'POST',
     headers: authHeaders({'Content-Type':'application/json'}),
     body: JSON.stringify(body || {})
@@ -500,7 +528,7 @@ async function loadSupabaseQuestions(){
 
   // Les questions Premium sont servies uniquement aux comptes Premium connectés.
   try{
-    const res = await fetch('/api/questions', { headers: authHeaders({}) });
+    const res = await fetchWithTimeout('/api/questions', { headers: authHeaders({}) });
     if (res.ok){
       const data = await res.json().catch(()=>({}));
       mergeQuestionRows(data.questions || []);
@@ -512,7 +540,7 @@ async function loadSupabaseQuestions(){
   if (!SUPABASE_CONFIG.url || !SUPABASE_CONFIG.anonKey) return;
   try{
     const url = SUPABASE_CONFIG.url.replace(/\/$/, '') + '/rest/v1/questions?is_active=eq.true&is_premium=eq.false&select=category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium';
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers:{
         apikey: SUPABASE_CONFIG.anonKey,
         Authorization: 'Bearer ' + SUPABASE_CONFIG.anonKey
@@ -1151,12 +1179,16 @@ let adminQuestionFilter = 'all';
 let adminTab = 'create';
 
 async function adminFetch(path, options = {}){
-  const res = await fetch(path, {
+  const res = await fetchWithTimeout(path, {
     ...options,
     headers: authHeaders({'Content-Type':'application/json', ...(options.headers || {})})
   });
   const data = await res.json().catch(()=>({}));
-  if (!res.ok) throw new Error(data.message || 'Action administrateur impossible');
+  if (!res.ok){
+    const err = new Error(data.message || 'Action administrateur impossible');
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -1627,7 +1659,9 @@ async function continueDailyAiGeneration(draft, result){
       }
       failedBatches = 0;
     }catch(batchError){
-      if (/Trois lots successifs/.test(String(batchError?.message || ''))) throw batchError;
+      const failureMessage = String(batchError?.message || '');
+      if (/Trois lots successifs/.test(failureMessage)) throw batchError;
+      if ([403,429,504].includes(Number(batchError?.status || 0)) || /quota|limit|délai|timeout/i.test(failureMessage)) throw batchError;
       failedBatches += 1;
       if (failedBatches >= 2) throw batchError;
       const reason = String(batchError?.message || '').trim();
@@ -1764,7 +1798,7 @@ function renderDailyAiDrafts(){
 async function fetchDailyAiPdfBlob(index){
   const d = aiDailyDraftCache[index];
   if (!d) throw new Error('PDF introuvable');
-  const res = await fetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/pdf?inline=1&v=' + Date.now(), { headers:authHeaders({}), cache:'no-store' });
+  const res = await fetchWithTimeout('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/pdf?inline=1&v=' + Date.now(), { headers:authHeaders({}), cache:'no-store' });
   if (!res.ok){
     const data = await res.json().catch(()=>({}));
     throw new Error(data.message || 'PDF indisponible');
@@ -2295,7 +2329,7 @@ async function generateAiQcm(){
         'X-Ai-Is-Premium': String(Boolean(payload.is_premium)),
         'X-Ai-Publication-Name': encodeURIComponent(publicationName)
       });
-      const res = await fetch('/api/admin/ai/qcm-pdf', { method:'POST', headers, body:pdfFile });
+      const res = await fetchWithTimeout('/api/admin/ai/qcm-pdf', { method:'POST', headers, body:pdfFile });
       data = await res.json().catch(()=>({}));
       if (!res.ok) throw new Error(data.message || 'Génération depuis PDF impossible');
     }else{
@@ -2579,7 +2613,7 @@ async function loadNews(){
   if (!wrap) return;
   wrap.innerHTML = '<div class="empty">Chargement des actualités...</div>';
   try{
-    const res = await fetch('/api/news', { headers:authHeaders({}) });
+    const res = await fetchWithTimeout('/api/news', { headers:authHeaders({}) });
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Actualités indisponibles');
     newsCache = data.news || [];
@@ -2626,7 +2660,7 @@ function renderNewsList(){
 
 async function openAdminNewsPdf(id){
   try{
-    const res = await fetch('/api/admin/news/' + encodeURIComponent(id) + '/pdf', { headers:authHeaders({}) });
+    const res = await fetchWithTimeout('/api/admin/news/' + encodeURIComponent(id) + '/pdf', { headers:authHeaders({}) });
     if (!res.ok){
       const data = await res.json().catch(()=>({}));
       throw new Error(data.message || 'PDF indisponible');
@@ -2640,7 +2674,7 @@ async function openAdminNewsPdf(id){
 
 async function openNewsPdf(id){
   try{
-    const res = await fetch('/api/news/' + encodeURIComponent(id) + '/pdf', { headers:authHeaders({}) });
+    const res = await fetchWithTimeout('/api/news/' + encodeURIComponent(id) + '/pdf', { headers:authHeaders({}) });
     if (!res.ok){
       const data = await res.json().catch(()=>({}));
       throw new Error(data.message || 'PDF indisponible');
@@ -2704,7 +2738,7 @@ async function uploadAdminNewsPdf(newsId, file){
     'Content-Type': file.type || 'application/pdf',
     'X-File-Name': encodeURIComponent(file.name || 'communique.pdf')
   });
-  const res = await fetch('/api/admin/news/' + encodeURIComponent(newsId) + '/pdf', { method:'POST', headers, body:file });
+  const res = await fetchWithTimeout('/api/admin/news/' + encodeURIComponent(newsId) + '/pdf', { method:'POST', headers, body:file });
   const data = await res.json().catch(()=>({}));
   if (!res.ok) throw new Error(data.message || 'Envoi du PDF impossible');
 }
@@ -2818,7 +2852,7 @@ async function loadResources(){
   if (!wrap) return;
   wrap.innerHTML = '<div class="empty">Chargement des documents...</div>';
   try{
-    const res = await fetch('/api/resources?v=' + Date.now(), { headers:authHeaders({}), cache:'no-store' });
+    const res = await fetchWithTimeout('/api/resources?v=' + Date.now(), { headers:authHeaders({}), cache:'no-store' });
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Documents indisponibles');
     resourceCache = data.resources || [];
@@ -2855,7 +2889,7 @@ async function openResource(id){
     return;
   }
   try{
-    const res = await fetch('/api/resources/' + encodeURIComponent(id) + '/download', { headers:authHeaders({}) });
+    const res = await fetchWithTimeout('/api/resources/' + encodeURIComponent(id) + '/download', { headers:authHeaders({}) });
     if (!res.ok){
       const data = await res.json().catch(()=>({}));
       if (res.status === 402){ openPremium(item?.title || 'Document Premium'); return; }
@@ -2904,7 +2938,7 @@ async function uploadAdminResource(){
       'X-Is-Active': 'true',
       'X-Admin-Archived': 'true'
     });
-    const res = await fetch('/api/admin/resources/upload', { method:'POST', headers, body:file });
+    const res = await fetchWithTimeout('/api/admin/resources/upload', { method:'POST', headers, body:file });
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Publication impossible');
     if (result) result.innerHTML = '<div class="pay-note success">Document publié avec succès ✅<br>Il est rangé dans <b>Voir historique publié</b> et reste visible chez le candidat.</div>';
@@ -3174,7 +3208,7 @@ async function startSubscriptionPayment(){
   setButtonLoading(btn, true, 'Initialisation...');
 
   try{
-    const res = await fetch(paymentApiBase() + '/api/payments/saspay/init', {
+    const res = await fetchWithTimeout(paymentApiBase() + '/api/payments/saspay/init', {
       method:'POST',
       headers: authHeaders({'Content-Type':'application/json'}),
       body: JSON.stringify(payload)
@@ -3225,7 +3259,7 @@ async function checkPaymentStatus(){
     const url = pending.ref
       ? paymentApiBase() + '/api/payments/saspay/status?' + params.toString()
       : paymentApiBase() + '/api/subscription/status?phone=' + encodeURIComponent(fullPhone(state.user.phone));
-    const res = await fetch(url, { headers: authHeaders({}) });
+    const res = await fetchWithTimeout(url, { headers: authHeaders({}) });
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Statut indisponible');
     if (data.active){
@@ -3692,7 +3726,7 @@ async function loadPublishedQcm(filter){
   if (!wrap) return;
   wrap.innerHTML = '<div class="empty">Chargement des nouveaux QCM...</div>';
   try{
-    const res = await fetch('/api/qcm-publications', { headers:authHeaders({}) });
+    const res = await fetchWithTimeout('/api/qcm-publications', { headers:authHeaders({}) });
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Nouveaux QCM indisponibles');
     publishedQcmCache = data.publications || [];
@@ -3923,9 +3957,9 @@ function refreshCurrentOnlineScreen(){
 
 async function checkAppBuildVersion(){
   try{
-    const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
+    const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-verified-v2-11') location.reload();
+    if (data.build && data.build !== 'qcm-verified-v2-12') location.reload();
   }catch{}
 }
 
@@ -3938,7 +3972,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-11')
+    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-12')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
