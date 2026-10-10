@@ -29,11 +29,13 @@ globalThis.fetch = async (url, options = {}) => {
 const { aiProviderStatus, callAiGenerateParts } = await import('../backend/server.js');
 
 const status = aiProviderStatus();
-assert.equal(status.hybrid, true);
+assert.equal(status.singleProvider, true);
+assert.equal(status.hybrid, false);
 assert.equal(status.generationProvider, 'gemini');
-assert.equal(status.verificationProvider, 'openrouter');
+assert.equal(status.verificationProvider, 'server');
 assert.equal(status.model, 'gemini-3.7-flash');
-assert.equal(status.verifierModel, 'anthropic/claude-sonnet-5.5');
+assert.equal(status.verifierModel, 'contrôles-déterministes-v2');
+assert.equal(status.fallback, false);
 
 const generated = await callAiGenerateParts([{ text:'Génère un QCM.' }], {
   preferredProvider:'gemini',
@@ -44,15 +46,14 @@ assert.equal(generated.provider, 'gemini');
 assert.match(requests[0].url, /generativelanguage\.googleapis\.com/);
 assert.deepEqual(requests[0].body.tools, [{ google_search:{} }]);
 
-const verified = await callAiGenerateParts([{ text:'Vérifie ce QCM.' }], {
+const checked = await callAiGenerateParts([{ text:'Contrôle ce QCM.' }], {
   preferredProvider:'openrouter',
   verifier:true,
   grounding:false,
   maxOutputTokens:500
 });
-assert.equal(verified.provider, 'openrouter');
-assert.equal(requests[1].url, 'https://openrouter.ai/api/v1/chat/completions');
-assert.equal(requests[1].body.model, 'anthropic/claude-sonnet-5.5');
-assert.deepEqual(requests[1].body.reasoning, { effort:'low' });
+assert.equal(checked.provider, 'gemini');
+assert.match(requests[1].url, /generativelanguage\.googleapis\.com/);
+assert.equal(requests.some(request => request.url.includes('openrouter.ai')), false);
 
-console.log('Hybrid Gemini + Sonnet provider tests: OK');
+console.log('Single Gemini QCM provider tests: OK');

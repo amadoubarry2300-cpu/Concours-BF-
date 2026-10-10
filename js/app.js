@@ -1557,7 +1557,7 @@ async function loadAiStatus(){
     wrap.innerHTML = `
       <div><b>${data.configured ? modelLabel : 'Non active'}</b><span>Modèle QCM</span></div>
       <div><b>${data.grounding ? 'Sources' : 'Hors ligne'}</b><span>Recherche factuelle</span></div>
-      <div><b>${data.verificationRequired ? `≥ ${Number(data.minimumScore || 90)}/100` : 'Désactivée'}</b><span>Double vérification</span></div>`;
+      <div><b>${data.verificationRequired ? `≥ ${Number(data.minimumScore || 90)}/100` : 'Désactivé'}</b><span>Contrôle des preuves</span></div>`;
   }catch(err){
     wrap.innerHTML = `<div><b>Erreur</b><span>${escapeHtml(err.message)}</span></div>`;
   }
@@ -1609,8 +1609,8 @@ async function continueDailyAiGeneration(draft, result){
     const progress = Number(current.generationProgress || current.questions?.length || 0);
     const target = Number(current.generationTarget || 50);
     const wasVerification = current.generationPhase === 'verification';
-    const phase = wasVerification ? 'Vérification du QCM en cours' : 'Création du prochain QCM';
-    if (result) result.innerHTML = `<div class="pay-note">${phase} : <b>${progress}/${target} QCM validés</b>. Gemini prépare une question, puis Sonnet contrôle sa preuve.</div>`;
+    const phase = wasVerification ? 'Contrôle automatique du lot' : 'Création du prochain lot Gemini';
+    if (result) result.innerHTML = `<div class="pay-note">${phase} : <b>${progress}/${target} QCM validés</b>. Un seul appel Gemini prépare jusqu’à cinq QCM, puis le serveur contrôle les preuves sans second appel payant.</div>`;
     try{
       const batch = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(current.id) + '/generate-batch', {
         method:'POST',
@@ -1622,12 +1622,12 @@ async function continueDailyAiGeneration(draft, result){
       if (wasVerification){
         rejectedRounds = nextProgress > progress ? 0 : rejectedRounds + 1;
         if (rejectedRounds >= 3){
-          throw new Error(`Trois questions successives ont été refusées par le contrôle des sources. La préparation est arrêtée à ${nextProgress}/${target} pour éviter une attente inutile. Reclique sur « Reprendre » pour changer d’angle sans perdre les QCM validés.`);
+          throw new Error(`Trois lots successifs n’ont ajouté aucun QCM conforme. La préparation est arrêtée à ${nextProgress}/${target} pour éviter une attente inutile. Reclique sur « Reprendre » pour changer d’angle sans perdre les QCM validés.`);
         }
       }
       failedBatches = 0;
     }catch(batchError){
-      if (/Trois questions successives/.test(String(batchError?.message || ''))) throw batchError;
+      if (/Trois lots successifs/.test(String(batchError?.message || ''))) throw batchError;
       failedBatches += 1;
       if (failedBatches >= 2) throw batchError;
       const reason = String(batchError?.message || '').trim();
@@ -1666,7 +1666,7 @@ async function runDailyAiQcm(){
   const btn = $('#aiDailyRunBtn');
   const result = $('#aiDailyResult');
   setButtonLoading(btn, true, 'Création du PDF...');
-  if (result) result.innerHTML = '<div class="pay-note">Préparation par petits lots : recherche des sources, génération, puis double vérification. Garde cette page ouverte.</div>';
+  if (result) result.innerHTML = '<div class="pay-note">Préparation économique : Gemini recherche les sources et rédige les QCM par lots, puis le serveur contrôle chaque preuve sans second appel IA.</div>';
   try{
     refreshDailyCategoryOptions();
     const payload = {
@@ -3925,7 +3925,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-verified-v2-8') location.reload();
+    if (data.build && data.build !== 'qcm-verified-v2-9') location.reload();
   }catch{}
 }
 
@@ -3938,7 +3938,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-8')
+    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-9')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

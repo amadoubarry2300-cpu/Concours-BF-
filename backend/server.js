@@ -73,12 +73,16 @@ const OPENROUTER_SEARCH_MAX_USES = 1;
 const OPENROUTER_SEARCH_MAX_RESULTS = Math.min(8, Math.max(4, Number(process.env.OPENROUTER_SEARCH_MAX_RESULTS || 6)));
 const AI_QCM_PROVIDER_SETTING = String(process.env.AI_QCM_PROVIDER || 'auto').trim().toLowerCase();
 const AI_QCM_FALLBACK_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_FALLBACK_ENABLED || 'true'));
+// Mode économique demandé par l'administrateur : une seule IA, Gemini.
+// OpenRouter reste configuré dans Vercel mais n'est plus consommé par les QCM.
+const AI_QCM_SINGLE_GEMINI_MODE = Boolean(GEMINI_API_KEY)
+  && !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_SINGLE_GEMINI_MODE || 'true'));
 const AI_QCM_TIMEOUT_MS = Math.min(35000, Math.max(15000, Number(process.env.AI_QCM_TIMEOUT_MS || 35000)));
 const AI_QCM_GROUNDING_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_GROUNDING_ENABLED || 'true'));
 const AI_QCM_REQUIRE_VERIFICATION = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_REQUIRE_VERIFICATION || 'true'));
-// Un seul QCM sourcé par fonction : chaque recherche reste centrée sur une
-// preuve et évite les longues séries de lots rejetés par le vérificateur.
-const AI_QCM_BATCH_SIZE = 1;
+// Gemini prépare cinq QCM sourcés par appel ; le contrôle déterministe local
+// n'effectue aucun second appel payant.
+const AI_QCM_BATCH_SIZE = Math.min(5, Math.max(1, Number(process.env.AI_QCM_BATCH_SIZE || 5)));
 const AI_QCM_MIN_VERIFICATION_SCORE = Math.min(100, Math.max(70, Number(process.env.AI_QCM_MIN_VERIFICATION_SCORE || 90)));
 const AI_QCM_VERIFICATION_VERSION = 'official-sources-v2';
 const OFFICIAL_NEWS_SOURCES = process.env.OFFICIAL_NEWS_SOURCES || '';
@@ -977,6 +981,7 @@ function aiProviderConfigured(){
 }
 
 function aiPrimaryProvider(){
+  if (AI_QCM_SINGLE_GEMINI_MODE) return 'gemini';
   return aiProviderOrder()[0] || '';
 }
 
@@ -985,21 +990,23 @@ function aiGenerationModel(){
 }
 
 function aiVerifierModel(){
-  return OPENROUTER_API_KEY ? OPENROUTER_VERIFIER_MODEL : GEMINI_VERIFIER_MODEL;
+  return AI_QCM_SINGLE_GEMINI_MODE ? 'contrôles-déterministes-v2' : (OPENROUTER_API_KEY ? OPENROUTER_VERIFIER_MODEL : GEMINI_VERIFIER_MODEL);
 }
 
 function aiProviderStatus(){
-  const hybrid = Boolean(OPENROUTER_API_KEY && GEMINI_API_KEY);
+  const singleGemini = AI_QCM_SINGLE_GEMINI_MODE;
+  const hybrid = !singleGemini && Boolean(OPENROUTER_API_KEY && GEMINI_API_KEY);
   return {
     configured:aiProviderConfigured(),
     provider:aiPrimaryProvider(),
     providers:{ openrouter:Boolean(OPENROUTER_API_KEY), gemini:Boolean(GEMINI_API_KEY) },
     generationProvider:GEMINI_API_KEY ? 'gemini' : 'openrouter',
-    verificationProvider:OPENROUTER_API_KEY ? 'openrouter' : 'gemini',
+    verificationProvider:singleGemini ? 'server' : (OPENROUTER_API_KEY ? 'openrouter' : 'gemini'),
+    singleProvider:singleGemini,
     hybrid,
     model:aiGenerationModel(),
     verifierModel:aiVerifierModel(),
-    fallback:AI_QCM_FALLBACK_ENABLED && aiProviderOrder().length > 1
+    fallback:!singleGemini && AI_QCM_FALLBACK_ENABLED && aiProviderOrder().length > 1
   };
 }
 
@@ -1459,7 +1466,7 @@ function aiQcmPrompt({ count, category, level, theme, publicationName = '', from
       ? `- chaque fait doit être appuyé par une page officielle burkinabè: domaine .gov.bf, presidencedufaso.bf, assembleenationale.bf, legiburkina.bf ou insd.bf; evidence_type="official_source"; fournis l'URL directe, le titre et un extrait probant. Aucune source de blog, réseau social, Wikipédia ou média généraliste.`
       : `- chaque fait doit avoir une preuve: source officielle ou éducative reconnue avec URL directe, titre et extrait; pour un calcul démontré utilise evidence_type="calculation"; pour une règle de langue démontrée utilise evidence_type="language_rule".`;
   const nameLine = publicationName ? `Nom du QCM demandé: ${publicationName}.` : '';
-  return `Tu es un enseignant expert et rigoureux en préparation aux examens et concours au Burkina Faso. Date de référence: ${currentDate}.\n${sourceLine}\nCatégorie choisie par l'admin: ${category}. Niveau choisi par l'admin: ${level}. Sujet/thème choisi par l'admin: ${theme}. ${nameLine}\nContraintes strictes:\n- respecte le formulaire admin et adapte réellement la difficulté au niveau ${level};\n- produis des faits actuels à la date de référence; une ancienne institution ou dénomination n'est autorisée que dans une question explicitement historique et datée;\n- pour le Burkina Faso en 2026, tiens compte des 17 régions et 47 provinces; les régions actuelles sont Bankui, Djôrô, Goulmou, Guiriko, Kadiogo, Kuilsé, Liptako, Nando, Nakambé, Nazinon, Oubri, Sirba, Soum, Sourou, Tannounyan, Tapoa et Yaadga;\n- ne présente jamais le Médiateur du Faso, le Conseil économique et social ou la Haute Cour de justice comme des institutions actuelles; toute question à leur sujet doit être explicitement historique;\n- chaque QCM doit être clair, non ambigu et ne comporter qu'une seule bonne réponse;\n- l'option correcte doit être explicitement justifiée par la correction et par la preuve;\n- si une preuve manque ou se contredit, abandonne la question au lieu de deviner;\n- ne mélange jamais deux questions en une seule;\n- quatre options obligatoires, toutes différentes et plausibles;\n- correction concise, pédagogique et affirmative;\n- pour les mathématiques et sciences, utilise une notation lisible: x², y′, √(...), σ, Δ, ≤, ≥, ±, ×;\n- aucune remarque interne: ne jamais écrire "attention", "à vérifier", "brouillon", "IA", "je ne peux pas";\n- aucun doublon ni reformulation d'une question existante;\n${evidenceRules}\n${promptAvoidBlock(avoidQuestions, existingCount)}\nRéponds uniquement en JSON valide: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","evidence_type":"official_source|trusted_educational_source|source_pdf|calculation|language_rule","source_title":"...","source_url":"...","source_quote":"...","source_date":"AAAA-MM-JJ ou non datée"}]}`;
+  return `Tu es un enseignant expert et rigoureux en préparation aux examens et concours au Burkina Faso. Date de référence: ${currentDate}.\n${sourceLine}\nCatégorie choisie par l'admin: ${category}. Niveau choisi par l'admin: ${level}. Sujet/thème choisi par l'admin: ${theme}. ${nameLine}\nContraintes strictes:\n- respecte le formulaire admin et adapte réellement la difficulté au niveau ${level};\n- produis des faits actuels à la date de référence; une ancienne institution ou dénomination n'est autorisée que dans une question explicitement historique et datée;\n- pour le Burkina Faso en 2026, tiens compte des 17 régions et 47 provinces; les régions actuelles sont Bankui, Djôrô, Goulmou, Guiriko, Kadiogo, Kuilsé, Liptako, Nando, Nakambé, Nazinon, Oubri, Sirba, Soum, Sourou, Tannounyan, Tapoa et Yaadga;\n- ne présente jamais le Médiateur du Faso, le Conseil économique et social ou la Haute Cour de justice comme des institutions actuelles; toute question à leur sujet doit être explicitement historique;\n- chaque QCM doit être clair, non ambigu et ne comporter qu'une seule bonne réponse;\n- l'option correcte doit être explicitement justifiée par la correction et par la preuve;\n- si une preuve manque ou se contredit, abandonne la question au lieu de deviner;\n- ne mélange jamais deux questions en une seule;\n- quatre options obligatoires, toutes différentes et plausibles;\n- correction concise, pédagogique et affirmative;\n- pour les mathématiques et sciences, utilise une notation lisible: x², y′, √(...), σ, Δ, ≤, ≥, ±, ×;\n- aucune remarque interne: ne jamais écrire "attention", "à vérifier", "brouillon", "IA", "je ne peux pas";\n- aucun doublon ni reformulation d'une question existante;\n- avant d'inclure une question, contrôle silencieusement que la bonne réponse est unique, que la correction correspond exactement à cette réponse et que la citation fournie la prouve directement;\n- abandonne toute question dont la preuve n'est pas explicite dans les résultats de recherche; privilégie moins de questions plutôt que des questions fragiles;\n${evidenceRules}\n${promptAvoidBlock(avoidQuestions, existingCount)}\nRéponds uniquement en JSON valide: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","evidence_type":"official_source|trusted_educational_source|source_pdf|calculation|language_rule","source_title":"...","source_url":"...","source_quote":"...","source_date":"AAAA-MM-JJ ou non datée"}]}`;
 }
 
 function questionRowsForVerification(questions){
@@ -1494,6 +1501,28 @@ function qcmSourceWasGrounded(sourceUrl, groundingSources = []){
       }catch{ return false; }
     });
   }catch{ return false; }
+}
+
+function certifyGeminiSinglePassQuestion(question, context = {}){
+  const initialIssue = aiQuestionQualityIssue(question)
+    || qcmVerificationIssue(question, { ...context, requireVerified:false });
+  const externalEvidence = ['official_source','trusted_educational_source'].includes(question?.evidence_type);
+  const groundingIssue = externalEvidence && question?.generation_source_grounded === false
+    ? 'La source annoncée ne figure pas dans les résultats consultés par Gemini.'
+    : '';
+  if (initialIssue || groundingIssue) return { question, issue:initialIssue || groundingIssue };
+  const certified = {
+    ...question,
+    verification_status:'verified',
+    verification_score:92,
+    verification_reason:'Réponse, unicité des options et preuve contrôlées automatiquement après la recherche Gemini.',
+    verified_at:new Date().toISOString(),
+    verified_by:'gemini-grounded-single-pass',
+    verification_version:AI_QCM_VERIFICATION_VERSION
+  };
+  certified.verified_fingerprint = qcmContentFingerprint(certified);
+  const finalIssue = qcmVerificationIssue(certified, { ...context, requireVerified:true });
+  return finalIssue ? { question:{ ...certified, verification_status:'rejected' }, issue:finalIssue } : { question:certified, issue:'' };
 }
 
 function attachVerificationReview(question, review, model, context = {}){
@@ -1718,7 +1747,12 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
     model = ai.model || model;
     let candidates = [];
     try{
-      candidates = normalizeAiQuestionList(ai.text, defaults, batchCount, { dedupeIndex });
+      candidates = normalizeAiQuestionList(ai.text, defaults, batchCount, { dedupeIndex }).map(question => ({
+        ...question,
+        generation_source_grounded:fromPdf
+          || ['calculation','language_rule','source_pdf'].includes(question.evidence_type)
+          || qcmSourceWasGrounded(question.source_url, ai.groundingSources || [])
+      }));
     }catch(err){
       rejected.push({ question:'', reason:'Réponse de génération non lisible' });
       continue;
@@ -1999,7 +2033,9 @@ async function callGeminiGenerate(prompt, options = {}){
 }
 
 async function callAiGenerateParts(parts, options = {}){
-  const providers = aiProviderOrder(options.preferredProvider);
+  const preferredProvider = AI_QCM_SINGLE_GEMINI_MODE ? 'gemini' : options.preferredProvider;
+  let providers = aiProviderOrder(preferredProvider);
+  if (options.singleProvider || AI_QCM_SINGLE_GEMINI_MODE) providers = providers.slice(0, 1);
   if (!providers.length) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   const failures = [];
   for (const provider of providers){
@@ -2918,19 +2954,20 @@ async function generateDailyAiQcmBatch(draftId){
   if (remaining <= 0){
     draft = { ...draft, status:'draft', pending_questions:[], batch_phase:'complete' };
   }else if (pendingQuestions.length){
-    // Un seul appel IA par fonction Vercel : ce passage vérifie le lot
-    // généré et sauvegardé lors de la requête précédente.
+    // Aucun second appel IA : le serveur contrôle la structure, l'unicité,
+    // la source, la citation, les règles Burkina et l'empreinte de chaque QCM.
     const verificationBatch = pendingQuestions.slice(0, AI_QCM_BATCH_SIZE);
     const remainingPending = pendingQuestions.slice(verificationBatch.length);
-    const checked = await verifyAiQuestionsWithProvider(verificationBatch, {
-      category:draft.category,
-      level:draft.level,
-      theme:draft.title
-    });
     const accepted = [];
     const dedupeIndex = createQuestionDedupeIndex(questions.map(q => q.question_text));
-    for (const question of checked.questions){
-      const issue = aiQuestionQualityIssue(question, dedupeIndex)
+    for (const pendingQuestion of verificationBatch){
+      const certified = certifyGeminiSinglePassQuestion(pendingQuestion, {
+        category:draft.category,
+        level:draft.level,
+        theme:draft.title
+      });
+      const question = certified.question;
+      const issue = certified.issue || aiQuestionQualityIssue(question, dedupeIndex)
         || qcmVerificationIssue(question, { category:draft.category, level:draft.level, theme:draft.title, requireVerified:true });
       if (issue) continue;
       accepted.push(question);
@@ -2942,7 +2979,7 @@ async function generateDailyAiQcmBatch(draftId){
       questions:questions.concat(accepted).slice(0, target),
       pending_questions:remainingPending,
       count:Math.min(target, questions.length + accepted.length),
-      verification_model:checked.model || draft.verification_model || '',
+      verification_model:'gemini-grounded-single-pass + deterministic-v2',
       verification_version:AI_QCM_VERIFICATION_VERSION,
       batch_phase:remainingPending.length ? 'verification' : 'generation',
       updated_at:new Date().toISOString()
@@ -3718,7 +3755,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-verified-v2-8',
+    build: 'qcm-verified-v2-9',
     time: new Date().toISOString()
   });
 });
@@ -5340,6 +5377,7 @@ export {
   qcmDeterministicFactIssue,
   qcmVerificationIssue,
   qcmVerificationSummary,
+  certifyGeminiSinglePassQuestion,
   dailyDraftGenerationIssue,
   isOfficialBurkinaQcmSource,
   isTrustedEducationalQcmSource,

@@ -11,9 +11,9 @@ L’application **Réussite Concours BF** est une application web hébergée sur
 
 État production vérifié :
 
-- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-8>
+- URL actuelle : <https://concoursbf-fawn.vercel.app/?v=qcm-verified-v2-9>
 - API santé : <https://concoursbf-fawn.vercel.app/health>
-- Dernier build vérifié : `qcm-verified-v2-8`
+- Dernier build vérifié : `qcm-verified-v2-9`
 - Dernier commit fonctionnel OpenRouter : `2b811e2 Add OpenRouter Claude provider with Gemini fallback`
 - Contrôle de connexion fournisseur : `2dc1e4b Add cached AI provider health check`
 - Correctif runtime Vercel : `ab61662 Export Express app for Vercel runtime`
@@ -52,9 +52,9 @@ La génération quotidienne a été renforcée pour éviter qu’un modèle plus
 
 #### Principe retenu
 
-1. Générer par un QCM sourcé par étape depuis la V2.8.
-2. Utiliser la recherche web sourcée d’OpenRouter, la recherche Google de Gemini en repli, ou le PDF fourni comme base documentaire.
-3. Lancer un deuxième appel IA indépendant qui rend un verdict et ne réécrit pas silencieusement les questions douteuses.
+1. Générer jusqu’à cinq QCM sourcés par un seul appel Gemini depuis la V2.9.
+2. Utiliser la recherche Google de Gemini ou le PDF fourni comme base documentaire.
+3. Contrôler ensuite côté serveur, sans second appel IA, la structure, l’unicité, les doublons, les sources, les citations, les faits obsolètes et l’empreinte.
 4. Refuser les questions non étayées, ambiguës, obsolètes, contradictoires ou sous le score minimal.
 5. Conserver les preuves et le verdict dans le brouillon quotidien.
 6. Garder une relecture humaine obligatoire.
@@ -62,20 +62,17 @@ La génération quotidienne a été renforcée pour éviter qu’un modèle plus
 
 #### Modèles et configuration
 
-- Fournisseur prioritaire automatique lorsque sa clé est présente : OpenRouter.
-- Génération OpenRouter : `anthropic/claude-haiku-5.5`.
-- Vérification indépendante OpenRouter : `anthropic/claude-sonnet-5.5`.
-- Recherche OpenRouter : outil serveur `openrouter:web_search`, moteur `parallel`, avec domaines autorisés selon la politique de preuve ; lecture des pages par `openrouter:web_fetch`.
-- Analyse PDF OpenRouter : contenu PDF en base64 avec parseur `cloudflare-ai`.
-- Repli conservé : `gemini-3.7-flash` pour la génération et `gemini-3.1-pro-preview` pour la vérification.
-- Sélection : `AI_QCM_PROVIDER=auto` et `AI_QCM_FALLBACK_ENABLED=true`.
+- Fournisseur unique QCM : Gemini.
+- Génération et recherche Google : `gemini-3.7-flash` avec repli automatique vers les modèles Gemini disponibles.
+- OpenRouter et Claude restent configurés dans Vercel mais ne sont plus consommés par la préparation QCM.
+- Sélection : `AI_QCM_SINGLE_GEMINI_MODE=true`, `AI_QCM_PROVIDER=gemini` et `AI_QCM_FALLBACK_ENABLED=false`.
 - Recherche : `AI_QCM_GROUNDING_ENABLED=true`.
-- Vérification obligatoire : `AI_QCM_REQUIRE_VERIFICATION=true`.
-- Taille de lot : `AI_QCM_BATCH_SIZE=5`.
+- Contrôle serveur obligatoire : `AI_QCM_REQUIRE_VERIFICATION=true`, sans second appel IA quotidien.
+- Taille maximale d’un lot : `AI_QCM_BATCH_SIZE=5`.
 - Score minimal : `AI_QCM_MIN_VERIFICATION_SCORE=90`.
 - Version de politique : `official-sources-v2`.
 
-Les variables complètes et commentaires sont dans `backend/.env.example`. Les secrets `OPENROUTER_API_KEY` et `GEMINI_API_KEY` restent dans Vercel et ne doivent jamais être committés. Le contrôle de production du 9 octobre 2026 a confirmé `provider=openrouter`, les deux modèles Claude attendus, le repli Gemini actif et `aiCheck.valid=true` avec statut HTTP 200.
+Les variables complètes et commentaires sont dans `backend/.env.example`. Les secrets restent dans Vercel et ne doivent jamais être committés. Depuis la V2.9, `/health?ai=check` contrôle directement la connexion Gemini ; OpenRouter n’est plus débité par la préparation QCM.
 
 #### Politique de preuves
 
@@ -121,11 +118,11 @@ Une empreinte SHA-256 lie le verdict à l’énoncé exact, aux quatre options, 
 - `POST /api/admin/ai/daily/:id/verify` relance la vérification d’un brouillon existant.
 - `POST /api/admin/ai/daily/:id/publish` répond `409` si le contrôle V2 échoue.
 - Le PDF et le quiz interactif continuent à provenir du même tableau structuré corrigé.
-- Build/cache V2 : `qcm-verified-v2-8`.
+- Build/cache V2 : `qcm-verified-v2-9`.
 
 #### Correction mobile du 9 octobre 2026 — génération progressive
 
-La création de 50 QCM vérifiés ne s’exécute plus dans une seule requête longue, qui pouvait être interrompue par Vercel et afficher `Failed to fetch` sur téléphone. L’admin initialise maintenant une préparation, puis le navigateur demande automatiquement de un QCM par étape depuis la V2.8. Depuis le correctif `qcm-verified-v2-8`, une fonction Vercel effectue soit la génération du lot, soit sa vérification indépendante, jamais les deux appels IA dans la même requête. Le lot brut et le lot accepté sont enregistrés séparément dans Supabase. Un délai réseau fournisseur est arrêté côté serveur avant la limite Vercel. Gemini reste disponible après une panne technique rapide d’OpenRouter ; après un délai déjà long ou une erreur de compte/requête, le serveur remonte immédiatement le motif au lieu de lancer un second appel lent. Les QCM déjà enregistrés restent intacts. Le bouton **Reprendre la préparation** continue au dernier état sauvegardé sans recommencer les QCM déjà contrôlés. Le PDF final n’est créé qu’une fois les 50 QCM vérifiés obtenus.
+La création de 50 QCM vérifiés ne s’exécute plus dans une seule requête longue. L’admin initialise une préparation, puis le navigateur demande automatiquement jusqu’à cinq QCM par appel Gemini. La requête suivante applique rapidement les contrôles déterministes sans appeler une autre IA. Le lot brut et le lot accepté sont enregistrés séparément dans Supabase. Les QCM déjà enregistrés restent intacts. Le bouton **Reprendre la préparation** continue au dernier état sauvegardé sans recommencer les QCM déjà contrôlés. Le PDF final n’est créé qu’une fois les 50 QCM conformes obtenus.
 
 Routes concernées :
 
@@ -135,8 +132,9 @@ Routes concernées :
 #### Tests V2
 
 - `tools/test_qcm_verification_v2.mjs` contrôle les domaines, le score, la source officielle, les six erreurs connues, le calcul autonome et le blocage d’une empreinte devenue obsolète.
-- `tools/test_openrouter_qcm_provider.mjs` contrôle le choix d’OpenRouter, les modèles Claude, la recherche/fetch avec domaines autorisés, le JSON structuré et le transfert d’un PDF.
-- Commandes : `node tools/test_qcm_verification_v2.mjs` puis `node tools/test_openrouter_qcm_provider.mjs`.
+- `tools/test_single_gemini_qcm_provider.mjs` confirme que le mode économique utilise Gemini seul et ne contacte jamais OpenRouter.
+- `tools/test_openrouter_qcm_provider.mjs` conserve le contrôle de compatibilité Claude 5.5 pour l’ancien chemin disponible hors mode économique.
+- Commandes : `node tools/test_qcm_verification_v2.mjs`, `node tools/test_single_gemini_qcm_provider.mjs`, puis `node tools/test_openrouter_qcm_provider.mjs`.
 - Les contrôles de syntaxe restent : `node --check backend/server.js` et `node --check js/app.js`.
 - La banque principale de 5 000 QCM reste validée par `python3 tools/validate_qcm_bank.py content/qcm/qcm_bank_5000_v1.csv`.
 
@@ -247,7 +245,7 @@ Ces consignes doivent être respectées dans toute nouvelle discussion :
 
 ### IA
 
-- OpenRouter/Claude est le fournisseur prioritaire côté admin ; Gemini reste le repli automatique.
+- Depuis la V2.9, Gemini est l’unique fournisseur consommé côté admin ; OpenRouter reste configuré mais inactif pour éviter tout crédit supplémentaire.
 - Fonctions couvertes :
   - QCM sourcés ;
   - vérification indépendante ;
@@ -262,7 +260,7 @@ Ces consignes doivent être respectées dans toute nouvelle discussion :
 - Icônes PWA :
   - `img/pwa-icon-192.png`
   - `img/pwa-icon-512.png`
-- Dernier cache/build : `qcm-verified-v2-8`
+- Dernier cache/build : `qcm-verified-v2-9`
 
 ---
 
@@ -531,7 +529,7 @@ Service worker PWA :
 - cache data network-first ;
 - ne cache pas contenus Premium marqués ;
 - gère `CLEAR_DATA_CACHE` ;
-- version actuelle : `qcm-verified-v2-8`.
+- version actuelle : `qcm-verified-v2-9`.
 
 #### `vercel.json`
 

@@ -554,3 +554,17 @@ Le palier resté 30 minutes à 6/50 n’était plus un délai fournisseur : les 
 - les anciens lots de deux déjà en attente sont migrés et vérifiés un par un.
 
 Build/cache : `qcm-verified-v2-8`.
+
+## 2026-10-09 — V2.9 économique : Gemini seul
+
+À la demande de l’administrateur, OpenRouter et Claude ne sont plus consommés pour la préparation QCM. Le plafond total de la clé OpenRouter avait interrompu la préparation à 14/50 avec une erreur 403.
+
+- Un seul appel Gemini avec recherche Google prépare jusqu’à cinq QCM.
+- Le prompt exige l’unicité de la bonne réponse, une correction cohérente et une citation probante avant d’inclure chaque question.
+- Le serveur contrôle ensuite gratuitement la structure, les doublons, les sources officielles burkinabè, les citations, les faits obsolètes, le score et l’empreinte.
+- Aucun second appel IA n’est effectué pour la validation quotidienne.
+- Une source absente des résultats de recherche est rejetée.
+- Les 14/50 QCM déjà validés sont conservés et les éventuelles questions en attente sont reprises localement.
+- Trois lots sans aucun QCM accepté arrêtent la boucle et affichent un motif clair.
+
+Build/cache : `qcm-verified-v2-9`.
