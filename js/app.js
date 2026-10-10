@@ -3959,7 +3959,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-verified-v2-12') location.reload();
+    if (data.build && data.build !== 'groq-qcm-v1-13') location.reload();
   }catch{}
 }
 
@@ -3972,7 +3972,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-12')
+    navigator.serviceWorker.register('/sw.js?v=groq-qcm-v1-13')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

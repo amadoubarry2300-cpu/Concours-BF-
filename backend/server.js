@@ -59,8 +59,16 @@ const SMS_SENDER = process.env.SMS_SENDER || 'ConcoursBF';
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_FROM = process.env.TWILIO_FROM || '';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GROQ_BASE_URL = String(process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1').replace(/\/$/, '');
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+const GROQ_REASONING_EFFORT = ['low','medium','high'].includes(String(process.env.GROQ_REASONING_EFFORT || '').toLowerCase())
+  ? String(process.env.GROQ_REASONING_EFFORT).toLowerCase()
+  : 'low';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-// QCM vérifiés V2 : OpenRouter/Claude en priorité, Gemini en repli automatique.
+// Gemini reste disponible en configuration de secours tant que Groq n'a pas
+// été validé en production. Les QCM quotidiens utilisent Groq dès que sa clé
+// serveur est présente et n'exposent jamais cette clé au frontend.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
 const GEMINI_VERIFIER_MODEL = process.env.GEMINI_VERIFIER_MODEL || 'gemini-3.1-pro-preview';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
@@ -73,15 +81,19 @@ const OPENROUTER_SEARCH_MAX_USES = 1;
 const OPENROUTER_SEARCH_MAX_RESULTS = Math.min(8, Math.max(4, Number(process.env.OPENROUTER_SEARCH_MAX_RESULTS || 6)));
 const AI_QCM_PROVIDER_SETTING = String(process.env.AI_QCM_PROVIDER || 'auto').trim().toLowerCase();
 const AI_QCM_FALLBACK_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_FALLBACK_ENABLED || 'true'));
-// Mode économique demandé par l'administrateur : une seule IA, Gemini.
-// OpenRouter reste configuré dans Vercel mais n'est plus consommé par les QCM.
-const AI_QCM_SINGLE_GEMINI_MODE = Boolean(GEMINI_API_KEY)
+// Mode économique demandé par l'administrateur : Groq seul pour préparer les
+// QCM. La simple présence de GROQ_API_KEY active ce mode afin qu'une ancienne
+// valeur AI_QCM_PROVIDER=gemini ne maintienne pas par erreur la clé épuisée.
+const AI_QCM_SINGLE_GROQ_MODE = Boolean(GROQ_API_KEY)
+  && !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_SINGLE_GROQ_MODE || 'true'));
+const AI_QCM_SINGLE_GEMINI_MODE = !AI_QCM_SINGLE_GROQ_MODE
+  && Boolean(GEMINI_API_KEY)
   && !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_SINGLE_GEMINI_MODE || 'true'));
 const AI_QCM_TIMEOUT_MS = Math.min(35000, Math.max(15000, Number(process.env.AI_QCM_TIMEOUT_MS || 35000)));
 const AI_QCM_GROUNDING_ENABLED = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_GROUNDING_ENABLED || 'true'));
 const AI_QCM_REQUIRE_VERIFICATION = !/^(?:false|0|no|non)$/i.test(String(process.env.AI_QCM_REQUIRE_VERIFICATION || 'true'));
-// Gemini prépare cinq QCM sourcés par appel ; le contrôle déterministe local
-// n'effectue aucun second appel payant.
+// GPT-OSS 120B prépare cinq QCM sourcés par appel ; le contrôle déterministe
+// local n'effectue aucun second appel payant pour les lots quotidiens.
 const AI_QCM_BATCH_SIZE = Math.min(5, Math.max(1, Number(process.env.AI_QCM_BATCH_SIZE || 5)));
 const AI_QCM_MIN_VERIFICATION_SCORE = Math.min(100, Math.max(70, Number(process.env.AI_QCM_MIN_VERIFICATION_SCORE || 90)));
 const AI_QCM_VERIFICATION_VERSION = 'official-sources-v2';
@@ -963,15 +975,19 @@ function adminQuestionPayload(body){
 
 function aiProviderOrder(preferredProvider = ''){
   const available = [];
+  if (GROQ_API_KEY) available.push('groq');
   if (OPENROUTER_API_KEY) available.push('openrouter');
   if (GEMINI_API_KEY) available.push('gemini');
   if (!available.length) return [];
-  const preferred = ['openrouter','gemini'].includes(String(preferredProvider || '').toLowerCase())
+  const providerNames = ['groq','openrouter','gemini'];
+  const preferred = providerNames.includes(String(preferredProvider || '').toLowerCase())
     ? String(preferredProvider).toLowerCase()
     : '';
-  const requested = preferred || (['openrouter','gemini'].includes(AI_QCM_PROVIDER_SETTING)
-    ? AI_QCM_PROVIDER_SETTING
-    : (OPENROUTER_API_KEY ? 'openrouter' : 'gemini'));
+  const requested = AI_QCM_SINGLE_GROQ_MODE
+    ? 'groq'
+    : preferred || (providerNames.includes(AI_QCM_PROVIDER_SETTING)
+      ? AI_QCM_PROVIDER_SETTING
+      : available[0]);
   const ordered = [requested, ...available].filter((provider, index, rows) => available.includes(provider) && rows.indexOf(provider) === index);
   return AI_QCM_FALLBACK_ENABLED ? ordered : ordered.slice(0, 1);
 }
@@ -981,32 +997,41 @@ function aiProviderConfigured(){
 }
 
 function aiPrimaryProvider(){
+  if (AI_QCM_SINGLE_GROQ_MODE) return 'groq';
   if (AI_QCM_SINGLE_GEMINI_MODE) return 'gemini';
   return aiProviderOrder()[0] || '';
 }
 
 function aiGenerationModel(){
-  return GEMINI_API_KEY ? GEMINI_MODEL : OPENROUTER_MODEL;
+  const provider = aiPrimaryProvider();
+  if (provider === 'groq') return GROQ_MODEL;
+  if (provider === 'openrouter') return OPENROUTER_MODEL;
+  return provider === 'gemini' ? GEMINI_MODEL : '';
 }
 
 function aiVerifierModel(){
-  return AI_QCM_SINGLE_GEMINI_MODE ? 'contrôles-déterministes-v2' : (OPENROUTER_API_KEY ? OPENROUTER_VERIFIER_MODEL : GEMINI_VERIFIER_MODEL);
+  if (AI_QCM_SINGLE_GROQ_MODE || AI_QCM_SINGLE_GEMINI_MODE) return 'contrôles-déterministes-v2';
+  const provider = aiPrimaryProvider();
+  if (provider === 'groq') return GROQ_MODEL;
+  if (provider === 'openrouter') return OPENROUTER_VERIFIER_MODEL;
+  return provider === 'gemini' ? GEMINI_VERIFIER_MODEL : '';
 }
 
 function aiProviderStatus(){
-  const singleGemini = AI_QCM_SINGLE_GEMINI_MODE;
-  const hybrid = !singleGemini && Boolean(OPENROUTER_API_KEY && GEMINI_API_KEY);
+  const singleProvider = AI_QCM_SINGLE_GROQ_MODE || AI_QCM_SINGLE_GEMINI_MODE;
+  const configuredCount = [GROQ_API_KEY, OPENROUTER_API_KEY, GEMINI_API_KEY].filter(Boolean).length;
+  const generationProvider = aiPrimaryProvider();
   return {
     configured:aiProviderConfigured(),
-    provider:aiPrimaryProvider(),
-    providers:{ openrouter:Boolean(OPENROUTER_API_KEY), gemini:Boolean(GEMINI_API_KEY) },
-    generationProvider:GEMINI_API_KEY ? 'gemini' : 'openrouter',
-    verificationProvider:singleGemini ? 'server' : (OPENROUTER_API_KEY ? 'openrouter' : 'gemini'),
-    singleProvider:singleGemini,
-    hybrid,
+    provider:generationProvider,
+    providers:{ groq:Boolean(GROQ_API_KEY), openrouter:Boolean(OPENROUTER_API_KEY), gemini:Boolean(GEMINI_API_KEY) },
+    generationProvider,
+    verificationProvider:singleProvider ? 'server' : generationProvider,
+    singleProvider,
+    hybrid:!singleProvider && configuredCount > 1,
     model:aiGenerationModel(),
     verifierModel:aiVerifierModel(),
-    fallback:!singleGemini && AI_QCM_FALLBACK_ENABLED && aiProviderOrder().length > 1
+    fallback:!singleProvider && AI_QCM_FALLBACK_ENABLED && aiProviderOrder().length > 1
   };
 }
 
@@ -1019,10 +1044,16 @@ async function checkAiProviderConnection(){
   let valid = false;
   let status = 0;
   try{
-    const url = provider === 'openrouter'
-      ? `${OPENROUTER_BASE_URL}/key`
-      : `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-    const headers = provider === 'openrouter' ? { Authorization:`Bearer ${OPENROUTER_API_KEY}` } : {};
+    const url = provider === 'groq'
+      ? `${GROQ_BASE_URL}/models`
+      : provider === 'openrouter'
+        ? `${OPENROUTER_BASE_URL}/key`
+        : `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const headers = provider === 'groq'
+      ? { Authorization:`Bearer ${GROQ_API_KEY}` }
+      : provider === 'openrouter'
+        ? { Authorization:`Bearer ${OPENROUTER_API_KEY}` }
+        : {};
     const response = await fetch(url, { headers, signal:AbortSignal.timeout(8000) });
     status = response.status;
     valid = response.ok;
@@ -1084,21 +1115,56 @@ async function geminiModelsToTry({ verifier=false } = {}){
   return Array.from(new Set(ordered.map(normalizeGeminiModelName).filter(Boolean)));
 }
 
+function balancedJsonSlice(value, start){
+  const opening = value[start];
+  if (!['{','['].includes(opening)) return '';
+  const stack = [opening];
+  let inString = false;
+  let escaped = false;
+  for (let index = start + 1; index < value.length; index++){
+    const char = value[index];
+    if (inString){
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"'){
+      inString = true;
+      continue;
+    }
+    if (char === '{' || char === '[') stack.push(char);
+    else if (char === '}' || char === ']'){
+      const expected = char === '}' ? '{' : '[';
+      if (stack.pop() !== expected) return '';
+      if (!stack.length) return value.slice(start, index + 1);
+    }
+  }
+  return '';
+}
+
 function extractJsonFromAi(text){
   const raw = String(text || '').trim();
   if (!raw) throw Object.assign(new Error('Réponse IA vide'), { status:502 });
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1].trim() : raw;
-  try{ return JSON.parse(candidate); }catch{}
-  const startArray = candidate.indexOf('[');
-  const endArray = candidate.lastIndexOf(']');
-  if (startArray >= 0 && endArray > startArray){
-    return JSON.parse(candidate.slice(startArray, endArray + 1));
+  const candidates = [raw];
+  for (const match of raw.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)){
+    if (match[1]?.trim()) candidates.unshift(match[1].trim());
   }
-  const startObj = candidate.indexOf('{');
-  const endObj = candidate.lastIndexOf('}');
-  if (startObj >= 0 && endObj > startObj){
-    return JSON.parse(candidate.slice(startObj, endObj + 1));
+  for (const candidate of candidates){
+    try{ return JSON.parse(candidate); }catch{}
+    const starts = [];
+    for (const match of candidate.matchAll(/\{\s*"(?:questions|reviews)"\s*:/g)) starts.push(match.index);
+    for (let index = 0; index < candidate.length; index++){
+      if ((candidate[index] === '{' || candidate[index] === '[') && !starts.includes(index)) starts.push(index);
+    }
+    for (const start of starts){
+      const json = balancedJsonSlice(candidate, start);
+      if (!json) continue;
+      try{
+        const parsed = JSON.parse(json);
+        if (Array.isArray(parsed) || Array.isArray(parsed?.questions) || Array.isArray(parsed?.reviews)) return parsed;
+      }catch{}
+    }
   }
   throw Object.assign(new Error('Réponse IA non lisible'), { status:502 });
 }
@@ -1475,7 +1541,7 @@ function aiQcmPrompt({ count, category, level, theme, publicationName = '', from
       ? `- chaque fait doit être appuyé par une page officielle burkinabè: domaine .gov.bf, presidencedufaso.bf, assembleenationale.bf, legiburkina.bf ou insd.bf; evidence_type="official_source"; fournis l'URL directe, le titre et un extrait probant. Aucune source de blog, réseau social, Wikipédia ou média généraliste.`
       : `- chaque fait doit avoir une preuve: source officielle ou éducative reconnue avec URL directe, titre et extrait; pour un calcul démontré utilise evidence_type="calculation"; pour une règle de langue démontrée utilise evidence_type="language_rule".`;
   const nameLine = publicationName ? `Nom du QCM demandé: ${publicationName}.` : '';
-  return `Tu es un enseignant expert et rigoureux en préparation aux examens et concours au Burkina Faso. Date de référence: ${currentDate}.\n${sourceLine}\nCatégorie choisie par l'admin: ${category}. Niveau choisi par l'admin: ${level}. Sujet/thème choisi par l'admin: ${theme}. ${nameLine}\nContraintes strictes:\n- respecte le formulaire admin et adapte réellement la difficulté au niveau ${level};\n- produis des faits actuels à la date de référence; une ancienne institution ou dénomination n'est autorisée que dans une question explicitement historique et datée;\n- pour le Burkina Faso en 2026, tiens compte des 17 régions et 47 provinces; les régions actuelles sont Bankui, Djôrô, Goulmou, Guiriko, Kadiogo, Kuilsé, Liptako, Nando, Nakambé, Nazinon, Oubri, Sirba, Soum, Sourou, Tannounyan, Tapoa et Yaadga;\n- ne présente jamais le Médiateur du Faso, le Conseil économique et social ou la Haute Cour de justice comme des institutions actuelles; toute question à leur sujet doit être explicitement historique;\n- chaque QCM doit être clair, non ambigu et ne comporter qu'une seule bonne réponse;\n- l'option correcte doit être explicitement justifiée par la correction et par la preuve;\n- si une preuve manque ou se contredit, abandonne la question au lieu de deviner;\n- ne mélange jamais deux questions en une seule;\n- quatre options obligatoires, toutes différentes et plausibles;\n- correction concise, pédagogique et affirmative;\n- pour les mathématiques et sciences, utilise une notation lisible: x², y′, √(...), σ, Δ, ≤, ≥, ±, ×;\n- aucune remarque interne: ne jamais écrire "attention", "à vérifier", "brouillon", "IA", "je ne peux pas";\n- aucun doublon ni reformulation d'une question existante;\n- avant d'inclure une question, contrôle silencieusement que la bonne réponse est unique, que la correction correspond exactement à cette réponse et que la citation fournie la prouve directement;\n- abandonne toute question dont la preuve n'est pas explicite dans les résultats de recherche; privilégie moins de questions plutôt que des questions fragiles;\n${evidenceRules}\n${promptAvoidBlock(avoidQuestions, existingCount)}\nRéponds uniquement en JSON valide: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","evidence_type":"official_source|trusted_educational_source|source_pdf|calculation|language_rule","source_title":"...","source_url":"...","source_quote":"...","source_date":"AAAA-MM-JJ ou non datée"}]}`;
+  return `Tu es un enseignant expert et rigoureux en préparation aux examens et concours au Burkina Faso. Date de référence: ${currentDate}.\n${sourceLine}\nCatégorie choisie par l'admin: ${category}. Niveau choisi par l'admin: ${level}. Sujet/thème choisi par l'admin: ${theme}. ${nameLine}\nContraintes strictes:\n- respecte le formulaire admin et adapte réellement la difficulté au niveau ${level};\n- produis des faits actuels à la date de référence; une ancienne institution ou dénomination n'est autorisée que dans une question explicitement historique et datée;\n- pour le Burkina Faso en 2026, tiens compte des 17 régions et 47 provinces; les régions actuelles sont Bankui, Djôrô, Goulmou, Guiriko, Kadiogo, Kuilsé, Liptako, Nando, Nakambé, Nazinon, Oubri, Sirba, Soum, Sourou, Tannounyan, Tapoa et Yaadga;\n- ne présente jamais le Médiateur du Faso, le Conseil économique et social ou la Haute Cour de justice comme des institutions actuelles; toute question à leur sujet doit être explicitement historique;\n- chaque QCM doit être clair, non ambigu et ne comporter qu'une seule bonne réponse;\n- l'option correcte doit être explicitement justifiée par la correction et par la preuve;\n- si une preuve manque ou se contredit, abandonne la question au lieu de deviner;\n- ne mélange jamais deux questions en une seule;\n- quatre options obligatoires, toutes différentes et plausibles;\n- correction concise, pédagogique et affirmative;\n- pour les mathématiques et sciences, utilise une notation lisible: x², y′, √(...), σ, Δ, ≤, ≥, ±, ×;\n- aucune remarque interne: ne jamais écrire "attention", "à vérifier", "brouillon", "IA", "je ne peux pas";\n- aucun doublon ni reformulation d'une question existante;\n- avant d'inclure une question, contrôle silencieusement que la bonne réponse est unique, que la correction correspond exactement à cette réponse et que la citation fournie la prouve directement;\n- abandonne toute question dont la preuve n'est pas explicite dans les résultats de recherche; privilégie moins de questions plutôt que des questions fragiles;\n- dans source_url, écris uniquement l'URL directe brute, sans marqueur de citation, note, espace ni texte ajouté; n'écris rien avant ou après l'objet JSON;\n${evidenceRules}\n${promptAvoidBlock(avoidQuestions, existingCount)}\nRéponds uniquement en JSON valide: {"questions":[{"category":"...","level":"...","question_text":"...","options":["...","...","...","..."],"correct_answer":0,"explanation":"...","evidence_type":"official_source|trusted_educational_source|source_pdf|calculation|language_rule","source_title":"...","source_url":"...","source_quote":"...","source_date":"AAAA-MM-JJ ou non datée"}]}`;
 }
 
 function questionRowsForVerification(questions){
@@ -1512,26 +1578,36 @@ function qcmSourceWasGrounded(sourceUrl, groundingSources = []){
   }catch{ return false; }
 }
 
-function certifyGeminiSinglePassQuestion(question, context = {}){
+function certifyGroundedSinglePassQuestion(question, context = {}, provider = 'groq'){
   const initialIssue = aiQuestionQualityIssue(question)
     || qcmVerificationIssue(question, { ...context, requireVerified:false });
   const externalEvidence = ['official_source','trusted_educational_source'].includes(question?.evidence_type);
   const groundingIssue = externalEvidence && question?.generation_source_grounded === false
-    ? 'La source annoncée ne figure pas dans les résultats consultés par Gemini.'
+    ? 'La source annoncée ne figure pas dans les résultats de recherche réellement consultés.'
     : '';
   if (initialIssue || groundingIssue) return { question, issue:initialIssue || groundingIssue };
+  const providerName = ['groq','gemini'].includes(String(provider || '').toLowerCase())
+    ? String(provider).toLowerCase()
+    : 'grounded-provider';
+  const providerLabel = providerName === 'groq' ? 'Groq' : providerName === 'gemini' ? 'Gemini' : 'le fournisseur sourcé';
   const certified = {
     ...question,
     verification_status:'verified',
     verification_score:92,
-    verification_reason:'Réponse, unicité des options et preuve contrôlées automatiquement après la recherche Gemini.',
+    verification_reason:`Réponse, unicité des options et preuve contrôlées automatiquement après la recherche ${providerLabel}.`,
     verified_at:new Date().toISOString(),
-    verified_by:'gemini-grounded-single-pass',
+    verified_by:`${providerName}-grounded-single-pass`,
     verification_version:AI_QCM_VERIFICATION_VERSION
   };
   certified.verified_fingerprint = qcmContentFingerprint(certified);
   const finalIssue = qcmVerificationIssue(certified, { ...context, requireVerified:true });
   return finalIssue ? { question:{ ...certified, verification_status:'rejected' }, issue:finalIssue } : { question:certified, issue:'' };
+}
+
+// Alias conservé pour les brouillons Gemini déjà enregistrés et les anciens
+// tests/outils d'administration.
+function certifyGeminiSinglePassQuestion(question, context = {}){
+  return certifyGroundedSinglePassQuestion(question, context, 'gemini');
 }
 
 function attachVerificationReview(question, review, model, context = {}){
@@ -1577,8 +1653,9 @@ async function verifyAiQuestionsWithProvider(questions, { category, level, theme
   const prompt = `Tu es le second vérificateur indépendant de QCM éducatifs. Date de référence: ${currentDate}. Tu ne dois ni réécrire ni remplacer les questions. Pour chaque index, contrôle séparément l'énoncé, les quatre options, l'indice de réponse, l'explication, l'actualité du fait et la preuve. Utilise la recherche web si le QCM ne vient pas d'un PDF. Pour tout contenu sur le Burkina Faso ou son droit, accepte uniquement une source officielle burkinabè et une dénomination administrative actuelle, sauf contexte historique explicite. Pour un calcul, refais le calcul étape par étape. Pour une règle de français, vérifie la règle. Une URL seule ne suffit pas: l'extrait doit réellement prouver l'option indiquée; indique aussi la date de la source ou « non datée ». Rejette au moindre doute, si plusieurs options sont défendables, si la source est inaccessible/non officielle, ou si l'explication contredit la réponse. Seuil d'exigence: ${AI_QCM_MIN_VERIFICATION_SCORE}/100. Catégorie: ${category}. Niveau: ${level}. Thème: ${theme}. Source PDF: ${fromPdf ? 'oui' : 'non'}. Source officielle burkinabè obligatoire: ${officialRequired ? 'oui' : 'selon le sujet'}. Réponds uniquement en JSON valide: {"reviews":[{"index":0,"status":"VALIDATED|REJECTED","score":0,"answer_consistent":true,"source_supports_answer":true,"reason":"...","evidence_type":"official_source|trusted_educational_source|source_pdf|calculation|language_rule","source_title":"...","source_url":"...","source_quote":"...","source_date":"..."}]}. Retourne exactement un avis par index.\n\nQCM à contrôler:\n${JSON.stringify(questionRowsForVerification(questions))}`;
   const verifyOptions = {
     verifier:true,
-    // Vérification indépendante conservée sur Sonnet 5.5 via OpenRouter.
-    preferredProvider:'openrouter',
+    // Groq reste le seul fournisseur IA. Ce second passage n'est utilisé que
+    // par la vérification explicite hors du flux quotidien économique.
+    preferredProvider:'groq',
     grounding:AI_QCM_GROUNDING_ENABLED && !fromPdf,
     allowedDomains:qcmSearchAllowedDomains(category, theme),
     temperature:0.05,
@@ -1605,7 +1682,7 @@ async function verifyAiQuestionsWithProvider(questions, { category, level, theme
       level,
       theme,
       groundingSources:ai.groundingSources || [],
-      requireGroundingMatch:Boolean(verifyOptions.grounding && ai.provider === 'openrouter')
+      requireGroundingMatch:Boolean(verifyOptions.grounding && ['groq','openrouter','gemini'].includes(ai.provider))
     }
   ));
   return { questions:verifiedQuestions, model:ai.model, groundingSources:ai.groundingSources || [] };
@@ -1741,9 +1818,9 @@ async function generateUniqueAiQuestions({ count, category, level, theme, public
     const batchTheme = `${theme || category}. Angle obligatoire du lot ${attempt + 1}: ${angle}. Chaque réponse doit être prouvée avant d'être proposée.`;
     const prompt = aiQcmPrompt({ count:batchCount, category, level, theme:batchTheme, publicationName, fromPdf, avoidQuestions, existingCount:existingTexts.length });
     const generateOptions = {
-      // Gemini Flash prépare rapidement un QCM ; Haiku reste le repli si
-      // Gemini rencontre un quota. Sonnet vérifie ensuite indépendamment.
-      preferredProvider:'gemini',
+      // GPT-OSS 120B prépare le lot avec Browser Search. Les contrôles locaux
+      // déterministes bloquent ensuite toute question fragile ou non sourcée.
+      preferredProvider:'groq',
       grounding:AI_QCM_GROUNDING_ENABLED && !fromPdf,
       allowedDomains:qcmSearchAllowedDomains(category, batchTheme),
       temperature:0.16,
@@ -1845,6 +1922,123 @@ function groundingSourcesFromGemini(data){
   }
   const seen = new Set();
   return rows.filter(row => !seen.has(row.url) && seen.add(row.url)).slice(0, 30);
+}
+
+function groundingSourcesFromGroq(data){
+  const rows = [];
+  const pushSource = value => {
+    if (!value || typeof value !== 'object') return;
+    const url = cleanQcmSourceUrl(value.url || value.uri || value.link || value.source_url || '');
+    if (!url) return;
+    rows.push({
+      url,
+      title:strictCleanAiQcmText(value.title || value.name || '', 300),
+      quote:strictCleanAiQcmText(value.content || value.text || value.snippet || value.description || '', 1600)
+    });
+  };
+  const walkSearchResult = (value, depth = 0) => {
+    if (depth > 6 || value == null) return;
+    if (Array.isArray(value)){
+      value.forEach(row => walkSearchResult(row, depth + 1));
+      return;
+    }
+    if (typeof value !== 'object') return;
+    pushSource(value);
+    for (const key of ['search_results','searchResults','results','items','sources','documents','output']){
+      if (value[key] != null) walkSearchResult(value[key], depth + 1);
+    }
+  };
+  for (const choice of (data?.choices || [])){
+    const message = choice?.message || {};
+    walkSearchResult(message?.executed_tools || message?.executedTools || []);
+    for (const annotation of (Array.isArray(message.annotations) ? message.annotations : [])){
+      pushSource(annotation?.url_citation || annotation?.urlCitation || annotation);
+    }
+  }
+  const seen = new Set();
+  return rows.filter(row => !seen.has(row.url) && seen.add(row.url)).slice(0, 40);
+}
+
+function groqTextContent(parts = [], options = {}){
+  const texts = [];
+  for (const part of (Array.isArray(parts) ? parts : [])){
+    if (typeof part?.text === 'string' && part.text.trim()){
+      texts.push(part.text.trim());
+      continue;
+    }
+    const inline = part?.inline_data || part?.inlineData;
+    if (inline?.data){
+      throw Object.assign(new Error('Les pièces jointes PDF ou image ne sont pas encore prises en charge par Groq. Les QCM déjà enregistrés sont conservés.'), { status:400 });
+    }
+  }
+  const allowedDomains = Array.from(new Set((options.allowedDomains || [])
+    .map(value => String(value || '').trim().toLowerCase())
+    .filter(Boolean))).slice(0, 40);
+  if (options.grounding && allowedDomains.length){
+    texts.push(`Pour la recherche web, limite les sources aux domaines suivants: ${allowedDomains.join(', ')}. N'utilise aucun fait externe provenant d'un autre domaine.`);
+  }
+  return texts.join('\n\n');
+}
+
+async function callGroqGenerateParts(parts, options = {}){
+  if (!GROQ_API_KEY) throw Object.assign(new Error('Groq non configuré'), { status:503 });
+  const content = groqTextContent(parts, options);
+  if (!content) throw Object.assign(new Error('Requête Groq vide'), { status:400 });
+  const requestBody = {
+    model:GROQ_MODEL,
+    messages:[{ role:'user', content }],
+    max_completion_tokens:Number(options.maxOutputTokens || 10000),
+    temperature:Number(options.temperature ?? 0.16),
+    top_p:Number(options.topP ?? 0.78),
+    reasoning_effort:GROQ_REASONING_EFFORT,
+    stream:false
+  };
+  // Browser Search et les sorties structurées Groq sont incompatibles. Pour
+  // un lot sourcé, le prompt impose donc le JSON et le parseur serveur le
+  // valide ensuite. Sans recherche, JSON Object Mode renforce le format.
+  if (options.grounding){
+    requestBody.tools = [{ type:'browser_search' }];
+    requestBody.tool_choice = 'required';
+  }else{
+    requestBody.response_format = { type:'json_object' };
+  }
+  let res;
+  try{
+    res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+      method:'POST',
+      headers:{
+        'Authorization':`Bearer ${GROQ_API_KEY}`,
+        'Content-Type':'application/json'
+      },
+      body:JSON.stringify(requestBody),
+      signal:AbortSignal.timeout(AI_QCM_TIMEOUT_MS)
+    });
+  }catch(err){
+    const message = err?.name === 'TimeoutError' ? 'Délai Groq dépassé' : (err?.message || 'Connexion Groq interrompue');
+    throw Object.assign(new Error(message), { status:err?.name === 'TimeoutError' ? 504 : 502 });
+  }
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok){
+    const detail = strictCleanAiQcmText(data?.error?.message || data?.message || `Erreur Groq ${res.status}`, 500)
+      .replace(/gsk_[A-Za-z0-9._-]+/g, '[clé masquée]');
+    const quotaFailure = res.status === 429 || /quota|rate|limit|tokens per/i.test(detail);
+    const message = quotaFailure
+      ? `Quota Groq atteint pour le moment. Les QCM déjà enregistrés sont conservés. Détail Groq (${res.status}) : ${detail}`
+      : `Groq est indisponible pour le moment. Les QCM déjà enregistrés sont conservés. Détail Groq (${res.status}) : ${detail}`;
+    throw Object.assign(new Error(message), { status:res.status >= 400 && res.status < 500 ? res.status : 502 });
+  }
+  const responseContent = data?.choices?.[0]?.message?.content;
+  const text = typeof responseContent === 'string'
+    ? responseContent.trim()
+    : (Array.isArray(responseContent) ? responseContent.map(part => part?.text || part?.content || '').join('\n').trim() : '');
+  if (!text) throw Object.assign(new Error('Réponse Groq vide'), { status:502 });
+  return {
+    provider:'groq',
+    model:`groq:${data?.model || GROQ_MODEL}`,
+    text,
+    groundingSources:groundingSourcesFromGroq(data),
+    usage:data?.usage || null
+  };
 }
 
 function openRouterMessageContent(parts = []){
@@ -2053,28 +2247,32 @@ async function callGeminiGenerate(prompt, options = {}){
 }
 
 async function callAiGenerateParts(parts, options = {}){
-  const preferredProvider = AI_QCM_SINGLE_GEMINI_MODE ? 'gemini' : options.preferredProvider;
+  const preferredProvider = AI_QCM_SINGLE_GROQ_MODE
+    ? 'groq'
+    : AI_QCM_SINGLE_GEMINI_MODE
+      ? 'gemini'
+      : options.preferredProvider;
   let providers = aiProviderOrder(preferredProvider);
-  if (options.singleProvider || AI_QCM_SINGLE_GEMINI_MODE) providers = providers.slice(0, 1);
+  if (options.singleProvider || AI_QCM_SINGLE_GROQ_MODE || AI_QCM_SINGLE_GEMINI_MODE) providers = providers.slice(0, 1);
   if (!providers.length) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   const failures = [];
   for (const provider of providers){
     const startedAt = Date.now();
     try{
-      return provider === 'openrouter'
-        ? await callOpenRouterGenerateParts(parts, options)
-        : await callGeminiGenerateParts(parts, options);
+      if (provider === 'groq') return await callGroqGenerateParts(parts, options);
+      if (provider === 'openrouter') return await callOpenRouterGenerateParts(parts, options);
+      return await callGeminiGenerateParts(parts, options);
     }catch(err){
       const status = Number(err?.status || 502);
       failures.push({ provider, status, message:String(err?.message || 'Erreur inconnue') });
       console.warn(`${provider} generation failed:`, err?.message || err);
-      // Ne pas enchaîner un deuxième appel long après un délai OpenRouter ou
-      // une erreur de compte/requête : cela dépassait la fonction Vercel et
-      // provoquait les répétitions « Lot interrompu » pendant plusieurs minutes.
-      if (provider === 'openrouter' && (status === 504 || (status >= 400 && status < 500) || Date.now() - startedAt > 20000)) break;
+      // Ne pas enchaîner un deuxième appel long après un délai fournisseur ou
+      // une erreur de compte/requête : cela dépasserait la fonction Vercel et
+      // provoquerait les répétitions « Lot interrompu » pendant plusieurs minutes.
+      if (['groq','openrouter'].includes(provider) && (status === 504 || (status >= 400 && status < 500) || Date.now() - startedAt > 20000)) break;
     }
   }
-  if (AI_QCM_SINGLE_GEMINI_MODE && failures.length === 1){
+  if ((AI_QCM_SINGLE_GROQ_MODE || AI_QCM_SINGLE_GEMINI_MODE) && failures.length === 1){
     const only = failures[0];
     throw Object.assign(new Error(only.message), { status:only.status });
   }
@@ -2086,7 +2284,7 @@ async function callAiGenerateParts(parts, options = {}){
       : 'IA indisponible pour le moment. Réessaie un peu plus tard.';
   const detail = failures.map(row => {
     const message = strictCleanAiQcmText(row.message, 260)
-      .replace(/(?:sk-or-|sk-ant-|AIza)[A-Za-z0-9._-]+/g, '[clé masquée]');
+      .replace(/(?:gsk_|sk-or-|sk-ant-|AIza)[A-Za-z0-9._-]+/g, '[clé masquée]');
     return `${row.provider} (${row.status}) : ${message}`;
   }).join(' — ');
   const err = new Error(`${friendly}${detail ? ` Détail fournisseur : ${detail}` : ''}`);
@@ -2984,12 +3182,13 @@ async function generateDailyAiQcmBatch(draftId){
     const remainingPending = pendingQuestions.slice(verificationBatch.length);
     const accepted = [];
     const dedupeIndex = createQuestionDedupeIndex(questions.map(q => q.question_text));
+    const groundedProvider = String(draft.model || '').startsWith('gemini:') ? 'gemini' : 'groq';
     for (const pendingQuestion of verificationBatch){
-      const certified = certifyGeminiSinglePassQuestion(pendingQuestion, {
+      const certified = certifyGroundedSinglePassQuestion(pendingQuestion, {
         category:draft.category,
         level:draft.level,
         theme:draft.title
-      });
+      }, groundedProvider);
       const question = certified.question;
       const issue = certified.issue || aiQuestionQualityIssue(question, dedupeIndex)
         || qcmVerificationIssue(question, { category:draft.category, level:draft.level, theme:draft.title, requireVerified:true });
@@ -3003,7 +3202,7 @@ async function generateDailyAiQcmBatch(draftId){
       questions:questions.concat(accepted).slice(0, target),
       pending_questions:remainingPending,
       count:Math.min(target, questions.length + accepted.length),
-      verification_model:'gemini-grounded-single-pass + deterministic-v2',
+      verification_model:`${groundedProvider}-grounded-single-pass + deterministic-v2`,
       verification_version:AI_QCM_VERIFICATION_VERSION,
       batch_phase:remainingPending.length ? 'verification' : 'generation',
       updated_at:new Date().toISOString()
@@ -3779,7 +3978,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-verified-v2-12',
+    build: 'groq-qcm-v1-13',
     time: new Date().toISOString()
   });
 });
@@ -5401,12 +5600,16 @@ export {
   qcmDeterministicFactIssue,
   qcmVerificationIssue,
   qcmVerificationSummary,
+  certifyGroundedSinglePassQuestion,
   certifyGeminiSinglePassQuestion,
   dailyDraftGenerationIssue,
   isOfficialBurkinaQcmSource,
   isTrustedEducationalQcmSource,
   aiProviderStatus,
   callAiGenerateParts,
+  extractJsonFromAi,
+  groqTextContent,
+  groundingSourcesFromGroq,
   openRouterMessageContent,
   groundingSourcesFromOpenRouter
 };

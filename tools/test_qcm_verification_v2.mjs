@@ -52,7 +52,7 @@ assert.equal(singlePass.question.verification_status, 'verified');
 assert.equal(singlePass.question.verification_score, 92);
 assert.equal(qcmVerificationIssue(singlePass.question, { category:'Burkina Faso', requireVerified:true }), '');
 const ungrounded = certifyGeminiSinglePassQuestion({ ...singlePassCandidate, generation_source_grounded:false }, { category:'Burkina Faso' });
-assert.match(ungrounded.issue, /résultats consultés par Gemini/i);
+assert.match(ungrounded.issue, /résultats de recherche réellement consultés/i);
 
 assert.match(dailyDraftGenerationIssue({ status:'generating', generation_target:50, questions:[baseQuestion] }), /1\/50/);
 assert.match(dailyDraftGenerationIssue({ status:'draft', generation_target:50, questions:Array(49).fill(baseQuestion) }), /49\/50/);
