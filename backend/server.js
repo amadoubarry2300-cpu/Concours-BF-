@@ -3776,7 +3776,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-verified-v2-10',
+    build: 'qcm-verified-v2-11',
     time: new Date().toISOString()
   });
 });

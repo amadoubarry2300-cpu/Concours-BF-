@@ -3925,7 +3925,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetch('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-verified-v2-10') location.reload();
+    if (data.build && data.build !== 'qcm-verified-v2-11') location.reload();
   }catch{}
 }
 
@@ -3938,7 +3938,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-10')
+    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-11')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

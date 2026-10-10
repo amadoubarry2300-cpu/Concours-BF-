@@ -581,3 +581,9 @@ La première tentative Gemini seule a renvoyé une erreur 502 générique avant 
 - affiche désormais le motif Gemini sous-jacent, nettoyé, si tous les modèles échouent.
 
 Build/cache : `qcm-verified-v2-10`.
+
+## 2026-10-10 — V2.11 rechargement de la clé Gemini
+
+Redéploiement demandé après remplacement de `GEMINI_API_KEY` dans les variables Vercel. La clé OpenRouter supprimée n'est plus requise par le mode Gemini seul.
+
+Build/cache : `qcm-verified-v2-11`.
