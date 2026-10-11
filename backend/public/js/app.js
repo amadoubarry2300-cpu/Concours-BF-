@@ -1187,6 +1187,7 @@ async function adminFetch(path, options = {}){
   if (!res.ok){
     const err = new Error(data.message || 'Action administrateur impossible');
     err.status = res.status;
+    err.retryAfterSeconds = Number(data.retryAfterSeconds || res.headers.get('Retry-After') || 0);
     throw err;
   }
   return data;
@@ -1633,16 +1634,27 @@ function syncDailyDraftLiveProgress(draft){
   if (count) count.textContent = `${progress}/${target}`;
 }
 
+async function waitForGroqFreeWindow(seconds, result, progress, target){
+  const total = Math.min(60, Math.max(5, Math.ceil(Number(seconds || 20))));
+  for (let remaining = total; remaining > 0; remaining--){
+    if (result){
+      result.innerHTML = `<div class="pay-note warn">Limite gratuite temporaire de Groq. Reprise automatique dans <b>${remaining} seconde${remaining > 1 ? 's' : ''}</b>.<br>${progress}/${target} QCM déjà validés sont conservés.</div>`;
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+}
+
 async function continueDailyAiGeneration(draft, result){
   let current = draft;
   let failedBatches = 0;
   let rejectedRounds = 0;
+  let consecutiveRateLimits = 0;
   for (let attempt = 0; current?.generating && attempt < 120; attempt++){
     const progress = Number(current.generationProgress || current.questions?.length || 0);
     const target = Number(current.generationTarget || 50);
     const wasVerification = current.generationPhase === 'verification';
-    const phase = wasVerification ? 'Contrôle automatique du lot' : 'Création du prochain lot Gemini';
-    if (result) result.innerHTML = `<div class="pay-note">${phase} : <b>${progress}/${target} QCM validés</b>. Un seul appel Gemini prépare jusqu’à cinq QCM, puis le serveur contrôle les preuves sans second appel payant.</div>`;
+    const phase = wasVerification ? 'Contrôle automatique du lot' : 'Création du prochain lot Groq';
+    if (result) result.innerHTML = `<div class="pay-note">${phase} : <b>${progress}/${target} QCM validés</b>. Groq prépare jusqu’à trois QCM sourcés, puis le serveur contrôle les preuves sans second appel IA.</div>`;
     try{
       const batch = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(current.id) + '/generate-batch', {
         method:'POST',
@@ -1658,10 +1670,20 @@ async function continueDailyAiGeneration(draft, result){
         }
       }
       failedBatches = 0;
+      consecutiveRateLimits = 0;
     }catch(batchError){
       const failureMessage = String(batchError?.message || '');
+      const failureStatus = Number(batchError?.status || 0);
       if (/Trois lots successifs/.test(failureMessage)) throw batchError;
-      if ([403,429,504].includes(Number(batchError?.status || 0)) || /quota|limit|délai|timeout/i.test(failureMessage)) throw batchError;
+      if (failureStatus === 429){
+        consecutiveRateLimits += 1;
+        if (consecutiveRateLimits > 3){
+          throw new Error(`Groq reste temporairement limité après trois reprises. ${progress}/${target} QCM sont conservés ; le bouton Reprendre continuera plus tard sans recommencer.`);
+        }
+        await waitForGroqFreeWindow(batchError?.retryAfterSeconds || 20, result, progress, target);
+        continue;
+      }
+      if ([403,504].includes(failureStatus) || /délai|timeout/i.test(failureMessage)) throw batchError;
       failedBatches += 1;
       if (failedBatches >= 2) throw batchError;
       const reason = String(batchError?.message || '').trim();
@@ -1700,7 +1722,7 @@ async function runDailyAiQcm(){
   const btn = $('#aiDailyRunBtn');
   const result = $('#aiDailyResult');
   setButtonLoading(btn, true, 'Création du PDF...');
-  if (result) result.innerHTML = '<div class="pay-note">Préparation économique : Gemini recherche les sources et rédige les QCM par lots, puis le serveur contrôle chaque preuve sans second appel IA.</div>';
+  if (result) result.innerHTML = '<div class="pay-note">Préparation économique : Groq recherche les sources et rédige de petits lots adaptés à la limite gratuite, puis le serveur contrôle chaque preuve sans second appel IA.</div>';
   try{
     refreshDailyCategoryOptions();
     const payload = {
@@ -3959,7 +3981,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'groq-qcm-v1-13') location.reload();
+    if (data.build && data.build !== 'groq-free-limit-v1-14') location.reload();
   }catch{}
 }
 
@@ -3972,7 +3994,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=groq-qcm-v1-13')
+    navigator.serviceWorker.register('/sw.js?v=groq-free-limit-v1-14')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

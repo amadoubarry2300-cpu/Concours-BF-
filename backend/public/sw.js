@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'groq-qcm-v1-13';
+const CACHE_VERSION = 'groq-free-limit-v1-14';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=groq-qcm-v1-13',
-  '/js/questions.js?v=groq-qcm-v1-13',
-  '/js/app.js?v=groq-qcm-v1-13',
+  '/css/styles.css?v=groq-free-limit-v1-14',
+  '/js/questions.js?v=groq-free-limit-v1-14',
+  '/js/app.js?v=groq-free-limit-v1-14',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',
