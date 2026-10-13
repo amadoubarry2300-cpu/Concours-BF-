@@ -1068,10 +1068,10 @@ async function geminiModelsToTry({ verifier=false } = {}){
   const preferred = [
     configured,
     'gemini-3.7-flash',
-    'gemini-3.6-flash',
+    'gemini-2.5-flash-lite',
     'gemini-2.5-flash',
     'gemini-2.0-flash',
-    'gemini-2.5-flash-lite'
+    'gemini-3.6-flash'
   ].map(normalizeGeminiModelName).filter(Boolean);
   // Le nom configuré peut ne plus exister. Le catalogue réel de la clé évite
   // alors d'enchaîner uniquement des 404 et choisit un modèle Flash texte.
@@ -1993,7 +1993,10 @@ async function callGeminiGenerateParts(parts, options = {}){
   if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
   let lastError = null;
   let lastStatus = 502;
-  const models = await geminiModelsToTry({ verifier:Boolean(options.verifier) });
+  let quotaFailureSeen = false;
+  // Les limites Gemini sont appliquées par modèle. Si le modèle principal a
+  // épuisé sa limite, on essaie quelques autres modèles Flash de la même API.
+  const models = (await geminiModelsToTry({ verifier:Boolean(options.verifier) })).slice(0, 4);
   modelLoop: for (const model of models){
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
     // Google Search et responseMimeType JSON ne sont pas compatibles sur
@@ -2026,9 +2029,13 @@ async function callGeminiGenerateParts(parts, options = {}){
         lastStatus = Number(res.status || 502);
         lastError = data?.error?.message || `Erreur Gemini ${res.status}`;
         if (res.status === 400 && jsonMode && /responseMimeType|mime|schema|structured/i.test(lastError || '')) continue;
-        // Le quota et les droits sont liés au projet Google : essayer tous les
-        // modèles après un 429/403 ne peut pas réussir et bloque les boutons.
-        if (res.status === 429 || res.status === 403) break modelLoop;
+        // Une limite 429 peut être propre au modèle. On tente alors le modèle
+        // Flash suivant de la même API, sans changer de fournisseur.
+        if (res.status === 429){
+          quotaFailureSeen = true;
+          break;
+        }
+        if (res.status === 403) break modelLoop;
         break;
       }
       const text = (data?.candidates || [])
@@ -2048,7 +2055,7 @@ async function callGeminiGenerateParts(parts, options = {}){
   const cleanDetail = strictCleanAiQcmText(lastError || 'Aucun modèle Gemini compatible', 300)
     .replace(/AIza[A-Za-z0-9._-]+/g, '[clé masquée]');
   console.warn('Gemini generation failed:', cleanDetail);
-  const quotaFailure = lastStatus === 429 || /quota|rate|resource exhausted|limit/i.test(cleanDetail);
+  const quotaFailure = quotaFailureSeen || lastStatus === 429 || /quota|rate|resource exhausted|limit/i.test(cleanDetail);
   const friendly = quotaFailure
     ? 'Le quota de création est momentanément atteint. Les QCM déjà enregistrés sont conservés.'
     : options.grounding
@@ -4002,7 +4009,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-ai-daily-fix-v1',
+    build: 'qcm-ai-quota-fallback-v1',
     time: new Date().toISOString()
   });
 });
