@@ -1585,9 +1585,8 @@ async function loadAiStatus(){
   if (!wrap) return;
   try{
     const data = await adminFetch('/api/admin/ai/status');
-    const modelLabel = String(data.model || 'Gemini').replace(/^gemini-/i, '');
     wrap.innerHTML = `
-      <div><b>${data.configured ? modelLabel : 'Non active'}</b><span>Modèle QCM</span></div>
+      <div><b>${data.configured ? 'Actif' : 'Non active'}</b><span>Création assistée</span></div>
       <div><b>${data.grounding ? 'Sources' : 'Hors ligne'}</b><span>Recherche factuelle</span></div>
       <div><b>${data.verificationRequired ? `≥ ${Number(data.minimumScore || 90)}/100` : 'Désactivé'}</b><span>Contrôle des preuves</span></div>`;
   }catch(err){
@@ -1641,12 +1640,25 @@ async function continueDailyAiGeneration(draft, result){
     const progress = Number(current.generationProgress || current.questions?.length || 0);
     const target = Number(current.generationTarget || 50);
     const wasVerification = current.generationPhase === 'verification';
-    const phase = wasVerification ? 'Contrôle automatique du lot' : 'Création du prochain lot Gemini';
-    if (result) result.innerHTML = `<div class="pay-note">${phase} : <b>${progress}/${target} QCM validés</b>. Un seul appel Gemini prépare jusqu’à cinq QCM, puis le serveur contrôle les preuves sans second appel payant.</div>`;
+    const phase = wasVerification ? 'Contrôle des questions' : 'Préparation des questions';
+    if (result) result.innerHTML = `<div class="pay-note">${phase} : <b>${progress}/${target} QCM validés</b>. La progression est enregistrée automatiquement.</div>`;
     try{
+      const recoveryDraft = {
+        id:current.id,
+        date:current.date,
+        title:current.title,
+        category:current.category,
+        level:current.level,
+        is_premium:Boolean(current.is_premium),
+        generationTarget:target,
+        model:current.model || '',
+        verificationModel:current.verificationModel || '',
+        created_at:current.created_at || '',
+        questions:Array.isArray(current.questions) ? current.questions : []
+      };
       const batch = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(current.id) + '/generate-batch', {
         method:'POST',
-        body:'{}'
+        body:JSON.stringify({ draft:recoveryDraft })
       });
       current = batch.draft;
       syncDailyDraftLiveProgress(current);
@@ -1654,13 +1666,13 @@ async function continueDailyAiGeneration(draft, result){
       if (wasVerification){
         rejectedRounds = nextProgress > progress ? 0 : rejectedRounds + 1;
         if (rejectedRounds >= 3){
-          throw new Error(`Trois lots successifs n’ont ajouté aucun QCM conforme. La préparation est arrêtée à ${nextProgress}/${target} pour éviter une attente inutile. Reclique sur « Reprendre » pour changer d’angle sans perdre les QCM validés.`);
+          throw new Error(`Trois contrôles successifs n’ont ajouté aucun QCM conforme. La préparation est arrêtée à ${nextProgress}/${target}. Reclique sur « Reprendre » pour continuer sans perdre les QCM validés.`);
         }
       }
       failedBatches = 0;
     }catch(batchError){
       const failureMessage = String(batchError?.message || '');
-      if (/Trois lots successifs/.test(failureMessage)) throw batchError;
+      if (/Trois contrôles successifs/.test(failureMessage)) throw batchError;
       if ([403,429,504].includes(Number(batchError?.status || 0)) || /quota|limit|délai|timeout/i.test(failureMessage)) throw batchError;
       failedBatches += 1;
       if (failedBatches >= 2) throw batchError;
@@ -1687,7 +1699,7 @@ async function resumeDailyAiGeneration(index){
     await loadDailyAiDrafts();
   }catch(err){
     const message = err?.message === 'Failed to fetch'
-      ? 'La connexion a été interrompue. Reclique sur « Reprendre » : les lots déjà validés sont conservés.'
+      ? 'La connexion a été interrompue. Reclique sur « Reprendre » : les QCM déjà validés sont conservés.'
       : err.message;
     if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(message)}</div>`;
     await loadDailyAiDrafts().catch(()=>{});
@@ -1700,7 +1712,7 @@ async function runDailyAiQcm(){
   const btn = $('#aiDailyRunBtn');
   const result = $('#aiDailyResult');
   setButtonLoading(btn, true, 'Création du PDF...');
-  if (result) result.innerHTML = '<div class="pay-note">Préparation économique : Gemini recherche les sources et rédige les QCM par lots, puis le serveur contrôle chaque preuve sans second appel IA.</div>';
+  if (result) result.innerHTML = '<div class="pay-note">Préparation sécurisée en cours. Les sources et les réponses sont contrôlées avant la création du PDF.</div>';
   try{
     refreshDailyCategoryOptions();
     const payload = {
@@ -1722,7 +1734,7 @@ async function runDailyAiQcm(){
     await loadDailyAiDrafts();
   }catch(err){
     const message = err?.message === 'Failed to fetch'
-      ? 'La connexion a été interrompue. Reclique sur le bouton : la préparation reprendra au dernier lot enregistré.'
+      ? 'La connexion a été interrompue. Reclique sur le bouton : la préparation reprendra à la dernière progression enregistrée.'
       : err.message;
     if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(message)}</div>`;
     await loadDailyAiDrafts().catch(()=>{});
@@ -1768,7 +1780,7 @@ function renderDailyAiDrafts(){
     ? `<button class="mini-btn" onclick="toggleDailyPublishedHistory()">${showPublishedDailyDrafts ? 'Masquer l’historique publié' : `Voir l’historique publié (${publishedCount})`}</button>`
     : '';
   if (!visibleEntries.length){
-    wrap.innerHTML = `<div class="empty">Aucun PDF en attente de vérification.${publishedCount ? '<br>Les PDF déjà publiés sont rangés dans l’historique admin et restent visibles côté candidat.' : '<br>Clique sur “Créer le PDF du jour maintenant”.'}<br>${historyButton}</div>`;
+    wrap.innerHTML = `<div class="empty">Aucun PDF en attente de vérification.${publishedCount ? '<br>Les PDF déjà publiés sont rangés dans l’historique publié et restent visibles côté candidat.' : '<br>Clique sur “Créer le PDF du jour maintenant”.'}<br>${historyButton}</div>`;
     return;
   }
   wrap.innerHTML = `${historyButton ? `<div class="pay-note">${showPublishedDailyDrafts ? 'Historique affiché : les PDF publiés restent dans Nouveaux QCM et Documents.' : 'Les PDF déjà publiés sont rangés dans l’historique pour garder cet espace léger.'} ${historyButton}</div>` : ''}` + visibleEntries.map(({d, idx})=>`
@@ -2281,7 +2293,7 @@ async function deleteDailyAiDraft(index){
   const d = aiDailyDraftCache[index];
   if (!d) return;
   const msg = d.status === 'published'
-    ? 'Retirer ce PDF de l’historique admin ? Les QCM et le document restent visibles côté candidat.'
+    ? 'Retirer ce PDF de l’historique publié ? Les QCM et le document restent visibles côté candidat.'
     : 'Supprimer ce PDF quotidien ?';
   if (!confirm(msg)) return;
   try{
@@ -3959,7 +3971,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-semantic-audit-v3-1') location.reload();
+    if (data.build && data.build !== 'qcm-ai-daily-fix-v1') location.reload();
   }catch{}
 }
 
@@ -3972,7 +3984,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-semantic-audit-v3-1')
+    navigator.serviceWorker.register('/sw.js?v=qcm-ai-daily-fix-v1')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

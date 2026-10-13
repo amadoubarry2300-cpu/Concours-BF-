@@ -232,14 +232,14 @@ async function ensureResourceBucket(){
   resourceBucketReady = true;
 }
 
-async function uploadResourceObject(objectPath, buffer, mimeType){
+async function uploadResourceObject(objectPath, buffer, mimeType, { cacheControl='3600' } = {}){
   await ensureResourceBucket();
   const res = await fetch(`${storageBaseUrl()}/object/${encodeURIComponent(RESOURCE_BUCKET)}/${encodeStoragePath(objectPath)}`, {
     method:'POST',
     headers:storageHeaders({
       'Content-Type': mimeType || 'application/octet-stream',
       'x-upsert':'true',
-      'cache-control':'3600'
+      'cache-control':String(cacheControl)
     }),
     body:buffer
   });
@@ -249,10 +249,11 @@ async function uploadResourceObject(objectPath, buffer, mimeType){
   }
 }
 
-async function downloadResourceObject(objectPath){
+async function downloadResourceObject(objectPath, { fresh=false } = {}){
   await ensureResourceBucket();
-  const res = await fetch(`${storageBaseUrl()}/object/${encodeURIComponent(RESOURCE_BUCKET)}/${encodeStoragePath(objectPath)}`, {
-    headers:storageHeaders()
+  const cacheBust = fresh ? `?t=${Date.now()}-${crypto.randomBytes(3).toString('hex')}` : '';
+  const res = await fetch(`${storageBaseUrl()}/object/${encodeURIComponent(RESOURCE_BUCKET)}/${encodeStoragePath(objectPath)}${cacheBust}`, {
+    headers:storageHeaders(fresh ? { 'Cache-Control':'no-cache, no-store', Pragma:'no-cache' } : {})
   });
   if (!res.ok){
     const text = await res.text().catch(()=>'');
@@ -2049,11 +2050,11 @@ async function callGeminiGenerateParts(parts, options = {}){
   console.warn('Gemini generation failed:', cleanDetail);
   const quotaFailure = lastStatus === 429 || /quota|rate|resource exhausted|limit/i.test(cleanDetail);
   const friendly = quotaFailure
-    ? 'Quota Gemini atteint pour le moment. Les QCM déjà enregistrés sont conservés.'
+    ? 'Le quota de création est momentanément atteint. Les QCM déjà enregistrés sont conservés.'
     : options.grounding
-      ? 'La recherche Gemini est indisponible pour le moment. Aucun QCM non sourcé ne sera accepté.'
-      : 'Gemini est indisponible pour le moment. Réessaie un peu plus tard.';
-  const err = new Error(`${friendly} Détail Gemini (${lastStatus}) : ${cleanDetail}`);
+      ? 'La recherche des sources est momentanément indisponible. Aucun QCM non sourcé ne sera accepté.'
+      : 'La création assistée est momentanément indisponible. Réessaie un peu plus tard.';
+  const err = new Error(friendly);
   err.status = quotaFailure ? 429 : (lastStatus >= 400 && lastStatus < 500 ? lastStatus : 502);
   throw err;
 }
@@ -2140,7 +2141,9 @@ function dailyAiPlan(dateId = todayId(), overrides = {}){
 
 async function loadAiDailyIndex(){
   try{
-    const file = await downloadResourceObject(AI_DAILY_INDEX_PATH);
+    // Cet index change à chaque étape de préparation. Une lecture mise en cache
+    // peut faire disparaître le brouillon créé par la requête précédente.
+    const file = await downloadResourceObject(AI_DAILY_INDEX_PATH, { fresh:true });
     const data = JSON.parse(file.buffer.toString('utf8') || '[]');
     return Array.isArray(data) ? data : [];
   }catch(err){
@@ -2151,7 +2154,7 @@ async function loadAiDailyIndex(){
 
 async function saveAiDailyIndex(rows){
   const body = Buffer.from(JSON.stringify(rows || [], null, 2), 'utf8');
-  await uploadResourceObject(AI_DAILY_INDEX_PATH, body, 'application/json; charset=utf-8');
+  await uploadResourceObject(AI_DAILY_INDEX_PATH, body, 'application/json; charset=utf-8', { cacheControl:'0' });
 }
 
 function publicAiDailyDraft(row){
@@ -2982,12 +2985,54 @@ async function startDailyAiQcmDraft({ force=false, overrides={} } = {}){
   return { draft, skipped:false, resumed:false, plan };
 }
 
-async function generateDailyAiQcmBatch(draftId){
+function recoverDailyAiDraft(draftId, source = {}){
+  const id = cleanText(draftId, 120);
+  if (!/^daily-\d{8}-[a-z0-9]{6,16}$/i.test(id) || String(source?.id || '') !== id) return null;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(source?.date || '')) ? String(source.date) : todayId();
+  const level = normalizedLevelName(source?.level || 'Concours');
+  const category = cleanText(source?.category || '', 80);
+  if (!category || !categoryAllowedForLevel(category, level)) return null;
+  const target = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(source?.generationTarget || source?.generation_target || 50)));
+  const questions = (Array.isArray(source?.questions) ? source.questions : []).slice(0, target);
+  const now = new Date().toISOString();
+  return {
+    id,
+    date,
+    title:safePdfTitle(source?.title || `QCM quotidien — ${category} — ${level} — ${date}`),
+    category,
+    level,
+    count:questions.length,
+    generation_target:target,
+    is_premium:Boolean(source?.is_premium),
+    status:'generating',
+    model:cleanText(source?.model || '', 160),
+    verification_model:cleanText(source?.verificationModel || '', 160),
+    verification_version:AI_QCM_VERIFICATION_VERSION,
+    file_name:'',
+    mime_type:'application/pdf',
+    size:0,
+    storage_path:'',
+    questions,
+    pending_questions:[],
+    batch_phase:'generation',
+    created_at:source?.created_at || now,
+    updated_at:now,
+    recovered_at:now
+  };
+}
+
+async function generateDailyAiQcmBatch(draftId, recovery = {}){
   if (!aiProviderConfigured()) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
-  if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour garder les PDF IA quotidiens'), { status:503 });
+  if (!supabaseReady()) throw Object.assign(new Error('Stockage requis pour conserver la préparation quotidienne'), { status:503 });
   const drafts = await loadAiDailyIndex();
-  const idx = drafts.findIndex(d => d.id === draftId && d.status !== 'deleted');
-  if (idx < 0) throw Object.assign(new Error('Préparation quotidienne introuvable'), { status:404 });
+  let idx = drafts.findIndex(d => d.id === draftId && d.status !== 'deleted');
+  if (idx < 0){
+    const recovered = recoverDailyAiDraft(draftId, recovery);
+    if (!recovered) throw Object.assign(new Error('La préparation a été interrompue. Relance-la pour reprendre automatiquement.'), { status:409 });
+    drafts.unshift(recovered);
+    idx = 0;
+    await saveAiDailyIndex(drafts.slice(0, 90));
+  }
   let draft = drafts[idx];
   const questions = Array.isArray(draft.questions) ? draft.questions : [];
   const target = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(draft.generation_target || 50)));
@@ -3957,7 +4002,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-semantic-audit-v3-1',
+    build: 'qcm-ai-daily-fix-v1',
     time: new Date().toISOString()
   });
 });
@@ -4446,7 +4491,7 @@ app.post('/api/admin/ai/daily/run', requireAdmin, async (req, res, next) => {
 
 app.post('/api/admin/ai/daily/:id/generate-batch', requireAdmin, async (req, res, next) => {
   try{
-    const result = await generateDailyAiQcmBatch(req.params.id);
+    const result = await generateDailyAiQcmBatch(req.params.id, req.body?.draft || {});
     res.json({
       ok:true,
       ready:result.ready,
@@ -5600,6 +5645,7 @@ export {
   qcmVerificationSummary,
   certifyGeminiSinglePassQuestion,
   dailyDraftGenerationIssue,
+  recoverDailyAiDraft,
   isOfficialBurkinaQcmSource,
   isTrustedEducationalQcmSource,
   aiProviderStatus,
