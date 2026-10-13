@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'qcm-ai-daily-fix-v1';
+const CACHE_VERSION = 'qcm-ai-quota-fallback-v1';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=qcm-ai-daily-fix-v1',
-  '/js/questions.js?v=qcm-ai-daily-fix-v1',
-  '/js/app.js?v=qcm-ai-daily-fix-v1',
+  '/css/styles.css?v=qcm-ai-quota-fallback-v1',
+  '/js/questions.js?v=qcm-ai-quota-fallback-v1',
+  '/js/app.js?v=qcm-ai-quota-fallback-v1',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',
