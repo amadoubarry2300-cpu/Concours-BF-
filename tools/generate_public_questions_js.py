@@ -8,6 +8,8 @@ après import Supabase, pour éviter de les exposer dans le JavaScript public.
 import argparse
 import csv
 import json
+import re
+import unicodedata
 from collections import Counter
 from pathlib import Path
 
@@ -16,15 +18,44 @@ def is_false(value):
     return str(value).strip().lower() in {'false', '0', 'no', 'non'}
 
 
+def normalized(value):
+    text = unicodedata.normalize('NFD', str(value or ''))
+    text = ''.join(char for char in text if unicodedata.category(char) != 'Mn').lower()
+    return re.sub(r'[^a-z0-9]+', ' ', text).strip()
+
+
+def is_template_question(text):
+    patterns = [
+        r'un document indique par erreur', r'un tableau attribue', r'une copie associe',
+        r'pour corriger .+reponse erronee proposee', r'(?:dans .+|en preparation .+), une reponse proposee est',
+        r'dans une fiche de revision, la reponse .+ est proposee', r'la reponse .+ est rejetee',
+        r'une proposition erronee indique',
+    ]
+    value = normalized(text)
+    return any(re.search(pattern, value) for pattern in patterns)
+
+
+def semantic_key(row):
+    answer = row.get(f"option_{'abcd'[int(row['correct_answer'])]}", '')
+    return normalized(f"{row.get('category', '')}|{answer}|{row.get('explanation', '')}")
+
+
 def generate(src: Path, out: Path):
     with src.open(newline='', encoding='utf-8') as f:
         rows = list(csv.DictReader(f))
     questions = []
+    seen_semantic = set()
     for row in rows:
         if row.get('review_status') != 'validated':
             continue
         if not is_false(row.get('is_premium')):
             continue
+        if is_template_question(row.get('question_text')):
+            continue
+        key = semantic_key(row)
+        if key in seen_semantic:
+            continue
+        seen_semantic.add(key)
         questions.append({
             'c': row['category'],
             'level': row['level'],

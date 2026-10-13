@@ -4,16 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Réussite Concours BF — Prépare tes examens et concours</title>
-<meta name="description" content="Prépare le CEP, BEPC, BAC et les concours professionnels avec plus de 5000 questions corrigées et expliquées. Spécial Burkina Faso.">
+<meta name="description" content="Prépare le CEP, BEPC, BAC et les concours professionnels avec plus de 2 000 questions uniques corrigées et expliquées. Spécial Burkina Faso.">
 <meta name="theme-color" content="#0e9f6e">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=qcm-verified-v2-12">
+<link rel="manifest" href="/manifest.webmanifest?v=qcm-semantic-audit-v3-1">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=qcm-verified-v2-12">
+<link rel="stylesheet" href="css/styles.css?v=qcm-semantic-audit-v3-1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -40,7 +40,7 @@
     <div class="smart-dashboard" id="smartDashboardCard" style="display:none"></div>
 
     <div class="features public-home-block">
-      <div class="feature"><img class="feature-img" src="img/students-group.jpg" alt="Étudiants en groupe"><h3>+5000 questions</h3><p>Corrections et explications incluses.</p></div>
+      <div class="feature"><img class="feature-img" src="img/students-group.jpg" alt="Étudiants en groupe"><h3>+2 000 questions uniques</h3><p>Corrections et explications incluses.</p></div>
       <div class="feature"><img class="feature-img" src="img/teacher-class.jpg" alt="Classe avec enseignants"><h3>Culture générale</h3><p>2020 – 2027, l'essentiel à connaître.</p></div>
       <div class="feature"><img class="feature-img" src="img/classroom-bf.jpg" alt="Classe au Burkina Faso"><h3>Spécial Burkina</h3><p>Histoire, provinces, régions, gouvernements.</p></div>
       <div class="feature"><img class="feature-img" src="img/exam-student.jpg" alt="Candidat en examen"><h3>Ton concours</h3><p>CEP, BEPC, BAC, licence et concours pro.</p></div>
@@ -101,7 +101,7 @@
           <img class="action-photo" src="img/study.jpg" alt="Fiches de révision"><h3>Fiches courtes</h3><p>Résumés rapides avant les QCM</p>
         </button>
         <button class="action-card" onclick="show('quickpick')">
-          <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20, 40, 100 ou 5000 questions</p>
+          <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20, 40, 100 ou toute la banque</p>
         </button>
         <button class="action-card" onclick="show('publishedqcm')">
           <img class="action-photo" src="img/teacher-class.jpg" alt="Nouveaux QCM"><h3>Nouveaux QCM</h3><p>QCM récents pour s’entraîner</p>
@@ -240,7 +240,7 @@
         <button class="pick-li premium-row" onclick="startQuiz({n:20,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 20 questions — ouvert</button>
         <button class="pick-li premium-row" onclick="startQuiz({n:40,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 40 questions — ouvert</button>
         <button class="pick-li premium-row" onclick="startQuiz({n:100,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 100 questions — entraînement</button>
-        <button class="pick-li premium-row" onclick="startQuiz({n:'all',time:0,title:'Banque complète 5000 QCM'})"><span class="em">📚</span> Toutes les 5000 questions disponibles</button>
+        <button class="pick-li premium-row" onclick="startQuiz({n:'all',time:0,title:'Banque complète'})"><span class="em">📚</span> Toutes les questions disponibles</button>
       </div>
     </div>
   </section>
@@ -963,9 +963,9 @@
     <div class="plan-card subscription-hero">
       <div class="plan-badge">⭐ Réussite Premium</div>
       <h2 id="premiumHeroTitle">Prépare-toi sans limite</h2>
-      <p id="premiumHeroText">Débloque toute la banque de 5000 QCM corrigés, les matières avancées, les examens blancs, la révision des erreurs et le suivi de progression.</p>
+      <p id="premiumHeroText">Débloque toute la banque de QCM uniques et corrigés, les matières avancées, les examens blancs, la révision des erreurs et le suivi de progression.</p>
       <div class="premium-hero-points" aria-label="Avantages Premium">
-        <span>✅ 5000 QCM</span>
+        <span>✅ Plus de 2 000 QCM uniques</span>
         <span>🎯 Examens blancs</span>
         <span>📊 Progression</span>
       </div>
@@ -1220,7 +1220,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=qcm-verified-v2-12"></script>
-<script src="js/app.js?v=qcm-verified-v2-12"></script>
+<script src="js/questions.js?v=qcm-semantic-audit-v3-1"></script>
+<script src="js/app.js?v=qcm-semantic-audit-v3-1"></script>
 </body>
 </html>

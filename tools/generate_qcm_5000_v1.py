@@ -445,12 +445,22 @@ def gen_fr():
         ('car','une conjonction'), ('sur','une préposition'), ('ils','un pronom'), ('lentement','un adverbe'), ('ville','un nom'),
     ]
     grammar_pool = ['un déterminant','un nom','un adjectif','un verbe','un adverbe','une préposition','une conjonction','un pronom']
+    nature_contexts = {
+        'le':'Le cahier est neuf.', 'maison':'Cette maison est grande.', 'grand':'Un grand arbre pousse ici.',
+        'courir':'Il aime courir.', 'vite':'Il court vite.', 'mais':'Il vient, mais il repart.',
+        'dans':'Le livre est dans le sac.', 'nous':'Nous révisons.', 'hier':'Il est venu hier.',
+        'avec':'Elle écrit avec soin.', 'élève':'L’élève lit.', 'beau':'Un beau paysage apparaît.',
+        'chanter':'Ils aiment chanter.', 'très':'Il avance très lentement.', 'ce':'Ce livre est utile.',
+        'car':'Il part car il est tard.', 'sur':'Le cahier est sur la table.', 'ils':'Ils travaillent.',
+        'lentement':'Elle marche lentement.', 'ville':'Cette ville est animée.'
+    }
     for word, ans in natures:
         if counts['Français'] >= 800:
             break
-        add('Français', 'BEPC', f'Quelle est la nature grammaticale du mot « {word} » ?',
+        sentence = nature_contexts[word]
+        add('Français', 'BEPC', f'Dans la phrase « {sentence} », quelle est la nature grammaticale du mot « {word} » ?',
             [ans] + wrongs(ans, grammar_pool, 3), 0,
-            f'Dans l’analyse grammaticale courante, « {word} » est {ans}.', SRC_RULE)
+            f'Dans cette phrase, « {word} » est {ans}.', SRC_RULE)
     # Synonymes et antonymes
     synonyms = [
         ('effrayé','apeuré'), ('rapide','vite'), ('débuter','commencer'), ('achever','terminer'), ('heureux','joyeux'),
@@ -583,25 +593,34 @@ def gen_hg():
         ('Mauritanie','Nouakchott','Afrique'), ('Maroc','Rabat','Afrique'), ('Algérie','Alger','Afrique'), ('Tunisie','Tunis','Afrique'),
         ('Égypte','Le Caire','Afrique'), ('Éthiopie','Addis-Abeba','Afrique'), ('Kenya','Nairobi','Afrique'), ('Afrique du Sud','Pretoria','Afrique'),
         ('France','Paris','Europe'), ('Espagne','Madrid','Europe'), ('Italie','Rome','Europe'), ('Allemagne','Berlin','Europe'),
-        ('Belgique','Bruxelles','Europe'), ('Suisse','Berne','Europe'), ('Royaume-Uni','Londres','Europe'), ('Russie','Moscou','Europe/Asie'),
+        ('Belgique','Bruxelles','Europe'), ('Suisse','Berne','Europe'), ('Royaume-Uni','Londres','Europe'), ('Russie','Moscou','Europe et Asie'),
         ('Chine','Pékin','Asie'), ('Japon','Tokyo','Asie'), ('Inde','New Delhi','Asie'), ('Arabie saoudite','Riyad','Asie'),
-        ('Turquie','Ankara','Asie/Europe'), ('États-Unis','Washington','Amérique'), ('Canada','Ottawa','Amérique'), ('Brésil','Brasilia','Amérique'),
+        ('Turquie','Ankara','Europe et Asie'), ('États-Unis','Washington','Amérique'), ('Canada','Ottawa','Amérique'), ('Brésil','Brasilia','Amérique'),
         ('Argentine','Buenos Aires','Amérique'), ('Mexique','Mexico','Amérique'), ('Australie','Canberra','Océanie'), ('Nouvelle-Zélande','Wellington','Océanie'),
     ]
     capitals = [c for _, c, _ in countries]
     country_names = [c for c, _, _ in countries]
-    continents = ['Afrique','Europe','Asie','Amérique','Océanie','Europe/Asie','Asie/Europe']
+    continents = ['Afrique','Europe','Asie','Amérique','Océanie','Europe et Asie']
     for country, capital, continent in countries:
         if counts['Histoire-Géo'] >= 120:
             break
-        add('Histoire-Géo', 'BEPC', f'Quelle est la capitale du pays suivant : {country} ?',
-            [capital] + wrongs(capital, capitals, 3), 0,
-            f'La capitale administrative généralement retenue pour le pays {country} est {capital}.', SRC_STABLE)
-        add('Histoire-Géo', 'BEPC', f'{capital} est la capitale de quel pays ?',
-            [country] + wrongs(country, country_names, 3), 0,
-            f'{capital} est associée à {country} comme capitale dans les repères géographiques scolaires.', SRC_STABLE)
+        if country == 'Afrique du Sud':
+            direct_question = 'Quelle est la capitale administrative de l’Afrique du Sud ?'
+            inverse_question = 'Pretoria est la capitale administrative de quel pays ?'
+            explanation = ('Pretoria est la capitale administrative de l’Afrique du Sud. '
+                           'Le Cap est la capitale législative et Bloemfontein la capitale judiciaire.')
+        else:
+            direct_question = f'Quelle est la capitale du pays suivant : {country} ?'
+            inverse_question = f'{capital} est la capitale de quel pays ?'
+            explanation = f'La capitale de {country} est {capital}.'
+        add('Histoire-Géo', 'BEPC', direct_question,
+            [capital] + wrongs(capital, capitals, 3), 0, explanation, SRC_STABLE)
+        add('Histoire-Géo', 'BEPC', inverse_question,
+            [country] + wrongs(country, country_names, 3), 0, explanation, SRC_STABLE)
     # Correction de capitales
     for country, capital, continent in countries:
+        if country == 'Afrique du Sud':
+            continue
         for wrong_capital in capitals:
             if counts['Histoire-Géo'] >= 330:
                 break
@@ -615,9 +634,14 @@ def gen_hg():
     for country, capital, continent in countries:
         if counts['Histoire-Géo'] >= 390:
             break
-        add('Histoire-Géo', 'BEPC', f'Sur quel continent situe-t-on généralement {country} ?',
+        transcontinental = continent == 'Europe et Asie'
+        continent_question = (f'Sur quels continents s’étend {country} ?' if transcontinental
+                              else f'Sur quel continent se situe {country} ?')
+        continent_explanation = (f'{country} est un État transcontinental dont le territoire s’étend en Europe et en Asie.'
+                                 if transcontinental else f'Dans les repères géographiques, {country} se situe sur le continent suivant : {continent}.')
+        add('Histoire-Géo', 'BEPC', continent_question,
             [continent] + wrongs(continent, continents, 3), 0,
-            f'{country} est classé dans les repères scolaires du continent ou ensemble géographique suivant : {continent}.', SRC_STABLE)
+            continent_explanation, SRC_STABLE)
     facts = [
         ('En quelle année a débuté la Première Guerre mondiale ?', '1914', ['1918','1939','1945'], 'La Première Guerre mondiale commence en 1914 et se termine en 1918.'),
         ('En quelle année la Première Guerre mondiale s’est-elle terminée ?', '1918', ['1914','1939','1945'], 'L’armistice mettant fin aux combats de la Première Guerre mondiale est signé en 1918.'),
@@ -670,7 +694,7 @@ def gen_culture():
         ('Quelle unité mesure la tension électrique ?', 'Volt', ['Ampère','Watt','Litre'], 'La tension électrique se mesure en volts.'),
         ('Quelle unité mesure la puissance électrique ?', 'Watt', ['Volt','Ampère','Kilogramme'], 'La puissance électrique s’exprime en watts.'),
         ('Quel gaz est indispensable à la respiration humaine ?', 'Le dioxygène', ['Le dioxyde de carbone','L’hélium','Le méthane'], 'Le dioxygène est utilisé par les cellules pour la respiration.'),
-        ('Quelle langue est principalement utilisée dans l’administration burkinabè ?', 'Le français', ['Le portugais','L’anglais','L’espagnol'], 'Le français est la langue de travail de l’administration et de l’école formelle.'),
+        ('Selon l’article 35 de la Constitution burkinabè révisée en 2023, quelles sont les langues de travail ?', 'Le français et l’anglais', ['Le français seulement','Les langues nationales seulement','L’anglais seulement'], 'L’article 35 dispose que le français et l’anglais sont des langues de travail. Les langues nationales officialisées par la loi sont les langues officielles du Burkina Faso.'),
         ('Quel continent compte le plus grand nombre de pays ?', 'L’Afrique', ['L’Europe','L’Océanie','L’Antarctique'], 'L’Afrique est le continent qui regroupe le plus grand nombre d’États reconnus.'),
         ('Quel est le plus vaste océan du monde ?', 'L’océan Pacifique', ['L’océan Atlantique','L’océan Indien','L’océan Arctique'], 'L’océan Pacifique est le plus vaste océan de la planète.'),
         ('Quel métal liquide à température ambiante est souvent cité en sciences ?', 'Le mercure', ['Le fer','L’aluminium','Le cuivre'], 'Le mercure est un métal liquide à température ambiante ordinaire.'),
@@ -726,7 +750,7 @@ def gen_svt():
         ('Quelle molécule porte l’information génétique ?', 'L’ADN', ['Le glucose','L’eau','Le sel'], 'L’ADN contient l’information génétique des êtres vivants.'),
         ('Quel phénomène transforme la vapeur d’eau en gouttelettes ?', 'La condensation', ['L’évaporation','La fusion','La combustion'], 'La condensation correspond au passage de la vapeur d’eau à l’état liquide.'),
         ('Quel changement d’état transforme un solide en liquide ?', 'La fusion', ['La condensation','La solidification','L’évaporation'], 'La fusion est le passage de l’état solide à l’état liquide.'),
-        ('Quel changement d’état transforme un liquide en gaz ?', 'L’évaporation', ['La fusion','La condensation','La solidification'], 'L’évaporation est le passage progressif d’un liquide à l’état gazeux.'),
+        ('Quel phénomène correspond au passage progressif d’un liquide à l’état gazeux depuis sa surface ?', 'L’évaporation', ['La fusion','La condensation','La solidification'], 'L’évaporation est le passage progressif d’un liquide à l’état gazeux depuis sa surface.'),
         ('Quel groupe d’aliments apporte surtout de l’énergie rapidement ?', 'Les glucides', ['Les vitamines seules','L’eau','Les sels minéraux seuls'], 'Les glucides constituent une source importante d’énergie pour l’organisme.'),
         ('Quel nutriment aide surtout à construire et réparer les tissus ?', 'Les protéines', ['Les glucides seulement','L’eau','Les fibres seules'], 'Les protéines participent à la construction et à la réparation des tissus.'),
         ('Quelle vitamine est souvent liée à la vision et à la croissance ?', 'Vitamine A', ['Vitamine C','Vitamine D','Vitamine K'], 'La vitamine A intervient notamment dans la vision et la croissance.'),
@@ -811,7 +835,7 @@ if __name__ == '__main__':
     assert sum(counts.values()) == 5000, counts
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with OUT.open('w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDS)
+        writer = csv.DictWriter(f, fieldnames=FIELDS, lineterminator='\n')
         writer.writeheader()
         writer.writerows(rows)
     print('Écrit', OUT, len(rows))

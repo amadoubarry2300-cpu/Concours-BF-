@@ -522,7 +522,7 @@ function mergeQuestionRows(rows){
 
 async function loadSupabaseQuestions(){
   if (typeof QUESTIONS === 'undefined') return;
-  // Mode actuel : les 5000 QCM validés sont déjà intégrés directement dans l'application.
+  // Mode actuel : la banque épurée de QCM validés est intégrée directement dans l'application.
   // On ne fusionne pas les anciennes lignes Supabase pour éviter des totaux incohérents.
   if (ACCESS_OPEN_UNTIL_PAYMENT) return;
 
@@ -675,7 +675,7 @@ function renderAccount(){
         <img class="premium-mini-img" src="img/success.jpg" alt="Accès ouvert">
         <div class="premium-copy">
           <div class="premium-kicker">Accès ouvert</div>
-          <h3>5000 QCM corrigés accessibles</h3>
+          <h3>Plus de 2 000 QCM uniques et corrigés</h3>
           <p>Révise librement les contenus disponibles pendant la période d’accès.</p>
         </div>
         <button class="mini-btn" onclick="show('formations')">Réviser</button>`;
@@ -788,7 +788,7 @@ function premiumLockForQuiz(opts){
   if (!opts || opts.free || opts.daily) return null;
   if (opts.errorsMode) return 'Révision de tes erreurs';
   if (opts.title === 'Examen blanc') return 'Examen blanc chronométré';
-  if (opts.n === 'all') return 'Banque complète 5000 QCM';
+  if (opts.n === 'all') return 'Banque complète';
   if (opts.n && opts.n > 10) return opts.n + ' questions';
   if (opts.cat && !FREE_CATEGORIES.includes(opts.cat)) return 'Formation ' + opts.cat;
   return null;
@@ -3824,7 +3824,7 @@ async function submitOffer(){
 
 /* ---------- share ---------- */
 function shareApp(){
-  const data = {title:'Réussite Concours BF', text:'Prépare tes examens et concours avec Réussite Concours BF ! +5000 questions corrigées 🇧🇫', url: location.href};
+  const data = {title:'Réussite Concours BF', text:'Prépare tes examens et concours avec Réussite Concours BF ! Plus de 2 000 QCM uniques et corrigés 🇧🇫', url: location.href};
   if (navigator.share) navigator.share(data).catch(()=>{});
   else { navigator.clipboard && navigator.clipboard.writeText(data.text+' '+data.url); toast('Lien copié ! 📋'); }
 }
@@ -3959,7 +3959,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-verified-v2-12') location.reload();
+    if (data.build && data.build !== 'qcm-semantic-audit-v3-1') location.reload();
   }catch{}
 }
 
@@ -3972,7 +3972,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-verified-v2-12')
+    navigator.serviceWorker.register('/sw.js?v=qcm-semantic-audit-v3-1')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

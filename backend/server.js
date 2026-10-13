@@ -102,7 +102,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const LOCAL_QCM_BANK_PATH = path.join(__dirname, 'data', 'qcm_bank_5000_v1.json');
+const QCM_CORRECTIONS_PATH = path.join(__dirname, 'data', 'qcm_corrections_v3.json');
 let localQcmBankCache = null;
+let qcmCorrectionsCache = null;
 
 function parseEnvList(value, fallback){
   const rows = String(value || '').split(/[,;\n]+/).map(v => v.trim()).filter(Boolean);
@@ -1128,6 +1130,14 @@ function normalizeQuestionKey(value){
     .trim();
 }
 
+function normalizeQcmOptionKey(value){
+  return String(value || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}'’]+/gu, '')
+    .trim();
+}
+
 function questionTokenSet(value){
   return new Set(normalizeQuestionKey(value).split(/\s+/).filter(Boolean));
 }
@@ -1374,7 +1384,7 @@ function aiQuestionQualityIssue(q, dedupeIndex){
   const explanation = strictCleanAiQcmText(q?.explanation, 3000);
   if (question.length < 24) return 'Question trop courte';
   if (opts.some(o => o.length < 1)) return 'Option manquante';
-  if (new Set(opts.map(normalizeQuestionKey)).size !== 4) return 'Options répétées';
+  if (new Set(opts.map(normalizeQcmOptionKey)).size !== 4) return 'Options répétées';
   if (!Number.isInteger(Number(q?.correct_answer)) || Number(q.correct_answer) < 0 || Number(q.correct_answer) > 3) return 'Bonne réponse invalide';
   if (explanation.length < 22) return 'Correction trop courte';
   const allText = [question, ...opts, explanation].join(' ');
@@ -2442,16 +2452,19 @@ async function loadPublishedDailyQuestionDrafts(existingDrafts = [], deletedTarg
     .map(group => {
       const first = group.rows[0] || {};
       const meta = parseDailyResourceTitle({ title:group.title, created_at:first.created_at });
-      const questions = group.rows.slice().reverse().map(q => ({
-        id:q.id,
-        question_text:q.question_text,
-        option_a:q.option_a,
-        option_b:q.option_b,
-        option_c:q.option_c,
-        option_d:q.option_d,
-        correct_answer:q.correct_answer,
-        explanation:q.explanation
-      }));
+      const questions = group.rows.slice().reverse().map(sourceQuestion => {
+        const q = applyQuestionCorrection(sourceQuestion);
+        return {
+          id:q.id,
+          question_text:q.question_text,
+          option_a:q.option_a,
+          option_b:q.option_b,
+          option_c:q.option_c,
+          option_d:q.option_d,
+          correct_answer:q.correct_answer,
+          explanation:q.explanation
+        };
+      });
       return {
         id:dailyQuestionsDraftId(group.key),
         date:meta.date,
@@ -2484,6 +2497,13 @@ async function loadPublishedDailyQuestionDraftById(id){
 async function loadPublishedDailyQuestionDraftByResourceId(resourceId){
   const drafts = await loadPublishedDailyQuestionDrafts([]);
   return drafts.find(d => dailyDraftResourceId(d) === resourceId) || null;
+}
+
+async function loadPublishedDailyQuestionDraftByTitle(title){
+  const wanted = safePdfTitle(title || '');
+  if (!wanted) return null;
+  const drafts = await loadPublishedDailyQuestionDrafts([]);
+  return drafts.find(d => safePdfTitle(d.title || d.source_title || '') === wanted) || null;
 }
 
 function mergePublicResources(primary = [], secondary = []){
@@ -2637,6 +2657,7 @@ function setupPdfFonts(doc){
 }
 
 async function buildQcmDraftPdf({ title, date, category, level, questions }){
+  const correctedQuestions = (Array.isArray(questions) ? questions : []).map(applyQuestionCorrection);
   return new Promise((resolve, reject) => {
     const cleanTitle = safePdfTitle(title || `QCM quotidien — ${category || 'Module'} — ${level || 'Niveau'} — ${date || todayId()}`);
     const doc = new PDFDocument({
@@ -2662,7 +2683,7 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
     const logoPath = path.join(PUBLIC_DIR, 'img', 'logo.png');
     const formattedDate = formatDateForPdf(date);
     const year = pdfYear(date);
-    const qCount = (questions || []).length || 0;
+    const qCount = correctedQuestions.length;
     const moduleName = pdfCleanText(category || 'Module');
     const levelName = pdfCleanText(level || 'Niveau');
 
@@ -2815,7 +2836,7 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
     drawPageFrame();
     font('bold', 24, '#003b7a').text('Questions à choix multiple', margin, doc.y, { width:contentW, align:'center' });
     doc.y += 24;
-    (questions || []).forEach((q, idx) => drawQuestion(q, idx));
+    correctedQuestions.forEach((q, idx) => drawQuestion(q, idx));
     doc.end();
   });
 }
@@ -3591,12 +3612,169 @@ function saspayStatus(value){
   return data.status || value?.status || 'PENDING';
 }
 
+function loadQcmCorrections(){
+  if (qcmCorrectionsCache) return qcmCorrectionsCache;
+  try{
+    const parsed = JSON.parse(fs.readFileSync(QCM_CORRECTIONS_PATH, 'utf8'));
+    qcmCorrectionsCache = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  }catch(err){
+    console.error('Corrections QCM indisponibles:', err.message);
+    qcmCorrectionsCache = {};
+  }
+  return qcmCorrectionsCache;
+}
+
+function applyQuestionCorrection(row){
+  if (!row || typeof row !== 'object') return row;
+  const correction = loadQcmCorrections()[String(row.id || '')];
+  return correction ? { ...row, ...correction } : row;
+}
+
+let qcmCorrectionPersistencePromise = null;
+
+function qcmCorrectionStored(row, correction){
+  return Object.entries(correction || {}).every(([key, expected]) => {
+    const actual = row?.[key];
+    if (typeof expected === 'number') return Number(actual) === expected;
+    return String(actual ?? '') === String(expected ?? '');
+  });
+}
+
+async function persistQcmCorrections(){
+  if (!supabaseReady()) return { updated:0, total:0, skipped:true };
+  const corrections = loadQcmCorrections();
+  const ids = Object.keys(corrections).filter(id => /^[0-9a-f-]{36}$/i.test(id));
+  if (!ids.length) return { updated:0, total:0, skipped:true };
+  const idList = ids.map(id => id.replace(/[^0-9a-f-]/gi, '')).join(',');
+  const rows = await supabaseRequest(`questions?id=in.(${idList})&select=*`);
+  const found = Array.isArray(rows) ? rows : [];
+  const byId = new Map(found.map(row => [String(row.id), row]));
+  const missing = ids.filter(id => !byId.has(id));
+  if (missing.length) console.warn(`Corrections QCM : ${missing.length} identifiant(s) absent(s) de la base.`);
+  const pending = found.filter(row => !qcmCorrectionStored(row, corrections[String(row.id)]));
+  if (!pending.length) return { updated:0, total:found.length, missing:missing.length };
+  const payload = pending.map(applyQuestionCorrection);
+  const updated = await supabaseRequest('questions?on_conflict=id&select=*', {
+    method:'POST',
+    prefer:'resolution=merge-duplicates,return=representation',
+    body:payload
+  });
+  const updatedRows = Array.isArray(updated) ? updated : [];
+  const invalid = updatedRows.filter(row => !qcmCorrectionStored(row, corrections[String(row.id)]));
+  if (updatedRows.length !== pending.length || invalid.length){
+    throw new Error(`Persistance incomplète des corrections QCM (${updatedRows.length}/${pending.length}).`);
+  }
+  console.log(`Corrections QCM persistées : ${updatedRows.length}.`);
+  return { updated:updatedRows.length, total:found.length, missing:missing.length };
+}
+
+function ensureQcmCorrectionsPersisted(){
+  if (!qcmCorrectionPersistencePromise){
+    qcmCorrectionPersistencePromise = persistQcmCorrections().catch(err => {
+      qcmCorrectionPersistencePromise = null;
+      throw err;
+    });
+  }
+  return qcmCorrectionPersistencePromise;
+}
+
+function localQuestionSemanticKey(row){
+  const answerIndex = Number(row?.correct_answer);
+  const options = ['option_a','option_b','option_c','option_d'].map(key => String(row?.[key] || '').trim());
+  const answer = options[answerIndex] || '';
+  const value = `${row?.category || ''}|${answer}|${row?.explanation || ''}`;
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function localQuestionIsTemplate(row){
+  const text = String(row?.question_text || '');
+  return [
+    /un document indique par erreur/i,
+    /un tableau attribue/i,
+    /une copie associe/i,
+    /pour corriger .+réponse erronée proposée/i,
+    /(?:dans .+|en préparation .+), une réponse proposée est/i,
+    /dans une fiche de révision, la réponse .+ est proposée/i,
+    /la réponse .+ est rejetée/i,
+    /une proposition erronée indique/i
+  ].some(pattern => pattern.test(text));
+}
+
+function correctedLocalQuestion(row){
+  const question = String(row?.question_text || '');
+  if (/quelle est la capitale du pays suivant\s*:\s*afrique du sud/i.test(question)){
+    return {
+      ...row,
+      question_text:'Quelle est la capitale administrative de l’Afrique du Sud ?',
+      explanation:'Pretoria est la capitale administrative de l’Afrique du Sud. Le Cap est la capitale législative et Bloemfontein la capitale judiciaire.'
+    };
+  }
+  if (/^pretoria est la capitale de quel pays/i.test(question)){
+    return {
+      ...row,
+      question_text:'Pretoria est la capitale administrative de quel pays ?',
+      explanation:'Pretoria est la capitale administrative de l’Afrique du Sud, qui possède aussi une capitale législative au Cap et une capitale judiciaire à Bloemfontein.'
+    };
+  }
+  if (/sur quel continent situe-t-on généralement (?:la )?russie/i.test(question)){
+    return {
+      ...row,
+      question_text:'Sur quels continents s’étend la Russie ?',
+      option_a:'Afrique et Asie',
+      option_b:'Europe seulement',
+      option_c:'Asie seulement',
+      option_d:'Europe et Asie',
+      correct_answer:3,
+      explanation:'La Russie est un État transcontinental : son territoire s’étend en Europe orientale et en Asie septentrionale.'
+    };
+  }
+  if (/sur quel continent situe-t-on généralement (?:la )?turquie/i.test(question)){
+    return {
+      ...row,
+      question_text:'Sur quels continents s’étend la Turquie ?',
+      option_a:'Afrique et Asie',
+      option_b:'Europe seulement',
+      option_c:'Europe et Asie',
+      option_d:'Asie seulement',
+      correct_answer:2,
+      explanation:'La Turquie est un État transcontinental : une partie de son territoire se situe en Europe et la plus grande partie en Asie.'
+    };
+  }
+  if (/quelle langue est principalement utilisée dans l’administration burkinabè/i.test(question)){
+    return {
+      ...row,
+      question_text:'Selon l’article 35 de la Constitution burkinabè révisée en 2023, quelles sont les langues de travail ?',
+      option_a:'Le français et l’anglais',
+      option_b:'Le français seulement',
+      option_c:'Les langues nationales seulement',
+      option_d:'L’anglais seulement',
+      correct_answer:0,
+      explanation:'L’article 35 dispose que le français et l’anglais sont des langues de travail. Les langues nationales officialisées par la loi sont les langues officielles du Burkina Faso.'
+    };
+  }
+  return row;
+}
+
+function curateLocalQcmBank(rows){
+  const seen = new Set();
+  const curated = [];
+  for (const source of (Array.isArray(rows) ? rows : [])){
+    const row = correctedLocalQuestion(source);
+    if (localQuestionIsTemplate(row)) continue;
+    const key = localQuestionSemanticKey(row);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    curated.push(row);
+  }
+  return curated;
+}
+
 function loadLocalQcmBank(){
   if (localQcmBankCache) return localQcmBankCache;
   try{
     const raw = fs.readFileSync(LOCAL_QCM_BANK_PATH, 'utf8');
     const rows = JSON.parse(raw);
-    localQcmBankCache = Array.isArray(rows) ? rows : [];
+    localQcmBankCache = curateLocalQcmBank(rows);
   }catch(err){
     localQcmBankCache = [];
   }
@@ -3779,7 +3957,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-verified-v2-12',
+    build: 'qcm-semantic-audit-v3-1',
     time: new Date().toISOString()
   });
 });
@@ -4712,7 +4890,8 @@ app.get('/api/admin/questions', requireAdmin, async (req, res, next) => {
     if (category) query += `&category=eq.${encodeURIComponent(category)}`;
     if (search) query += `&question_text=ilike.${encodeURIComponent('*' + search + '*')}`;
     const rows = await supabaseRequest(query);
-    const questions = await annotateAdminQuestionRows(Array.isArray(rows) ? rows : [], { promoteInactive:true });
+    const correctedRows = (Array.isArray(rows) ? rows : []).map(applyQuestionCorrection);
+    const questions = await annotateAdminQuestionRows(correctedRows, { promoteInactive:true });
     res.json({ ok:true, questions });
   }catch(err){ next(err); }
 });
@@ -5212,6 +5391,21 @@ app.get('/api/resources/:id/download', async (req, res, next) => {
       is_premium:Boolean(dailyDraft.is_premium),
       is_active:true
     };
+    if (item && isDailyPdfResourceLike(item)){
+      const currentDraft = await loadPublishedDailyQuestionDraftByTitle(item.title).catch(() => null);
+      if (currentDraft?.questions?.length){
+        const premiumAllowed = await premiumAllowedForRequest(req);
+        if (!premiumAllowed) return res.status(402).json({ message:'Ce document est réservé aux comptes Premium' });
+        const pdf = await buildQcmDraftPdf({ title:currentDraft.title, date:currentDraft.date, category:currentDraft.category, level:currentDraft.level, questions:currentDraft.questions });
+        const filename = safeFileName(item.file_name || `QCM quotidien — ${currentDraft.category || 'QCM'} — ${currentDraft.level || 'Concours'} — ${currentDraft.date || todayId()}.pdf`);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Length', pdf.length);
+        res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`);
+        res.setHeader('X-Premium-Content', 'true');
+        res.setHeader('Cache-Control', 'private, no-store');
+        return res.send(pdf);
+      }
+    }
     if (!item || (item && !item.storage_path && isDailyPdfResourceLike(item))){
       const questionDraft = await loadPublishedDailyQuestionDraftByResourceId(req.params.id);
       if (questionDraft){
@@ -5241,7 +5435,8 @@ app.get('/api/resources/:id/download', async (req, res, next) => {
   }catch(err){ next(err); }
 });
 
-function safeQuestion(row){
+function safeQuestion(sourceRow){
+  const row = applyQuestionCorrection(sourceRow);
   return {
     id: row.id,
     category: row.category,
@@ -5283,10 +5478,12 @@ app.get('/api/qcm-publications', async (req, res, next) => {
       res.setHeader('Cache-Control', 'private, max-age=30');
       return res.json({ ok:true, publications:[], premiumIncluded:false });
     }
+    await ensureQcmCorrectionsPersisted().catch(err => console.warn('Persistance des corrections QCM:', err.message));
     const premiumAllowed = await premiumAllowedForRequest(req);
     const rows = await supabaseRequest('questions?select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.desc&limit=800').catch(()=>[]);
     const groups = new Map();
-    for (const row of (Array.isArray(rows) ? rows : [])){
+    for (const sourceRow of (Array.isArray(rows) ? rows : [])){
+      const row = applyQuestionCorrection(sourceRow);
       if (publicQuestionQualityIssue(row)) continue;
       const date = String(row.created_at || new Date().toISOString()).slice(0, 10);
       const name = publicQcmPublicationTitle(row);

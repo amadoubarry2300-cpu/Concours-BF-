@@ -31,6 +31,8 @@ FORBIDDEN_PATTERNS = [
     re.compile(r"\boption\s+la\s+plus\s+(?:proche|coh[ée]rente)\b", re.I),
     re.compile(r"\bsi\s+n[ée]cessaire\b", re.I),
     re.compile(r"\b(?:corrigeons|modifions)\s+(?:l[’']|la\s+)?(?:[ée]nonc[ée]|option|r[ée]ponse)", re.I),
+    re.compile(r"\bnon,\s*v[ée]rifions\b|\bavec\s+d[’']autres\s+valeurs\b|\bselon\s+la\s+configuration\s+des\s+choix\b", re.I),
+    re.compile(r"\b(?:A-OE|A-EF)\b", re.I),
 ]
 
 
@@ -53,7 +55,13 @@ def normalize(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
 
 
+def normalize_option(value: object) -> str:
+    text = unicodedata.normalize("NFKC", str(value or "")).lower()
+    return re.sub(r"[^\w'’]+", "", text, flags=re.UNICODE)
+
+
 def question_issue(question: dict) -> str:
+
     text = str(question.get("question_text") or "").strip()
     explanation = str(question.get("explanation") or "").strip()
     options = [str(question.get(f"option_{letter}") or "").strip() for letter in "abcd"]
@@ -62,7 +70,7 @@ def question_issue(question: dict) -> str:
         return "question trop courte"
     if any(not option for option in options):
         return "option manquante"
-    if len({normalize(option) for option in options}) != 4:
+    if len({normalize_option(option) for option in options}) != 4:
         return "options répétées"
     try:
         answer = int(question.get("correct_answer"))
