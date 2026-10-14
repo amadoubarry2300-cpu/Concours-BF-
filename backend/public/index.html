@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=pasted-qcm-publish-fonts-v5">
+<link rel="manifest" href="/manifest.webmanifest?v=pasted-qcm-separated-publish-v6">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=pasted-qcm-publish-fonts-v5">
+<link rel="stylesheet" href="css/styles.css?v=pasted-qcm-separated-publish-v6">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -700,8 +700,8 @@
           <div class="admin-paste-destination">
             <b>Destination après validation</b>
             <div class="admin-paste-destination-grid">
-              <label class="free"><input type="radio" name="pastedQcmDestination" value="free" checked><span>✅ Gratuit<small>Visible par tous les candidats</small></span></label>
-              <label class="premium"><input type="radio" name="pastedQcmDestination" value="premium"><span>⭐ Premium payant<small>Réservé aux abonnés</small></span></label>
+              <label class="free"><input type="radio" name="pastedQcmDestination" value="free" checked onchange="updatePastedQcmDestinationButtons()"><span>✅ Gratuit<small>Visible par tous les candidats</small></span></label>
+              <label class="premium"><input type="radio" name="pastedQcmDestination" value="premium" onchange="updatePastedQcmDestinationButtons()"><span>⭐ Premium payant<small>Réservé aux abonnés</small></span></label>
             </div>
           </div>
 
@@ -713,13 +713,17 @@
           </div>
           <div class="admin-paste-format book">
             <b>Choisis le résultat avant de lancer</b>
-            <span>Quiz interactif à publier en Gratuit ou Premium · PDF livre corrigé avec typographie professionnelle choisie automatiquement.</span>
+            <span>Le bouton Quiz prépare uniquement le quiz interactif. Le bouton PDF prépare uniquement le livre à prévisualiser puis publier, sans téléchargement automatique.</span>
           </div>
 
           <button class="btn btn-green btn-block" id="pastedQcmAnalyzeBtn" onclick="analyzePastedQcm()">🧩 Transformer et prévisualiser le quiz</button>
-          <button class="btn btn-ghost btn-block" id="pastedQcmPdfBtn" onclick="downloadPastedQcmBookPdf()" style="margin-top:10px">📕 Créer directement le PDF livre corrigé</button>
-          <button class="btn btn-green btn-block" id="pastedQcmPublishBtn" onclick="publishPastedQcm()" style="display:none;margin-top:10px">Publier les QCM prêts</button>
+          <button class="btn btn-ghost btn-block" id="pastedQcmPdfBtn" onclick="downloadPastedQcmBookPdf()" style="margin-top:10px">📕 Créer et prévisualiser le livre PDF</button>
+          <button class="btn btn-green btn-block" id="pastedQcmPublishBtn" onclick="publishPastedQcm()" style="display:none;margin-top:10px">🧩 Publier le quiz</button>
+          <button class="btn btn-block admin-pdf-publish-btn" id="pastedQcmPdfPublishBtn" onclick="publishPreparedPastedQcmPdf()" style="display:none;margin-top:10px">📕 Publier le livre PDF</button>
+          <button class="btn btn-ghost btn-block" id="pastedQcmPdfOpenBtn" onclick="openPreparedPastedQcmPdf()" style="display:none;margin-top:8px">👁️ Ouvrir l’aperçu du PDF</button>
+          <button class="btn btn-ghost btn-block" id="pastedQcmPdfDownloadBtn" onclick="downloadPreparedPastedQcmPdf()" style="display:none;margin-top:8px">⬇️ Télécharger le PDF</button>
           <div class="payment-result" id="pastedQcmResult"></div>
+          <div id="pastedQcmPdfPreview" class="admin-pdf-ready-wrap"></div>
           <div id="pastedQcmPreview" class="admin-list"></div>
         </div>
       </div>
@@ -1281,7 +1285,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=pasted-qcm-publish-fonts-v5"></script>
-<script src="js/app.js?v=pasted-qcm-publish-fonts-v5"></script>
+<script src="js/questions.js?v=pasted-qcm-separated-publish-v6"></script>
+<script src="js/app.js?v=pasted-qcm-separated-publish-v6"></script>
 </body>
 </html>
