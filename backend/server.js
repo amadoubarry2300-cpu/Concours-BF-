@@ -3195,13 +3195,10 @@ function cronAuthorized(req){
 
 
 const DEFAULT_OFFICIAL_NEWS_SOURCES = [
-  { name:'Ministère de la Fonction publique', url:'https://www.fonction-publique.gov.bf/accueil/actualites' },
-  { name:'Ministère de la Fonction publique — Actualités', url:'https://www.fonction-publique.gov.bf/informations/actualites' },
-  { name:'Ministère de la Fonction publique — Accueil', url:'https://www.fonction-publique.gov.bf/accueil' },
-  { name:'Gouvernement du Burkina Faso — Actualités', url:'https://gouvernement.gov.bf/actualites/' },
-  { name:'Gouvernement du Burkina Faso — Communiqués', url:'https://gouvernement.gov.bf/communiques/' },
-  { name:'Plateforme eConcours', url:'https://www.econcours.gov.bf/' },
-  { name:'Plateforme eConcours professionnels', url:'https://www.econcours-pro.gov.bf/' }
+  { name:'Ministère de la Fonction publique — Concours', url:'https://www.fonction-publique.gov.bf/accueil/actualites' },
+  { name:'Ministère de la Fonction publique — Actualités concours', url:'https://www.fonction-publique.gov.bf/informations/actualites' },
+  { name:'Plateforme officielle des concours directs', url:'https://www.econcours.gov.bf/' },
+  { name:'Plateforme officielle des concours professionnels', url:'https://www.econcours-pro.gov.bf/' }
 ];
 
 function officialNewsSources(){
@@ -3209,7 +3206,8 @@ function officialNewsSources(){
     const [name, url] = entry.includes('|') ? entry.split('|').map(x => x.trim()) : [`Source officielle ${idx + 1}`, entry];
     return cleanUrl(url) ? { name:name || `Source officielle ${idx + 1}`, url:cleanUrl(url) } : null;
   }).filter(Boolean);
-  return custom.length ? custom : DEFAULT_OFFICIAL_NEWS_SOURCES;
+  const competitionOnly = custom.filter(source => /fonction-publique|e-?concours|concours/i.test(`${source.name} ${source.url}`));
+  return competitionOnly.length ? competitionOnly : DEFAULT_OFFICIAL_NEWS_SOURCES;
 }
 
 function decodeHtmlEntities(value){
@@ -3225,20 +3223,34 @@ function decodeHtmlEntities(value){
 }
 
 function stripHtml(value){
-  return decodeHtmlEntities(String(value || '')
+  const decoded = decodeHtmlEntities(decodeHtmlEntities(String(value || '')));
+  return decoded
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/(?:^|\s)[\w:-]+\s*=\s*["'][^"']*["']/g, ' ')
+    .replace(/(?:^|\s)-?mask["']?>/gi, ' ')
     .replace(/\s+/g, ' ')
-    .trim());
+    .trim();
 }
 
 function absoluteSourceUrl(href, base){
   try{ return new URL(String(href || '').trim(), base).toString(); }catch{ return ''; }
 }
 
+function isDirectProfessionalCompetitionNews(text){
+  const value = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const hasCompetition = /\bconcours\b|\be-?concours\b/.test(value);
+  if (!hasCompetition) return false;
+  const directOrProfessional = /\bconcours\s+(?:directs?|professionnels?)\b|\b(?:directs?|professionnels?)\s+concours\b|\be-?concours(?:-pro)?\b|fonction[ -]publique|recrutement|admissibilite|admission|candidat|inscription|epreuve|resultat|session/.test(value);
+  if (!directOrProfessional) return false;
+  const unrelated = /enseignement superieur|conference|colloque|seminaire|atelier|festival|sport|culture|appel d['’ ]offres|marche public|bourse d['’ ]etudes/.test(value);
+  const explicitlyScoped = /concours\s+(?:directs?|professionnels?)|e-?concours(?:-pro)?|fonction[ -]publique/.test(value);
+  return !unrelated || explicitlyScoped;
+}
+
 function officialNewsKeyword(text){
-  return /(concours|recrut|communiqu|résultat|resultat|admissibil|admission|inscription|econcours|e-concours|session|fonction publique|calendrier|ouverture|dépôt|depot)/i.test(String(text || ''));
+  return isDirectProfessionalCompetitionNews(text);
 }
 
 const FRENCH_MONTHS = {
@@ -3369,17 +3381,25 @@ function fallbackOfficialDrafts(candidates, limit){
   })).filter(item => item.title && item.sourceUrl);
 }
 
+function cleanOfficialNewsText(value, max){
+  return cleanText(stripHtml(value)
+    .replace(/(?:^|\s)-?mask["']?>/gi, ' ')
+    .replace(/<\/?[a-z][^>]*>?/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim(), max);
+}
+
 function normalizeOfficialNewsDraft(item, fallback = {}){
   return {
-    title:cleanText(item?.title || fallback.title, 180),
-    type:cleanText(item?.type || fallback.type || 'Communiqué', 60),
-    organization:cleanText(item?.organization || fallback.organization || fallback.sourceName || 'Source officielle', 120),
+    title:cleanOfficialNewsText(item?.title || fallback.title, 180),
+    type:cleanOfficialNewsText(item?.type || fallback.type || 'Communiqué', 60),
+    organization:cleanOfficialNewsText(item?.organization || fallback.organization || fallback.sourceName || 'Source officielle', 120),
     deadline:cleanText(item?.deadline || '', 40),
-    status:cleanText(item?.status || fallback.status || 'Info', 40),
-    summary:cleanText(item?.summary || fallback.summary || fallback.snippet || '', 500),
-    content:cleanText(item?.content || fallback.content || fallback.snippet || fallback.title || '', 6000),
+    status:cleanOfficialNewsText(item?.status || fallback.status || 'Info', 40),
+    summary:cleanOfficialNewsText(item?.summary || fallback.summary || fallback.snippet || '', 500),
+    content:cleanOfficialNewsText(item?.content || fallback.content || fallback.snippet || fallback.title || '', 6000),
     sourceUrl:cleanUrl(item?.sourceUrl || item?.source_url || fallback.sourceUrl || fallback.url),
-    sourceName:cleanText(item?.sourceName || fallback.sourceName || fallback.organization || 'Source officielle', 120)
+    sourceName:cleanOfficialNewsText(item?.sourceName || fallback.sourceName || fallback.organization || 'Source officielle', 120)
   };
 }
 
@@ -3404,13 +3424,15 @@ async function buildOfficialNewsDrafts(limit = 6){
   let items = [];
   if (aiProviderConfigured()){
     try{
-      const prompt = `Tu es assistant de veille pour Réussite Concours BF. Date du jour: ${todayIso}. À partir de cette liste issue de sources officielles, propose au maximum ${limit} propositions d'actualités concours À JOUR UNIQUEMENT. Règles strictes: ne propose aucun communiqué de 2025, 2024 ou année antérieure; ne propose aucune inscription/date limite déjà clôturée avant ${todayIso}; privilégie session ${currentYear}, résultats récents ${currentYear}, ouvertures en cours ou échéances futures; n'invente rien hors des extraits. Si une date limite n'est pas claire, laisse deadline vide et mets status "Info". Réponds uniquement en JSON valide: {"items":[{"title":"...","type":"Concours|Recrutement|Communiqué|Résultat|Calendrier","organization":"...","deadline":"YYYY-MM-DD ou vide","status":"Ouvert|Bientôt|Info|Clôturé","summary":"...","content":"...","sourceUrl":"...","sourceName":"..."}]}\n\nSources filtrées actuelles:\n${JSON.stringify(unique.slice(0, 30), null, 2)}`;
+      const prompt = `Tu assures une veille strictement limitée aux concours directs et aux concours professionnels de la fonction publique du Burkina Faso. Date du jour: ${todayIso}. À partir de cette liste officielle, retourne au maximum ${limit} informations À JOUR UNIQUEMENT. Interdiction absolue: aucune actualité générale, politique, universitaire, culturelle, conférence, marché public, recrutement hors concours ou communiqué sans lien explicite avec un concours direct/professionnel. S'il n'existe aucune information conforme, retourne {"items":[]}. Ne propose aucun communiqué de 2025, 2024 ou antérieur; aucune échéance clôturée avant ${todayIso}; privilégie la session ${currentYear}, les ouvertures, calendriers, listes de candidats, admissibilités et résultats. N'invente rien. Nettoie tout HTML des résumés. Si une date limite n'est pas claire, laisse deadline vide et mets status "Info". Réponds uniquement en JSON valide: {"items":[{"title":"...","type":"Concours|Communiqué|Résultat|Calendrier","organization":"...","deadline":"YYYY-MM-DD ou vide","status":"Ouvert|Bientôt|Info|Clôturé","summary":"...","content":"...","sourceUrl":"...","sourceName":"..."}]}\n\nSources déjà filtrées:\n${JSON.stringify(unique.slice(0, 30), null, 2)}`;
       const ai = await callAiGenerate(prompt);
       const parsed = extractJsonFromAi(ai.text);
       const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.items) ? parsed.items : []);
       items = rows
         .map(row => normalizeOfficialNewsDraft(row))
-        .filter(item => item.title && item.summary && item.sourceUrl && isCurrentOfficialCandidate({ title:item.title, url:item.sourceUrl, snippet:`${item.summary} ${item.content} ${item.deadline}` }, now))
+        .filter(item => item.title && item.summary && item.sourceUrl)
+        .filter(item => isDirectProfessionalCompetitionNews(`${item.title} ${item.summary} ${item.content} ${item.sourceUrl} ${item.sourceName}`))
+        .filter(item => isCurrentOfficialCandidate({ title:item.title, url:item.sourceUrl, snippet:`${item.summary} ${item.content} ${item.deadline}` }, now))
         .slice(0, limit);
     }catch(err){
       console.warn('Veille IA actualités fallback:', err.message);
@@ -3419,6 +3441,7 @@ async function buildOfficialNewsDrafts(limit = 6){
   if (!items.length){
     items = fallbackOfficialDrafts(unique, limit)
       .map(item => normalizeOfficialNewsDraft(item))
+      .filter(item => isDirectProfessionalCompetitionNews(`${item.title} ${item.summary} ${item.content} ${item.sourceUrl} ${item.sourceName}`))
       .filter(item => isCurrentOfficialCandidate({ title:item.title, url:item.sourceUrl, snippet:`${item.summary} ${item.content} ${item.deadline}` }, now));
   }
   return { candidates:unique, items:items.slice(0, limit), today:todayIso, currentYear };
@@ -3543,7 +3566,9 @@ async function stageOfficialNewsDrafts(items, authorPhone = 'system'){
   const now = new Date().toISOString();
   for (const raw of (Array.isArray(items) ? items : [])){
     try{
-      const payload = stagedNewsDraftPayload(raw);
+      const normalized = normalizeOfficialNewsDraft(raw);
+      if (!isDirectProfessionalCompetitionNews(`${normalized.title} ${normalized.summary} ${normalized.content} ${normalized.sourceUrl} ${normalized.sourceName}`)) continue;
+      const payload = stagedNewsDraftPayload(normalized);
       const titleKey = normalizeQuestionKey(payload.title);
       let idx = news.findIndex(item => payload.source_url && item.source_url === payload.source_url);
       if (idx < 0) idx = news.findIndex(item => normalizeQuestionKey(item.title) === titleKey && titleKey);
@@ -4009,7 +4034,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-ai-quota-fallback-v1',
+    build: 'news-direct-pro-only-v1',
     time: new Date().toISOString()
   });
 });
@@ -5653,6 +5678,8 @@ export {
   certifyGeminiSinglePassQuestion,
   dailyDraftGenerationIssue,
   recoverDailyAiDraft,
+  isDirectProfessionalCompetitionNews,
+  normalizeOfficialNewsDraft,
   isOfficialBurkinaQcmSource,
   isTrustedEducationalQcmSource,
   aiProviderStatus,

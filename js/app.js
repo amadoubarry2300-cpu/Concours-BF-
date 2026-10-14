@@ -2525,15 +2525,15 @@ async function scanOfficialNews(){
   const result = $('#aiNewsResult');
   const list = $('#aiNewsDraftList');
   setButtonLoading(btn, true, 'Recherche...');
-  if (result) result.innerHTML = '<div class="pay-note">Recherche sur les sources officielles avec filtre à jour : année en cours, échéances non dépassées. Les communiqués trouvés restent masqués jusqu’à ta validation.</div>';
-  if (list) list.innerHTML = '<div class="empty">Analyse des communiqués en cours...</div>';
+  if (result) result.innerHTML = '<div class="pay-note">Recherche limitée aux concours directs et aux concours professionnels en cours. S’il n’y a aucune annonce officielle conforme, aucun résultat ne sera proposé.</div>';
+  if (list) list.innerHTML = '<div class="empty">Recherche des concours directs et professionnels...</div>';
   try{
     const data = await adminFetch('/api/admin/ai/news-scan', { method:'POST', body:JSON.stringify({ limit:6 }) });
     aiNewsDraftCache = data.items || [];
     if (result){
       const note = data.notificationSent ? ' Notification envoyée.' : '';
       const fresh = data.today ? ` Filtre à jour appliqué (${data.today}).` : ' Filtre à jour appliqué.';
-      result.innerHTML = `<div class="pay-note success">${aiNewsDraftCache.length} nouvelle${aiNewsDraftCache.length>1?'s':''} actuelle${aiNewsDraftCache.length>1?'s':''} préparée${aiNewsDraftCache.length>1?'s':''} depuis les sources officielles ✅${fresh}${note}</div>`;
+      result.innerHTML = `<div class="pay-note success">${aiNewsDraftCache.length} annonce${aiNewsDraftCache.length>1?'s':''} de concours direct ou professionnel préparée${aiNewsDraftCache.length>1?'s':''} ✅${fresh}${note}</div>`;
     }
     renderAiNewsDrafts();
     if (data.staged) loadAdminNews().catch(()=>{});
@@ -2550,7 +2550,7 @@ function renderAiNewsDrafts(){
   const wrap = $('#aiNewsDraftList');
   if (!wrap) return;
   if (!aiNewsDraftCache.length){
-    wrap.innerHTML = '<div class="empty">Aucune actualité officielle récente ou échéance non dépassée détectée pour le moment.</div>';
+    wrap.innerHTML = '<div class="empty">Aucun concours direct ou professionnel officiel en cours détecté pour le moment.</div>';
     return;
   }
   wrap.innerHTML = aiNewsDraftCache.map((item, idx)=>`
@@ -3971,7 +3971,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-ai-quota-fallback-v1') location.reload();
+    if (data.build && data.build !== 'news-direct-pro-only-v1') location.reload();
   }catch{}
 }
 
@@ -3984,7 +3984,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-ai-quota-fallback-v1')
+    navigator.serviceWorker.register('/sw.js?v=news-direct-pro-only-v1')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
