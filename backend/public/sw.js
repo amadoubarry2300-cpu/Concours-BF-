@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'canva-fonts-minimal-pdf-v10';
+const CACHE_VERSION = 'digital-color-book-v11';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=canva-fonts-minimal-pdf-v10',
-  '/js/questions.js?v=canva-fonts-minimal-pdf-v10',
-  '/js/app.js?v=canva-fonts-minimal-pdf-v10',
+  '/css/styles.css?v=digital-color-book-v11',
+  '/js/questions.js?v=digital-color-book-v11',
+  '/js/app.js?v=digital-color-book-v11',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

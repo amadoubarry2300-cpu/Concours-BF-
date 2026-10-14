@@ -182,7 +182,7 @@ const compactPdf = await buildPastedQcmBookPdf({
   theme:'open-sans-epure'
 });
 const compactPageCount = (compactPdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
-assert(compactPageCount === 4, `la pagination ne place pas 3 QCM courts par page : ${compactPageCount - 1} pages de contenu pour 9 QCM`);
+assert(compactPageCount === 10, `le livre ne réserve pas exactement une page à chaque QCM : ${compactPageCount - 1} pages de contenu pour 9 QCM`);
 delete process.env.PDF_FONT_THEME;
 
 const pdf = await buildPastedQcmBookPdf(signedSource);

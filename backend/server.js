@@ -3184,32 +3184,33 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
       info:{
         Title:cleanTitle,
         Author:'Réussite Concours BF',
-        Subject:'Cahier de QCM corrigés',
+        Subject:'Livre numérique de QCM corrigés',
         Creator:'Réussite Concours BF',
         Keywords:'concours, QCM, Burkina Faso, préparation'
       }
     });
     const fonts = setupPdfFonts(doc, theme);
     const palette = fonts.palette;
-    const type = fonts.type;
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const margin = 48;
     const pageW = doc.page.width;
     const pageH = doc.page.height;
-    const contentW = pageW - margin * 2;
     const logoPath = path.join(PUBLIC_DIR, 'img', 'logo.png');
     const moduleName = pdfCleanText(metadata.category || 'Module');
     const levelName = pdfCleanText(metadata.level || 'Niveau');
     const formattedDate = formatDateForPdf(metadata.date || todayId());
     const labels = ['A','B','C','D'];
-    let contentPage = 0;
-    let questionsOnPage = 0;
+    const visual = {
+      'canva-bold':{ background:'#edf7f2', wash:'#dcefe6', answer:'#e4f6ec', explanation:'#f6fbf8', ink:'#111827' },
+      'canva-clean':{ background:'#edf8fa', wash:'#d9f0f4', answer:'#e1f5f3', explanation:'#f5fbfc', ink:'#172033' },
+      'canva-modern':{ background:'#eef3fb', wash:'#dce6f5', answer:'#e4f2ed', explanation:'#f5f8fc', ink:'#17213a' },
+      'canva-serif':{ background:'#f8f1f3', wash:'#efe0e4', answer:'#e7f2ed', explanation:'#fcf8f5', ink:'#20191b' }
+    }[fonts.variant] || { background:'#f2f5f3', wash:'#e2ece7', answer:'#e4f5ec', explanation:'#f8faf9', ink:palette.ink };
 
-    const font = (kind='regular', size=10, color=palette.ink) => {
+    const font = (kind='regular', size=10, color=visual.ink) => {
       doc.font(fonts[kind] || fonts.regular).fontSize(size).fillColor(color);
       return doc;
     };
@@ -3217,9 +3218,9 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
       doc.font(fonts[kind] || fonts.regular).fontSize(size);
       return doc.heightOfString(pdfCleanText(value), { width, ...options });
     };
-    const fitTitleSize = (value, width, maxHeight, start=39, min=23) => {
-      for (let size=start; size>=min; size-=1){
-        if (height(value, width, 'bold', size, { lineGap:1.5, align:'center' }) <= maxHeight) return size;
+    const fitSize = (value, width, maxHeight, kind, start, min, options={}) => {
+      for (let size=start; size>=min; size-=0.5){
+        if (height(value, width, kind, size, options) <= maxHeight) return size;
       }
       return min;
     };
@@ -3229,144 +3230,153 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
       }
       font('bold', size * 0.19, palette.primary).text('RCBF', x, y + size * 0.39, { width:size, align:'center' });
     };
-    const basePage = () => doc.rect(0, 0, pageW, pageH).fill('#ffffff');
+    const paper = color => doc.rect(0, 0, pageW, pageH).fill(color);
+    const shadowCard = (x, y, w, h, radius=18) => {
+      doc.save().opacity(0.09).fillColor('#000000').roundedRect(x + 5, y + 7, w, h, radius).fill().restore();
+      doc.roundedRect(x, y, w, h, radius).fill('#ffffff');
+    };
 
     function drawCover(){
-      basePage();
-      doc.rect(0, 0, 15, pageH).fill(palette.primary);
-      doc.rect(15, 0, 6, pageH).fill(palette.secondary);
-      doc.rect(21, 0, pageW - 21, 13).fill(palette.primary);
-      doc.rect(21, 13, pageW - 21, 5).fill(palette.accent);
+      paper(visual.background);
+      doc.rect(0, 0, pageW, 285).fill(palette.primary);
+      doc.rect(0, 0, 18, pageH).fill(palette.secondary);
+      doc.rect(18, 0, 7, pageH).fill(palette.accent);
+      doc.save().opacity(0.12).fillColor('#ffffff');
+      doc.circle(pageW - 25, 45, 150).fill();
+      doc.circle(pageW - 80, 240, 72).fill();
+      doc.restore();
+      doc.save().opacity(0.18).fillColor(palette.secondary);
+      doc.moveTo(24, pageH).lineTo(310, pageH).lineTo(24, pageH - 286).closePath().fill();
+      doc.restore();
 
-      if (fonts.variant === 'canva-bold'){
-        doc.save().opacity(0.08).fillColor(palette.primary);
-        doc.circle(pageW - 40, 95, 110).fill();
-        doc.circle(pageW - 85, pageH - 90, 150).fill();
-        doc.restore();
-      }else if (fonts.variant === 'canva-clean'){
-        doc.save().opacity(0.07).fillColor(palette.primary);
-        doc.moveTo(pageW - 180, 0).lineTo(pageW, 0).lineTo(pageW, 250).closePath().fill();
-        doc.restore();
-      }else if (fonts.variant === 'canva-modern'){
-        doc.save().fillColor(palette.primary).opacity(0.07);
-        doc.moveTo(21, pageH).lineTo(270, pageH).lineTo(21, pageH - 248).closePath().fill();
-        doc.restore();
-      }else{
-        doc.rect(34, 31, pageW - 67, pageH - 62).lineWidth(0.7).strokeColor(palette.secondary).stroke();
-      }
+      shadowCard(58, 72, pageW - 100, 650, 22);
+      doc.roundedRect(81, 96, 78, 78, 39).fill(visual.background);
+      logo(89, 104, 62);
+      font('bold', 22, visual.ink).text('RÉUSSITE', 178, 103, { width:300 });
+      font('bold', 24, palette.primary).text('CONCOURS BF', 178, 134, { width:310 });
+      font('regular', 9.5, palette.muted).text('PRÉPARATION AUX EXAMENS ET CONCOURS', 179, 168, { width:310, characterSpacing:0.55 });
+      doc.moveTo(82, 196).lineTo(pageW - 72, 196).lineWidth(1.2).stroke(visual.wash);
 
-      logo(55, 46, 74);
-      font('bold', 25, palette.ink).text('RÉUSSITE', 146, 58, { width:310 });
-      font('bold', 27, palette.primary).text('CONCOURS BF', 146, 89, { width:330 });
-      font('regular', 9.5, palette.muted).text('PRÉPARATION AUX EXAMENS ET CONCOURS', 147, 125, { width:350, characterSpacing:0.7 });
-      doc.moveTo(55, 157).lineTo(pageW - 55, 157).lineWidth(2.2).stroke(palette.primary);
-      doc.moveTo(55, 163).lineTo(pageW - 220, 163).lineWidth(4.5).stroke(palette.secondary);
+      font('bold', 12, palette.secondary).text('LIVRE NUMÉRIQUE • ÉDITION CORRIGÉE', 84, 226, { width:pageW - 148, align:'center', characterSpacing:0.45 });
+      const titleSize = fitSize(cleanTitle.toUpperCase(), pageW - 154, 145, 'bold', 38, 23, { lineGap:2, align:'center' });
+      font('bold', titleSize, visual.ink).text(cleanTitle.toUpperCase(), 86, 270, { width:pageW - 158, align:'center', lineGap:2 });
 
-      font('bold', 13, palette.secondary).text('CAHIER DE QCM CORRIGÉS', 62, 204, { width:pageW - 124, align:'center', characterSpacing:0.55 });
-      const titleSize = fitTitleSize(cleanTitle.toUpperCase(), pageW - 126, 145, 39, 23);
-      font('bold', titleSize, palette.ink).text(cleanTitle.toUpperCase(), 63, 247, { width:pageW - 126, align:'center', lineGap:1.5 });
+      doc.roundedRect(100, 414, pageW - 182, 79, 14).fill(palette.primary);
+      doc.roundedRect(100, 414, 12, 79, 6).fill(palette.accent);
+      font('bold', 27, '#ffffff').text(`${rows.length} QCM`, 124, 428, { width:pageW - 230, align:'center' });
+      font('regular', 11, '#ffffff').text('UN QCM PAR PAGE • RÉPONSES EXPLIQUÉES', 124, 462, { width:pageW - 230, align:'center', characterSpacing:0.25 });
 
-      doc.rect(82, 407, pageW - 164, 67).fill(palette.primary);
-      font('bold', 25, '#ffffff').text(`${rows.length} QCM`, 98, 421, { width:pageW - 196, align:'center' });
-      font('regular', 10.5, '#ffffff').text('QUESTIONS • RÉPONSES • EXPLICATIONS', 98, 452, { width:pageW - 196, align:'center', characterSpacing:0.45 });
-
-      const metaX = 92, metaW = pageW - 184;
-      const metaRows = [
-        ['MODULE', moduleName.toUpperCase()],
-        ['NIVEAU', levelName.toUpperCase()],
-        ['ÉDITION', formattedDate.toUpperCase()]
-      ];
-      metaRows.forEach((row, index) => {
-        const y = 523 + index * 48;
-        font('bold', 10.5, palette.muted).text(row[0], metaX, y, { width:100 });
-        font('bold', index === 2 ? 12.5 : 15, palette.ink).text(row[1], metaX + 112, y - 3, { width:metaW - 112, align:'right', ellipsis:true });
-        doc.moveTo(metaX, y + 27).lineTo(metaX + metaW, y + 27).lineWidth(0.7).stroke(palette.border);
+      const metaX = 93, metaW = pageW - 166;
+      [["MODULE",moduleName.toUpperCase()],["NIVEAU",levelName.toUpperCase()],["ÉDITION",formattedDate.toUpperCase()]].forEach((row,index) => {
+        const y = 535 + index * 43;
+        font('bold', 10, palette.muted).text(row[0], metaX, y, { width:90 });
+        font('bold', index === 2 ? 11.5 : 14, visual.ink).text(row[1], metaX + 96, y - 3, { width:metaW - 96, align:'right', ellipsis:true });
+        doc.moveTo(metaX, y + 24).lineTo(metaX + metaW, y + 24).lineWidth(0.7).stroke(visual.wash);
       });
 
-      font('italic', 12, palette.primary).text('Une préparation sérieuse aujourd’hui, votre réussite demain.', 70, 693, { width:pageW - 140, align:'center' });
-      font('regular', 10, palette.ink).text('Support WhatsApp : +226 74 01 37 04', 70, 728, { width:pageW - 140, align:'center' });
-      font('regular', 9, palette.muted).text('Ouagadougou • reussiteconcoursbf@yahoo.com', 70, 746, { width:pageW - 140, align:'center' });
-      font('bold', 8.8, palette.secondary).text('BURKINA FASO', 70, pageH - 68, { width:pageW - 140, align:'center', characterSpacing:1 });
-    }
-
-    function drawContentPage(){
-      contentPage += 1;
-      questionsOnPage = 0;
-      basePage();
-      const railColor = fonts.variant === 'canva-clean' ? palette.border : palette.primary;
-      doc.moveTo(35, 28).lineTo(35, pageH - 34).lineWidth(1.5).stroke(railColor);
-      doc.moveTo(pageW - 35, 28).lineTo(pageW - 35, pageH - 34).lineWidth(1.5).stroke(railColor);
-      if (fonts.variant === 'canva-modern'){
-        doc.moveTo(40, 29).lineTo(190, 29).lineWidth(5).stroke(palette.secondary);
-      }else if (fonts.variant === 'canva-bold'){
-        doc.moveTo(40, 29).lineTo(190, 29).lineWidth(5).stroke(palette.accent);
-      }
-      logo(48, 34, 36);
-      font('bold', 11.5, palette.ink).text('RÉUSSITE CONCOURS BF', 94, 38, { width:230 });
-      font('regular', 8.5, palette.primary).text(fonts.label.toUpperCase(), 94, 56, { width:240, characterSpacing:0.35 });
-      font('bold', 9.2, palette.ink).text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, pageW - 254, 41, { width:190, align:'right', ellipsis:true, lineBreak:false });
-      font('regular', 8.2, palette.muted).text(formattedDate, pageW - 254, 58, { width:190, align:'right', lineBreak:false });
-      doc.moveTo(48, 82).lineTo(pageW - 48, 82).lineWidth(1).stroke(palette.border);
-      font('bold', 13, palette.primary).text('QCM CORRIGÉS', 48, 91, { width:contentW, align:'center', characterSpacing:0.45 });
-      doc.moveTo(48, pageH - 70).lineTo(pageW - 48, pageH - 70).lineWidth(0.55).stroke(palette.border);
-      font('regular', 8, palette.muted).text('Réussite Concours BF', 48, pageH - 59, { width:190 });
-      font('bold', 8.5, palette.ink).text(`PAGE ${contentPage}`, pageW - 128, pageH - 59, { width:80, align:'right' });
-      doc.y = 122;
+      font('italic', 11.2, palette.primary).text('Une préparation sérieuse aujourd’hui, votre réussite demain.', 84, 675, { width:pageW - 150, align:'center' });
+      font('bold', 9.2, palette.secondary).text('BURKINA FASO • +226 74 01 37 04', 84, 697, { width:pageW - 150, align:'center', characterSpacing:0.45 });
+      font('bold', 9, palette.primary).text('RÉUSSITE CONCOURS BF', 52, 770, { width:230 });
+      font('regular', 8.5, palette.muted).text('Livre conçu pour l’écran et l’impression', pageW - 300, 770, { width:248, align:'right' });
     }
 
     function normalizedOptions(q){
-      return [q.option_a, q.option_b, q.option_c, q.option_d]
-        .map(pdfCleanText)
-        .filter(Boolean);
+      return [q.option_a, q.option_b, q.option_c, q.option_d].map(pdfCleanText).filter(Boolean);
     }
 
-    function blockMetrics(q){
-      const opts = normalizedOptions(q);
+    function pageLayout(q){
       const qText = pdfCleanText(q.question_text || 'Question');
+      const opts = normalizedOptions(q);
       const explanation = pdfCleanText(q.explanation || 'La réponse indiquée est la bonne réponse.');
-      const questionW = contentW - 35;
-      const optionW = contentW - 58;
-      const explanationText = `Explication : ${explanation}`;
-      const questionH = height(qText, questionW, 'bold', type.question, { lineGap:1.7 });
-      const optionHeights = opts.map(opt => Math.max(type.option + 5, height(opt, optionW, 'regular', type.option, { lineGap:1 }) + 3));
-      const explanationH = height(explanationText, optionW, 'regular', type.explanation, { lineGap:1.1 });
-      const blockH = questionH + 8 + optionHeights.reduce((sum, value) => sum + value, 0) + 7 + type.answer + 5 + explanationH + 15;
-      return { opts, qText, explanationText, questionH, optionHeights, explanationH, blockH };
+      // Ces largeurs sont exactement celles utilisées au dessin afin que la
+      // question, les choix et l’explication ne puissent jamais se chevaucher.
+      const questionW = 419;
+      const optionW = 383;
+      const explanationW = 393;
+      let chosen = null;
+      const starts = fonts.variant === 'canva-serif'
+        ? [27,26,25,24,23,22,21,20,19,18,17,16]
+        : [26,25,24,23,22,21,20,19,18,17,16];
+      for (const questionSize of starts){
+        const optionSize = Math.max(13.5, Math.min(18, questionSize - 7));
+        const answerSize = Math.max(16.5, optionSize + 0.5);
+        const explanationSize = Math.max(11.5, optionSize - 2.2);
+        const qH = height(qText, questionW, 'bold', questionSize, { lineGap:2.4 });
+        const optionHs = opts.map(value => Math.max(45, height(value, optionW, 'regular', optionSize, { lineGap:1.7 }) + 18));
+        const explanationH = height(explanation, explanationW, 'regular', explanationSize, { lineGap:2.1 });
+        const totalH = qH + 18 + optionHs.reduce((sum,value) => sum + value, 0) + 18 + 55 + 12 + Math.max(82, explanationH + 48);
+        chosen = { qText, opts, explanation, questionSize, optionSize, answerSize, explanationSize, qH, optionHs, explanationH, totalH };
+        if (totalH <= 553) break;
+      }
+      return chosen;
     }
 
-    function drawQuestion(q, index){
-      const metrics = blockMetrics(q);
-      const bottom = pageH - 84;
-      if (questionsOnPage >= 4 || doc.y + metrics.blockH > bottom){
-        doc.addPage();
-        drawContentPage();
-      }
-      const x = margin;
-      const y = doc.y;
-      font('bold', type.question, palette.primary).text(`${index + 1}.`, x, y, { width:30, align:'right', lineBreak:false });
-      font('bold', type.question, palette.ink).text(metrics.qText, x + 36, y, { width:contentW - 36, lineGap:1.7 });
-      let cursorY = y + metrics.questionH + 8;
-      metrics.opts.forEach((option, optionIndex) => {
-        const optionH = metrics.optionHeights[optionIndex];
-        font('bold', type.option, palette.ink).text(`${labels[optionIndex]}.`, x + 36, cursorY, { width:23, lineBreak:false });
-        font('regular', type.option, palette.ink).text(option, x + 62, cursorY, { width:contentW - 62, lineGap:1 });
-        cursorY += optionH;
+    function drawQuestionPage(q, index){
+      paper(visual.background);
+      doc.rect(0, 0, pageW, 132).fill(palette.primary);
+      doc.rect(0, 0, pageW, 8).fill(palette.accent);
+      doc.save().opacity(0.10).fillColor('#ffffff');
+      doc.circle(pageW - 20, 25, 100).fill();
+      doc.circle(pageW - 118, 90, 42).fill();
+      doc.restore();
+
+      doc.roundedRect(38, 25, 51, 51, 25.5).fill('#ffffff');
+      logo(44, 31, 39);
+      font('bold', 14, '#ffffff').text('RÉUSSITE CONCOURS BF', 102, 34, { width:270 });
+      font('regular', 8.8, '#ffffff').text(fonts.label.toUpperCase(), 103, 55, { width:250, characterSpacing:0.45 });
+      font('bold', 9.5, '#ffffff').text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, pageW - 242, 37, { width:190, align:'right', ellipsis:true, lineBreak:false });
+      font('regular', 8.3, '#ffffff').text(formattedDate, pageW - 242, 56, { width:190, align:'right', lineBreak:false });
+
+      shadowCard(31, 99, pageW - 62, 656, 20);
+      doc.roundedRect(54, 119, 154, 34, 17).fill(palette.primary);
+      font('bold', 11.3, '#ffffff').text(`QUESTION ${index + 1} / ${rows.length}`, 64, 130, { width:134, align:'center', lineBreak:false, characterSpacing:0.35 });
+      doc.roundedRect(pageW - 141, 119, 86, 34, 17).fill(visual.wash);
+      font('bold', 10.2, palette.primary).text('QCM CORRIGÉ', pageW - 134, 130, { width:72, align:'center', lineBreak:false });
+
+      const layout = pageLayout(q);
+      const contentX = 65;
+      const contentW = pageW - 130;
+      let y = 174;
+      font('bold', layout.questionSize, palette.primary).text(`${index + 1}.`, contentX, y, { width:37, align:'right', lineBreak:false });
+      font('bold', layout.questionSize, visual.ink).text(layout.qText, contentX + 46, y, { width:contentW - 46, lineGap:2.4 });
+      y += layout.qH + 18;
+
+      layout.opts.forEach((option, optionIndex) => {
+        const rowH = layout.optionHs[optionIndex];
+        if (optionIndex % 2 === 0){
+          doc.save().opacity(0.62).fillColor(visual.explanation).roundedRect(contentX + 32, y - 7, contentW - 32, rowH, 9).fill().restore();
+        }
+        doc.circle(contentX + 48, y + 11, 15).fill(palette.primary);
+        font('bold', 13, '#ffffff').text(labels[optionIndex], contentX + 38, y + 6, { width:20, align:'center', lineBreak:false });
+        font('regular', layout.optionSize, visual.ink).text(option, contentX + 75, y, { width:contentW - 82, lineGap:1.7 });
+        doc.moveTo(contentX + 75, y + rowH - 8).lineTo(contentX + contentW, y + rowH - 8).lineWidth(0.5).stroke(visual.wash);
+        y += rowH;
       });
+
       const answer = answerLabel(q.correct_answer);
-      cursorY += 4;
-      font('bold', type.answer, palette.answer).text(`RÉPONSE : ${answer}`, x + 36, cursorY, { width:contentW - 36, lineBreak:false });
-      cursorY += type.answer + 7;
-      font('regular', type.explanation, palette.muted).text(metrics.explanationText, x + 36, cursorY, { width:contentW - 58, lineGap:1.1 });
-      cursorY += metrics.explanationH + 9;
-      doc.moveTo(x + 36, cursorY).lineTo(pageW - margin, cursorY).lineWidth(0.45).stroke(palette.border);
-      doc.y = cursorY + 9;
-      questionsOnPage += 1;
+      y += 10;
+      doc.roundedRect(contentX + 32, y, contentW - 32, 55, 12).fill(visual.answer);
+      doc.roundedRect(contentX + 32, y, 11, 55, 5).fill(palette.answer);
+      font('bold', 10.5, palette.answer).text('BONNE RÉPONSE', contentX + 58, y + 9, { width:180, characterSpacing:0.55 });
+      font('bold', layout.answerSize, visual.ink).text(`RÉPONSE : ${answer}`, contentX + 58, y + 25, { width:contentW - 75, lineBreak:false });
+      y += 67;
+
+      const explanationBoxH = Math.max(82, layout.explanationH + 48);
+      doc.roundedRect(contentX + 32, y, contentW - 32, explanationBoxH, 12).fill(visual.explanation);
+      doc.rect(contentX + 32, y, 5, explanationBoxH).fill(palette.secondary);
+      font('bold', 10.5, palette.secondary).text('EXPLICATION SIMPLE', contentX + 52, y + 13, { width:220, characterSpacing:0.45 });
+      font('regular', layout.explanationSize, visual.ink).text(layout.explanation, contentX + 52, y + 33, { width:contentW - 72, lineGap:2.1 });
+
+      font('bold', 8.8, palette.primary).text('RÉUSSITE CONCOURS BF', 42, 776, { width:210, lineBreak:false });
+      font('regular', 8.2, palette.muted).text('Votre réussite, notre mission.', 205, 776, { width:180, align:'center', lineBreak:false });
+      font('bold', 8.8, palette.primary).text(`PAGE ${index + 1}`, pageW - 112, 776, { width:70, align:'right', lineBreak:false });
     }
 
     drawCover();
-    doc.addPage();
-    drawContentPage();
-    rows.forEach((question, index) => drawQuestion(question, index));
+    rows.forEach((question, index) => {
+      doc.addPage();
+      drawQuestionPage(question, index);
+    });
     doc.end();
   });
 }
@@ -4625,7 +4635,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'canva-fonts-minimal-pdf-v10',
+    build: 'digital-color-book-v11',
     time: new Date().toISOString()
   });
 });
