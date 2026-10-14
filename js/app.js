@@ -138,6 +138,196 @@ const $$ = s => document.querySelectorAll(s);
 const shuffle = a => { a=[...a]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 const today = () => new Date().toISOString().slice(0,10);
 
+/* ---------- lecteur PDF intégré ---------- */
+let pdfReaderEnginePromise = null;
+let pdfReaderDocument = null;
+let pdfReaderPageNumber = 1;
+let pdfReaderZoom = 1;
+let pdfReaderRenderToken = 0;
+let pdfReaderRenderTask = null;
+let pdfReaderOpenToken = 0;
+let pdfReaderDownloadBlob = null;
+let pdfReaderDownloadName = 'document.pdf';
+
+function pdfReaderFileName(title){
+  const base = String(title || 'document').replace(/\.pdf$/i, '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim() || 'document';
+  return `${base}.pdf`;
+}
+
+function downloadOpenPdf(){
+  if (!pdfReaderDownloadBlob) return toast('Le document est encore en préparation.');
+  const url = URL.createObjectURL(pdfReaderDownloadBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = pdfReaderDownloadName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+}
+
+function loadPdfReaderEngine(){
+  if (!Promise.withResolvers){
+    Promise.withResolvers = () => {
+      let resolve, reject;
+      const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+      return { promise, resolve, reject };
+    };
+  }
+  if (!pdfReaderEnginePromise){
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=integrated-pdf-reader-v15').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=integrated-pdf-reader-v15';
+      return pdfjs;
+    });
+  }
+  return pdfReaderEnginePromise;
+}
+
+function updatePdfReaderControls(){
+  const total = Number(pdfReaderDocument?.numPages || 1);
+  const page = $('#pdfReaderPage');
+  const meta = $('#pdfReaderMeta');
+  if (page) page.textContent = `${pdfReaderPageNumber} / ${total}`;
+  if (meta) meta.textContent = `${total} page${total > 1 ? 's' : ''}`;
+  const prev = $('#pdfReaderPrev');
+  const next = $('#pdfReaderNext');
+  if (prev) prev.disabled = pdfReaderPageNumber <= 1;
+  if (next) next.disabled = pdfReaderPageNumber >= total;
+}
+
+async function renderPdfReaderPage({ keepPosition=false } = {}){
+  if (!pdfReaderDocument) return;
+  const canvas = $('#pdfReaderCanvas');
+  const stage = $('#pdfReaderStage');
+  const loading = $('#pdfReaderLoading');
+  if (!canvas || !stage) return;
+  const token = ++pdfReaderRenderToken;
+  if (pdfReaderRenderTask){ pdfReaderRenderTask.cancel(); pdfReaderRenderTask = null; }
+  if (loading){ loading.classList.remove('error'); loading.textContent = 'Affichage de la page…'; loading.style.display = 'block'; }
+  try{
+    const page = await pdfReaderDocument.getPage(pdfReaderPageNumber);
+    if (token !== pdfReaderRenderToken) return;
+    const baseViewport = page.getViewport({ scale:1 });
+    const availableWidth = Math.max(260, Math.min(920, stage.clientWidth - 18));
+    const fitScale = availableWidth / baseViewport.width;
+    const viewport = page.getViewport({ scale:fitScale * pdfReaderZoom });
+    const outputScale = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+    canvas.width = Math.floor(viewport.width * outputScale);
+    canvas.height = Math.floor(viewport.height * outputScale);
+    canvas.style.width = `${Math.floor(viewport.width)}px`;
+    canvas.style.height = `${Math.floor(viewport.height)}px`;
+    const context = canvas.getContext('2d', { alpha:false });
+    pdfReaderRenderTask = page.render({
+      canvasContext:context,
+      viewport,
+      transform:outputScale === 1 ? null : [outputScale,0,0,outputScale,0,0],
+      background:'#ffffff'
+    });
+    await pdfReaderRenderTask.promise;
+    pdfReaderRenderTask = null;
+    if (token !== pdfReaderRenderToken) return;
+    canvas.classList.add('ready');
+    if (loading) loading.style.display = 'none';
+    if (!keepPosition) stage.scrollTo({ top:0, left:0, behavior:'auto' });
+    updatePdfReaderControls();
+  }catch(err){
+    if (token !== pdfReaderRenderToken) return;
+    if (loading){ loading.textContent = 'Ce document ne peut pas être affiché pour le moment.'; loading.classList.add('error'); loading.style.display = 'block'; }
+    console.warn('Lecteur PDF:', err?.message || err);
+  }
+}
+
+async function openPdfReader(source, title='Document PDF'){
+  const reader = $('#pdfReader');
+  const loading = $('#pdfReaderLoading');
+  const canvas = $('#pdfReaderCanvas');
+  const downloadButton = $('#pdfReaderDownload');
+  if (!reader) return;
+  const openToken = ++pdfReaderOpenToken;
+  pdfReaderDownloadBlob = null;
+  pdfReaderDownloadName = pdfReaderFileName(title);
+  if (downloadButton) downloadButton.disabled = true;
+  reader.classList.add('open');
+  reader.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('pdf-reader-open');
+  $('#pdfReaderTitle') && ($('#pdfReaderTitle').textContent = String(title || 'Document PDF'));
+  if (canvas) canvas.classList.remove('ready');
+  if (loading){ loading.classList.remove('error'); loading.textContent = 'Ouverture du document…'; loading.style.display = 'block'; }
+  try{
+    pdfReaderRenderToken += 1;
+    if (pdfReaderRenderTask){ pdfReaderRenderTask.cancel(); pdfReaderRenderTask = null; }
+    if (pdfReaderDocument){ await pdfReaderDocument.destroy().catch(()=>{}); pdfReaderDocument = null; }
+    if (openToken !== pdfReaderOpenToken) return;
+    const buffer = source instanceof Blob
+      ? await source.arrayBuffer()
+      : await fetch(String(source || ''), { headers:String(source || '').startsWith('blob:') ? {} : authHeaders({}) }).then(res => {
+          if (!res.ok) throw new Error('Document indisponible');
+          return res.arrayBuffer();
+        });
+    if (openToken !== pdfReaderOpenToken) return;
+    pdfReaderDownloadBlob = new Blob([buffer], { type:'application/pdf' });
+    if (downloadButton) downloadButton.disabled = false;
+    const pdfjs = await loadPdfReaderEngine();
+    if (openToken !== pdfReaderOpenToken) return;
+    const loadedDocument = await pdfjs.getDocument({ data:new Uint8Array(buffer) }).promise;
+    if (openToken !== pdfReaderOpenToken){ await loadedDocument.destroy().catch(()=>{}); return; }
+    pdfReaderDocument = loadedDocument;
+    pdfReaderPageNumber = 1;
+    pdfReaderZoom = 1;
+    updatePdfReaderControls();
+    await renderPdfReaderPage();
+  }catch(err){
+    if (openToken !== pdfReaderOpenToken) return;
+    if (loading){ loading.textContent = err?.message || 'Document indisponible'; loading.classList.add('error'); loading.style.display = 'block'; }
+  }
+}
+
+async function closePdfReader(){
+  pdfReaderOpenToken += 1;
+  pdfReaderRenderToken += 1;
+  if (pdfReaderRenderTask){ pdfReaderRenderTask.cancel(); pdfReaderRenderTask = null; }
+  const reader = $('#pdfReader');
+  reader?.classList.remove('open');
+  reader?.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('pdf-reader-open');
+  if (pdfReaderDocument){ await pdfReaderDocument.destroy().catch(()=>{}); pdfReaderDocument = null; }
+  pdfReaderDownloadBlob = null;
+  const downloadButton = $('#pdfReaderDownload');
+  if (downloadButton) downloadButton.disabled = true;
+  $('#pdfReaderCanvas')?.classList.remove('ready');
+}
+
+function previousPdfPage(){
+  if (!pdfReaderDocument || pdfReaderPageNumber <= 1) return;
+  pdfReaderPageNumber -= 1;
+  renderPdfReaderPage();
+}
+function nextPdfPage(){
+  if (!pdfReaderDocument || pdfReaderPageNumber >= pdfReaderDocument.numPages) return;
+  pdfReaderPageNumber += 1;
+  renderPdfReaderPage();
+}
+function zoomPdfIn(){
+  if (!pdfReaderDocument) return;
+  pdfReaderZoom = Math.min(2.2, Number((pdfReaderZoom + 0.2).toFixed(1)));
+  renderPdfReaderPage({ keepPosition:true });
+}
+function zoomPdfOut(){
+  if (!pdfReaderDocument) return;
+  pdfReaderZoom = Math.max(0.7, Number((pdfReaderZoom - 0.2).toFixed(1)));
+  renderPdfReaderPage({ keepPosition:true });
+}
+
+let pdfReaderResizeTimer = null;
+window.addEventListener('resize', ()=>{
+  if (!pdfReaderDocument || !$('#pdfReader')?.classList.contains('open')) return;
+  clearTimeout(pdfReaderResizeTimer);
+  pdfReaderResizeTimer = setTimeout(()=>renderPdfReaderPage({ keepPosition:true }), 180);
+});
+window.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && $('#pdfReader')?.classList.contains('open')) closePdfReader();
+});
+
 function toast(msg){
   const t = $('#toast');
   if (!t) return;
@@ -1616,11 +1806,9 @@ async function downloadPastedQcmBookPdf(){
 }
 
 function openPreparedPastedQcmPdf(){
-  if (!pastedQcmPdfCache || !pastedQcmPdfUrl) return toast('Crée d’abord le livre PDF.');
+  if (!pastedQcmPdfCache?.blob) return toast('Crée d’abord le livre PDF.');
   if (pastedQcmPdfCache.signature !== pastedQcmContentSignature()) return toast('Le contenu a changé : recrée le PDF avant de l’ouvrir.');
-  const opened = window.open(pastedQcmPdfUrl, '_blank');
-  if (opened) opened.opener = null;
-  else toast('Autorise l’ouverture du nouvel onglet pour voir le PDF.');
+  openPdfReader(pastedQcmPdfCache.blob, pastedQcmPdfCache.metadata?.title || 'Livre de QCM corrigés');
 }
 
 function downloadPreparedPastedQcmPdf(){
@@ -2562,7 +2750,8 @@ function downloadCurrentDailyPdf(){
 async function openCurrentDailyPdfFull(){
   try{
     const url = await ensureCurrentPdfBlob();
-    window.open(url, '_blank', 'noopener');
+    const draft = aiDailyDraftCache[currentDailyPdfIndex];
+    await openPdfReader(url, draft?.title || 'QCM quotidien corrigé');
   }catch(err){ toast(err.message); }
 }
 
@@ -3040,9 +3229,7 @@ async function openAdminNewsPdf(id){
       throw new Error(data.message || 'PDF indisponible');
     }
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank', 'noopener');
-    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    await openPdfReader(blob, 'Document officiel');
   }catch(err){ toast(err.message || 'PDF indisponible'); }
 }
 
@@ -3054,15 +3241,7 @@ async function openNewsPdf(id){
       throw new Error(data.message || 'PDF indisponible');
     }
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    await openPdfReader(blob, 'Document officiel');
   }catch(err){ toast(err.message || 'PDF indisponible'); }
 }
 
@@ -3270,6 +3449,11 @@ async function openResource(id){
       throw new Error(data.message || 'Ouverture impossible');
     }
     const blob = await res.blob();
+    const isPdf = item?.kind === 'pdf' || /application\/pdf/i.test(blob.type) || /\.pdf$/i.test(String(item?.file_name || item?.title || ''));
+    if (isPdf){
+      await openPdfReader(blob, item?.title || 'Document PDF');
+      return;
+    }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -4483,7 +4667,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'complete-40-simple-ui-v14') location.reload();
+    if (data.build && data.build !== 'integrated-pdf-reader-v15') location.reload();
   }catch{}
 }
 
@@ -4496,7 +4680,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=complete-40-simple-ui-v14')
+    navigator.serviceWorker.register('/sw.js?v=integrated-pdf-reader-v15')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

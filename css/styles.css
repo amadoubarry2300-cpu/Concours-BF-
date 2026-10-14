@@ -812,3 +812,25 @@ body.menu-open{overflow:hidden}
 #subPhone.input-success{outline:2px solid rgba(16,185,129,.24);border-color:#10b981}
 #subPhone.input-error{outline:2px solid rgba(225,29,72,.16);border-color:#e11d48}
 #payBtn:disabled{opacity:.55;box-shadow:none;cursor:not-allowed;filter:saturate(.65)}
+
+/* Lecteur PDF intégré : plein écran sur mobile, sans nouvel onglet. */
+body.pdf-reader-open{overflow:hidden;touch-action:none}
+.pdf-reader{position:fixed;inset:0;z-index:6000;display:none;grid-template-rows:auto 1fr auto;background:#eef3f1;color:#13221d}
+.pdf-reader.open{display:grid}
+.pdf-reader-head{display:flex;align-items:center;gap:12px;min-height:66px;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;background:#087a55;color:#fff;box-shadow:0 3px 16px rgba(0,0,0,.18)}
+.pdf-reader-head>div{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.pdf-reader-head b{font-size:16px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdf-reader-head span{font-size:12px;opacity:.88}
+.pdf-reader-close{width:44px;height:44px;flex:0 0 44px;border:0;border-radius:14px;background:rgba(255,255,255,.16);color:#fff;font-size:30px;font-weight:800;line-height:1;cursor:pointer}
+.pdf-reader-download{height:40px;flex:0 0 auto;border:1px solid rgba(255,255,255,.42);border-radius:12px;padding:0 12px;background:rgba(255,255,255,.13);color:#fff;font-size:12px;font-weight:800;cursor:pointer}
+.pdf-reader-stage{position:relative;overflow:auto;overscroll-behavior:contain;padding:14px 8px 24px;text-align:center;-webkit-overflow-scrolling:touch}
+.pdf-reader-stage canvas{display:none;margin:0 auto;background:#fff;box-shadow:0 6px 24px rgba(15,35,28,.18);border-radius:3px;max-width:none}
+.pdf-reader-stage canvas.ready{display:block}
+.pdf-reader-loading{position:absolute;top:44%;left:50%;transform:translate(-50%,-50%);width:min(82%,360px);padding:18px;border-radius:16px;background:#fff;color:#0b6d4d;font-weight:800;box-shadow:0 8px 30px rgba(15,35,28,.14)}
+.pdf-reader-loading.error{color:#a12335}
+.pdf-reader-controls{display:grid;grid-template-columns:52px 46px minmax(84px,1fr) 46px 52px;gap:8px;align-items:center;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #d8e2de;box-shadow:0 -4px 18px rgba(15,35,28,.10)}
+.pdf-reader-controls button{height:44px;border:1px solid #c7d8d1;border-radius:13px;background:#f6faf8;color:#096d4e;font-size:24px;font-weight:900;cursor:pointer}
+.pdf-reader-controls button:disabled{opacity:.35}
+.pdf-reader-controls strong{text-align:center;font-size:14px;color:#24352f}
+@media(min-width:900px){.pdf-reader{inset:18px;max-width:1050px;margin:auto;border-radius:22px;overflow:hidden;box-shadow:0 18px 70px rgba(0,0,0,.28)}body.pdf-reader-open:before{content:"";position:fixed;inset:0;z-index:5999;background:rgba(5,20,15,.52)}}
+.pdf-reader-download:disabled{opacity:.45;cursor:default}
