@@ -154,4 +154,44 @@ assert(JSON.stringify(multipleAnswers.questions[1].correct_answers) === '[0,1,3]
 assert(JSON.stringify(multipleAnswers.questions[2].correct_answers) === '[1,3]', '« B / D » mal interprété');
 assert(multipleAnswers.questions[1].correct_answer === 0, 'compatibilité de la première réponse perdue');
 
+const shortClearQuestions = parsePastedQcmText(`
+1. Au cours de la prophase :
+A. Les chromosomes se condensent
+B. Les chromosomes disparaissent définitivement
+Réponse : A
+Explication : Les chromosomes deviennent visibles grâce à leur condensation pendant la prophase.
+
+2. Pendant la métaphase :
+A. Les chromosomes s’alignent sur la plaque équatoriale
+B. Les noyaux se reforment complètement
+Réponse : A
+Explication : Les chromosomes se placent au centre de la cellule pendant la métaphase.
+
+3. Lors de l’anaphase :
+A. Les chromatides sœurs se séparent
+B. L’ADN commence sa réplication
+Réponse : A
+Explication : Les chromatides sœurs se séparent et migrent vers les pôles opposés.
+
+4. La méiose permet :
+A. La production de cellules haploïdes
+B. La production exclusive de cellules somatiques
+Réponse : A
+Explication : La méiose réduit de moitié le nombre de chromosomes et produit des cellules haploïdes.
+
+5. La méiose comporte :
+A. Deux divisions successives
+B. Une seule division sans réplication préalable
+Réponse : A
+Explication : La méiose comprend deux divisions successives après une seule réplication de l’ADN.
+
+6. Une population est :
+A. Un ensemble d’individus de la même espèce
+B. Un ensemble obligatoire d’espèces différentes
+Réponse : A
+Explication : Une population rassemble des individus de la même espèce dans une zone donnée.
+`, { ...metadata, category:'SVT', level:'BAC' });
+assert(shortClearQuestions.questions.length === 6, `questions courtes claires rejetées : ${JSON.stringify(shortClearQuestions.rejected)}`);
+assert(shortClearQuestions.rejected.length === 0, 'le filtre de longueur a encore rejeté une question claire');
+
 console.log('IMPORT TEXTE QCM OK');

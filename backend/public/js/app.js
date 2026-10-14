@@ -1460,7 +1460,7 @@ function renderPastedQcmPreview(data){
   const destination = pastedQcmPayload().is_premium ? 'Premium payant' : 'Gratuit';
   if (!hasMultipleAnswers) publishBtn.textContent = `🧩 Publier le quiz de ${questions.length} QCM dans ${destination}`;
   const readyHtml = questions.length ? `
-    <div class="admin-paste-section-head ready"><b>✅ ${questions.length} QCM prêt${questions.length>1?'s':''}</b><span>${hasMultipleAnswers ? 'Réponses multiples conservées pour le livre PDF' : 'À relire avant publication'}</span></div>
+    <div class="admin-paste-section-head ready"><b>✅ ${questions.length} QCM prêt${questions.length>1?'s':''}</b><span>${hasMultipleAnswers ? 'Toutes les bonnes réponses sont conservées.' : 'Prêt à utiliser.'}</span></div>
     ${questions.map((q, index)=>{
       const answerIndexes = Array.isArray(q?.correct_answers) && q.correct_answers.length ? q.correct_answers : [q.correct_answer];
       const normalizedAnswerIndexes = [...new Set(answerIndexes.map(Number).filter(value => value >= 0 && value <= 3))];
@@ -1510,7 +1510,7 @@ async function analyzePastedQcm(){
     const ready = Number(data.ready || data.questions?.length || 0);
     const multipleAnswerCount = (Array.isArray(data.questions) ? data.questions : []).filter(q => Array.isArray(q?.correct_answers) && q.correct_answers.length > 1).length;
     if (result){
-      result.innerHTML = `<div class="pay-note ${ready ? 'success' : 'error'}"><b>${ready} QCM prêt${ready>1?'s':''}</b>${blocked ? ` · ${blocked} bloqué${blocked>1?'s':''}` : ' · aucun problème détecté'}${multipleAnswerCount ? `<br><b>${multipleAnswerCount} QCM à réponses multiples conservés exactement pour le livre PDF.</b>` : ''}<br>Titre : <b>${escapeHtml(data.metadata?.title || '')}</b> · Date : <b>${escapeHtml(formatDate(data.metadata?.date))}</b> · Module : <b>${escapeHtml(data.metadata?.category || '')}</b></div>`;
+      result.innerHTML = `<div class="pay-note ${ready ? 'success' : 'error'}"><b>${ready} QCM prêt${ready>1?'s':''} ✅</b>${blocked ? `<br>${blocked} question${blocked>1?'s':''} à revoir.` : '<br>Tout est prêt.'}${multipleAnswerCount ? `<br>Les bonnes réponses multiples sont conservées.` : ''}</div>`;
     }
     renderPastedQcmPreview(data);
     return data;
@@ -1595,7 +1595,7 @@ async function downloadPastedQcmBookPdf(){
     if (pdfPreview){
       pdfPreview.innerHTML = `<div class="admin-pdf-ready-card">
         <div class="admin-pdf-book-cover" aria-hidden="true"><span>RÉUSSITE<br>CONCOURS BF</span><b>${count} QCM</b><small>LIVRE CORRIGÉ</small></div>
-        <div class="admin-pdf-ready-info"><b>📕 ${escapeHtml(formPayload.title || 'Livre PDF corrigé')}</b><span>${count} QCM · Design ${escapeHtml(pastedQcmPdfThemeLabel(formPayload.pdf_theme))} · ${escapeHtml(formPayload.level || '')}</span><small>Fichier créé, non téléchargé et non publié.</small></div>
+        <div class="admin-pdf-ready-info"><b>📕 ${escapeHtml(formPayload.title || 'Livre PDF corrigé')}</b><span>${count} QCM · ${escapeHtml(pastedQcmPdfThemeLabel(formPayload.pdf_theme))}</span></div>
       </div>`;
     }
     if (pdfPublishBtn) pdfPublishBtn.style.display = 'block';
@@ -1604,7 +1604,7 @@ async function downloadPastedQcmBookPdf(){
     updatePastedQcmDestinationButtons();
     const destination = formPayload.is_premium ? 'Premium payant' : 'Gratuit';
     if (result){
-      result.innerHTML = `<div class="pay-note success"><b>Livre PDF prêt avec ${count} QCM ✅</b><br>Aperçu affiché ci-dessous. Le fichier n’est ni téléchargé ni publié automatiquement.<br><b>Destination choisie : ${destination}.</b>${rejected ? `<br>${rejected} QCM incomplet${rejected>1?'s':''} n’a pas été ajouté au livre.` : ''}</div>`;
+      result.innerHTML = `<div class="pay-note success"><b>Livre prêt : ${count} QCM ✅</b><br>${destination}.${rejected ? `<br>${rejected} question${rejected>1?'s':''} à revoir.` : '<br>Toutes les questions sont incluses.'}</div>`;
     }
     toast('Livre PDF prêt à prévisualiser ✅');
   }catch(err){
@@ -1687,7 +1687,7 @@ async function publishPastedQcm(){
     const destination = data.metadata?.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
     const blocked = Number(data.rejected?.length || 0);
     if (result){
-      result.innerHTML = `<div class="pay-note success"><b>${data.published || 0} QCM publiés dans ${destination} ✅</b><br>Ils sont regroupés sous « ${escapeHtml(data.metadata?.title || 'Nouveau QCM')} », avec la date et le module choisis.<br>Ils apparaissent dans <b>Nouveaux QCM</b> et dans le module <b>${escapeHtml(data.metadata?.category || pastedQcmPayload().category)}</b>.${blocked ? `<br>${blocked} QCM incomplet${blocked>1?'s':''} n’a pas été publié.` : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${data.metadata?.is_premium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir le quiz dans l’application</button></div>`;
+      result.innerHTML = `<div class="pay-note success"><b>${data.published || 0} QCM publiés dans ${destination} ✅</b><br>Ils sont regroupés sous « ${escapeHtml(data.metadata?.title || 'Nouveau QCM')} », avec la date et le module choisis.<br>Ils apparaissent dans <b>Nouveaux QCM</b> et dans le module <b>${escapeHtml(data.metadata?.category || pastedQcmPayload().category)}</b>.${blocked ? `<br>${blocked} question${blocked>1?'s':''} à revoir.` : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${data.metadata?.is_premium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir le quiz dans l’application</button></div>`;
     }
     // On conserve le texte et la prévisualisation afin que l’administrateur
     // puisse encore télécharger le livre PDF après la publication interactive.
@@ -4483,7 +4483,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'single-color-cycle-v13') location.reload();
+    if (data.build && data.build !== 'complete-40-simple-ui-v14') location.reload();
   }catch{}
 }
 
@@ -4496,7 +4496,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=single-color-cycle-v13')
+    navigator.serviceWorker.register('/sw.js?v=complete-40-simple-ui-v14')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

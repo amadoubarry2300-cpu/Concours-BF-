@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'single-color-cycle-v13';
+const CACHE_VERSION = 'complete-40-simple-ui-v14';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=single-color-cycle-v13',
-  '/js/questions.js?v=single-color-cycle-v13',
-  '/js/app.js?v=single-color-cycle-v13',
+  '/css/styles.css?v=complete-40-simple-ui-v14',
+  '/js/questions.js?v=complete-40-simple-ui-v14',
+  '/js/app.js?v=complete-40-simple-ui-v14',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

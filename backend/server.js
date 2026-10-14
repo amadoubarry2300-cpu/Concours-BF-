@@ -1586,6 +1586,22 @@ function pastedQcmAnswerIndex(block){
   return pastedQcmAnswerIndexes(block)[0] ?? -1;
 }
 
+function pastedQcmQualityIssue(question, dedupeIndex){
+  // Les QCM collés sont rédigés par l’administrateur : une question courte
+  // comme « La méiose permet : » est parfaitement valide. On conserve les
+  // contrôles utiles sans appliquer la longueur minimale réservée aux textes générés.
+  const allText = [question?.question_text, question?.option_a, question?.option_b, question?.option_c, question?.option_d, question?.explanation]
+    .map(value => strictCleanAiQcmText(value, 3000))
+    .join(' ');
+  if (hasForbiddenAiQcmText(allText)) return 'Contenu de relecture non accepté';
+  if (/\b(?:toutes?\s+les\s+r[ée]ponses|aucune\s+des\s+r[ée]ponses)\b/i.test(allText)) return 'Choix trop vague';
+  const factualRuleIssue = qcmDeterministicFactIssue(question);
+  if (factualRuleIssue) return factualRuleIssue;
+  if (PUBLIC_QCM_REVIEW_PATTERNS.some(pattern => pattern.test(allText))) return 'Correction à finaliser';
+  if (isDuplicateQuestionText(question?.question_text, dedupeIndex)) return 'Question déjà présente ou trop proche';
+  return '';
+}
+
 function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
   const raw = String(rawText || '');
   if (!raw.trim()) throw Object.assign(new Error('Colle d’abord les QCM numérotés dans la grande case.'), { status:400 });
@@ -1704,7 +1720,7 @@ function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
         is_premium:Boolean(defaults.is_premium),
         is_active:true
       });
-      const issue = aiQuestionQualityIssue(question, index) || publicQuestionQualityIssue(question);
+      const issue = pastedQcmQualityIssue(question, index);
       if (issue) throw new Error(issue);
       questions.push({ ...question, correct_answers:correctAnswers, import_number:block.number });
       addQuestionToDedupeIndex(question.question_text, index);
@@ -4708,7 +4724,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'single-color-cycle-v13',
+    build: 'complete-40-simple-ui-v14',
     time: new Date().toISOString()
   });
 });
