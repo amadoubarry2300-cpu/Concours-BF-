@@ -3971,7 +3971,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'news-direct-pro-only-v1') location.reload();
+    if (data.build && data.build !== 'news-direct-pro-only-v2') location.reload();
   }catch{}
 }
 
@@ -3984,7 +3984,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=news-direct-pro-only-v1')
+    navigator.serviceWorker.register('/sw.js?v=news-direct-pro-only-v2')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

@@ -3238,19 +3238,26 @@ function absoluteSourceUrl(href, base){
   try{ return new URL(String(href || '').trim(), base).toString(); }catch{ return ''; }
 }
 
-function isDirectProfessionalCompetitionNews(text){
-  const value = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const hasCompetition = /\bconcours\b|\be-?concours\b/.test(value);
-  if (!hasCompetition) return false;
-  const directOrProfessional = /\bconcours\s+(?:directs?|professionnels?)\b|\b(?:directs?|professionnels?)\s+concours\b|\be-?concours(?:-pro)?\b|fonction[ -]publique|recrutement|admissibilite|admission|candidat|inscription|epreuve|resultat|session/.test(value);
-  if (!directOrProfessional) return false;
-  const unrelated = /enseignement superieur|conference|colloque|seminaire|atelier|festival|sport|culture|appel d['’ ]offres|marche public|bourse d['’ ]etudes/.test(value);
-  const explicitlyScoped = /concours\s+(?:directs?|professionnels?)|e-?concours(?:-pro)?|fonction[ -]publique/.test(value);
-  return !unrelated || explicitlyScoped;
+function normalizeOfficialCompetitionText(value){
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-function officialNewsKeyword(text){
-  return isDirectProfessionalCompetitionNews(text);
+function isDirectProfessionalCompetitionNews(subject, officialContext = ''){
+  const value = normalizeOfficialCompetitionText(subject);
+  const context = normalizeOfficialCompetitionText(officialContext);
+  const directOrProfessional = /\bconcours\s+(?:directs?|professionnels?)\b|\b(?:directs?|professionnels?)\s+concours\b/.test(value);
+  const eConcoursSource = /\be-?concours(?:-pro)?\b|econcours(?:-pro)?\.gov\.bf/.test(`${value} ${context}`);
+  const publicServiceSource = /fonction[ -]publique|fonction-publique\.gov\.bf/.test(`${value} ${context}`);
+  const namedCompetition = /\bconcours\b|\be-?concours\b/.test(value);
+  const competitionNotice = /admissibilite|admission|candidat|inscription|epreuve|resultat|calendrier/.test(value);
+  const explicitlyScoped = directOrProfessional || eConcoursSource || (namedCompetition && publicServiceSource);
+  if (!explicitlyScoped || (!namedCompetition && !(eConcoursSource && competitionNotice))) return false;
+  const unrelated = /enseignement superieur|universit|conference|colloque|seminaire|atelier|festival|sport|culture|appel d['’ ]offres|marche public|bourse d['’ ]etudes|premier ministre|conseil des ministres|audience|cooperation/.test(value);
+  return !unrelated || directOrProfessional;
+}
+
+function officialNewsKeyword(subject, officialContext = ''){
+  return isDirectProfessionalCompetitionNews(subject, officialContext);
 }
 
 const FRENCH_MONTHS = {
@@ -3333,7 +3340,6 @@ async function fetchOfficialSource(source){
 
 function extractOfficialCandidates(page, now = new Date()){
   const html = String(page.html || '');
-  const cleanPageText = stripHtml(html).slice(0, 9000);
   const candidates = [];
   const seen = new Set();
   const anchorRe = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
@@ -3342,11 +3348,13 @@ function extractOfficialCandidates(page, now = new Date()){
     const url = absoluteSourceUrl(match[1], page.url);
     const title = stripHtml(match[2]).replace(/\s+/g, ' ').trim();
     if (!url || title.length < 8 || title.length > 260) continue;
-    const contextStart = Math.max(0, match.index - 900);
-    const contextEnd = Math.min(html.length, anchorRe.lastIndex + 900);
+    // Le titre du lien doit lui-même décrire un concours. Le texte voisin ne
+    // sert qu'à récupérer une date; il ne peut jamais rendre un lien pertinent.
+    if (!officialNewsKeyword(title, `${page.name} ${page.url} ${url}`)) continue;
+    const contextStart = Math.max(0, match.index - 500);
+    const contextEnd = Math.min(html.length, anchorRe.lastIndex + 500);
     const context = stripHtml(html.slice(contextStart, contextEnd)).replace(/\s+/g, ' ').trim();
     const snippet = cleanText(context || title, 900);
-    if (!officialNewsKeyword(title + ' ' + snippet + ' ' + url)) continue;
     const item = { title, url, sourceName:page.name, snippet };
     if (!isCurrentOfficialCandidate(item, now)) continue;
     const key = title.toLowerCase() + '|' + url;
@@ -3354,17 +3362,7 @@ function extractOfficialCandidates(page, now = new Date()){
     seen.add(key);
     candidates.push(item);
   }
-  if (!candidates.length && officialNewsKeyword(cleanPageText)){
-    const pageTitle = stripHtml((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [,'Actualités concours'])[1]);
-    const item = {
-      title:pageTitle || `Actualités — ${page.name}`,
-      url:page.url,
-      sourceName:page.name,
-      snippet:cleanPageText.slice(0, 900)
-    };
-    if (isCurrentOfficialCandidate(item, now)) candidates.push(item);
-  }
-  return candidates.map(item => ({ ...item, snippet:String(item.snippet || cleanPageText).slice(0, 900) }));
+  return candidates.map(item => ({ ...item, snippet:String(item.snippet || item.title).slice(0, 900) }));
 }
 
 function fallbackOfficialDrafts(candidates, limit){
@@ -3431,7 +3429,7 @@ async function buildOfficialNewsDrafts(limit = 6){
       items = rows
         .map(row => normalizeOfficialNewsDraft(row))
         .filter(item => item.title && item.summary && item.sourceUrl)
-        .filter(item => isDirectProfessionalCompetitionNews(`${item.title} ${item.summary} ${item.content} ${item.sourceUrl} ${item.sourceName}`))
+        .filter(item => isDirectProfessionalCompetitionNews(`${item.title} ${item.summary}`, `${item.sourceUrl} ${item.sourceName}`))
         .filter(item => isCurrentOfficialCandidate({ title:item.title, url:item.sourceUrl, snippet:`${item.summary} ${item.content} ${item.deadline}` }, now))
         .slice(0, limit);
     }catch(err){
@@ -3441,7 +3439,7 @@ async function buildOfficialNewsDrafts(limit = 6){
   if (!items.length){
     items = fallbackOfficialDrafts(unique, limit)
       .map(item => normalizeOfficialNewsDraft(item))
-      .filter(item => isDirectProfessionalCompetitionNews(`${item.title} ${item.summary} ${item.content} ${item.sourceUrl} ${item.sourceName}`))
+      .filter(item => isDirectProfessionalCompetitionNews(item.title, `${item.sourceUrl} ${item.sourceName}`))
       .filter(item => isCurrentOfficialCandidate({ title:item.title, url:item.sourceUrl, snippet:`${item.summary} ${item.content} ${item.deadline}` }, now));
   }
   return { candidates:unique, items:items.slice(0, limit), today:todayIso, currentYear };
@@ -3567,7 +3565,7 @@ async function stageOfficialNewsDrafts(items, authorPhone = 'system'){
   for (const raw of (Array.isArray(items) ? items : [])){
     try{
       const normalized = normalizeOfficialNewsDraft(raw);
-      if (!isDirectProfessionalCompetitionNews(`${normalized.title} ${normalized.summary} ${normalized.content} ${normalized.sourceUrl} ${normalized.sourceName}`)) continue;
+      if (!isDirectProfessionalCompetitionNews(`${normalized.title} ${normalized.summary}`, `${normalized.sourceUrl} ${normalized.sourceName}`)) continue;
       const payload = stagedNewsDraftPayload(normalized);
       const titleKey = normalizeQuestionKey(payload.title);
       let idx = news.findIndex(item => payload.source_url && item.source_url === payload.source_url);
@@ -4034,7 +4032,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'news-direct-pro-only-v1',
+    build: 'news-direct-pro-only-v2',
     time: new Date().toISOString()
   });
 });
@@ -5679,6 +5677,7 @@ export {
   dailyDraftGenerationIssue,
   recoverDailyAiDraft,
   isDirectProfessionalCompetitionNews,
+  extractOfficialCandidates,
   normalizeOfficialNewsDraft,
   isOfficialBurkinaQcmSource,
   isTrustedEducationalQcmSource,
