@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'pasted-qcm-separated-publish-v6';
+const CACHE_VERSION = 'navigation-modules-v7';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=pasted-qcm-separated-publish-v6',
-  '/js/questions.js?v=pasted-qcm-separated-publish-v6',
-  '/js/app.js?v=pasted-qcm-separated-publish-v6',
+  '/css/styles.css?v=navigation-modules-v7',
+  '/js/questions.js?v=navigation-modules-v7',
+  '/js/app.js?v=navigation-modules-v7',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

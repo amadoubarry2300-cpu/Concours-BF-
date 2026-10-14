@@ -559,6 +559,7 @@ async function loadSupabaseQuestions(){
 
 /* ---------- navigation ---------- */
 function show(id){
+  closeAppMenu();
   if ((id === 'account' || id === 'admin') && !state.user){ openAuth('login'); return; }
   if ((id === 'stats' || id === 'errors') && !hasOpenAccess()){
     openPremium(id === 'stats' ? 'Ma progression détaillée' : 'Mes erreurs');
@@ -572,7 +573,7 @@ function show(id){
   currentScreenId = id;
   window.scrollTo({top:0});
   $$('.nav-btn').forEach(b=>b.classList.toggle('on', b.dataset.target===id));
-  const navIds = ['home','formations','publishedqcm','news','resources','revision','passport','stats','subscription','account'];
+  const navIds = ['home','formations','moduleqcm','publishedqcm','news','resources','revision','passport','stats','subscription','account'];
   $('#bottomNav').style.display = navIds.includes(id) ? 'flex' : 'none';
 
   if (id==='stats') setTimeout(renderStats, 60);
@@ -589,6 +590,41 @@ function show(id){
   if (id==='admin') setTimeout(()=>renderAdminPanel(false), 20);
   if (id==='login') setTimeout(renderLogin, 20);
 }
+
+function setAppMenuOpen(open){
+  const menu = $('#appMenu');
+  const backdrop = $('#appMenuBackdrop');
+  const toggle = $('#appMenuToggle');
+  if (!menu || !backdrop) return;
+  const active = Boolean(open);
+  menu.classList.toggle('open', active);
+  backdrop.classList.toggle('open', active);
+  menu.setAttribute('aria-hidden', active ? 'false' : 'true');
+  backdrop.setAttribute('aria-hidden', active ? 'false' : 'true');
+  toggle?.setAttribute('aria-expanded', active ? 'true' : 'false');
+  document.body.classList.toggle('menu-open', active);
+  if (active) setTimeout(()=>menu.querySelector('button')?.focus(), 60);
+}
+
+function toggleAppMenu(){
+  setAppMenuOpen(!$('#appMenu')?.classList.contains('open'));
+}
+
+function closeAppMenu(){ setAppMenuOpen(false); }
+
+function menuNavigate(id){
+  closeAppMenu();
+  show(id);
+}
+
+function openAccountFromMenu(){
+  closeAppMenu();
+  openAccountMenu();
+}
+
+document.addEventListener('keydown', event=>{
+  if (event.key === 'Escape' && $('#appMenu')?.classList.contains('open')) closeAppMenu();
+});
 
 function openPremium(feature){
   paywallFeature = feature || 'Cette fonctionnalité';
@@ -671,6 +707,8 @@ function renderAccount(){
 
   const adminBtn = $('#adminPanelBtn');
   if (adminBtn) adminBtn.style.display = isAdmin() ? 'flex' : 'none';
+  const menuAdminBtn = $('#appMenuAdminBtn');
+  if (menuAdminBtn) menuAdminBtn.style.display = isAdmin() ? 'grid' : 'none';
 
   const premiumHome = $('#premiumHomeCard');
   if (premiumHome){
@@ -764,6 +802,8 @@ function renderAccountScreen(){
 
   const adminBtn = $('#adminPanelBtn');
   if (adminBtn) adminBtn.style.display = isAdmin() ? 'flex' : 'none';
+  const menuAdminBtn = $('#appMenuAdminBtn');
+  if (menuAdminBtn) menuAdminBtn.style.display = isAdmin() ? 'grid' : 'none';
 }
 
 
@@ -1179,6 +1219,8 @@ let pastedQcmPdfUrl = '';
 let resourceCache = [];
 let newsCache = [];
 let publishedQcmCache = [];
+let publishedQcmLoadedAt = 0;
+let currentModuleQcm = { title:'Formation', category:'Culture générale', level:'', image:'img/subject-culture.svg' };
 let currentNewsFilter = 'Tout';
 let currentPublishedQcmFilter = 'all';
 let currentRevisionFilter = 'Tout';
@@ -1327,10 +1369,10 @@ async function saveAdminQuestion(){
     const savedId = data.question?.id || id;
     if (savedId) await adminFetch('/api/admin/questions/' + encodeURIComponent(savedId) + '/status', { method:'PATCH', body:JSON.stringify({ is_active:Boolean(payload.admin_visible) }) });
     const destination = payload.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
-    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>${destination}</b> ✅<br>Il est rangé dans <b>Voir historique publié</b> et reste visible chez le candidat.<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>${destination}</b> ✅<br>Il apparaît dans <b>Nouveaux QCM</b> et dans le module <b>${escapeHtml(payload.category)}</b>.<br>Il reste rangé dans <b>Voir historique publié</b>.<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
     resetAdminForm(false);
     await loadAdminQuestions();
-    await loadSupabaseQuestions();
+    await Promise.allSettled([loadSupabaseQuestions(), fetchPublishedQcmPublications(true)]);
     renderFormations(currentFormFilter);
     toast('QCM ajouté dans ' + destination + ' ✅');
   }catch(err){
@@ -1624,7 +1666,7 @@ async function publishPastedQcm(){
     const destination = data.metadata?.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
     const blocked = Number(data.rejected?.length || 0);
     if (result){
-      result.innerHTML = `<div class="pay-note success"><b>${data.published || 0} QCM publiés dans ${destination} ✅</b><br>Ils sont regroupés sous « ${escapeHtml(data.metadata?.title || 'Nouveau QCM')} », avec la date et le module choisis.${blocked ? `<br>${blocked} QCM incomplet${blocked>1?'s':''} n’a pas été publié.` : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${data.metadata?.is_premium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir le quiz dans l’application</button></div>`;
+      result.innerHTML = `<div class="pay-note success"><b>${data.published || 0} QCM publiés dans ${destination} ✅</b><br>Ils sont regroupés sous « ${escapeHtml(data.metadata?.title || 'Nouveau QCM')} », avec la date et le module choisis.<br>Ils apparaissent dans <b>Nouveaux QCM</b> et dans le module <b>${escapeHtml(data.metadata?.category || pastedQcmPayload().category)}</b>.${blocked ? `<br>${blocked} QCM incomplet${blocked>1?'s':''} n’a pas été publié.` : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${data.metadata?.is_premium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir le quiz dans l’application</button></div>`;
     }
     // On conserve le texte et la prévisualisation afin que l’administrateur
     // puisse encore télécharger le livre PDF après la publication interactive.
@@ -1858,7 +1900,7 @@ async function toggleAdminQuestion(index){
     const data = await adminFetch('/api/admin/questions/' + encodeURIComponent(q.id) + '/status', { method:'PATCH', body:JSON.stringify({is_active:restoreInAdmin}) });
     adminQuestionCache[index] = data.question || { ...q, is_active:true, admin_archived:!restoreInAdmin };
     renderAdminQuestionListFromCache();
-    setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 250);
+    setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions(), fetchPublishedQcmPublications(true)]).then(()=>renderFormations(currentFormFilter)), 250);
     toast(restoreInAdmin ? 'QCM remis dans l’administration ✅' : 'QCM rangé dans l’historique publié ✅');
   }catch(err){ toast(err.message); }
 }
@@ -2545,7 +2587,7 @@ async function publishDailyAiDraft(index){
       body:JSON.stringify({ category, level, is_premium:isPremium })
     });
     const result = $('#aiDailyResult');
-    if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM disponibles dans <b>Nouveaux QCM → ${destination}</b> ✅${data.resource ? '<br>PDF ajouté dans <b>Documents & fichiers</b> ✅' : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${isPremium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir les QCM ${destination}</button> <button class="mini-btn" onclick="openResourcesFromAdmin()" style="margin-top:8px">Ouvrir Documents</button></div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM disponibles dans <b>Nouveaux QCM</b> et dans le module <b>${escapeHtml(category)}</b> · ${destination} ✅${data.resource ? '<br>PDF ajouté dans <b>Documents & fichiers</b> ✅' : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${isPremium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir les QCM ${destination}</button> <button class="mini-btn" onclick="openResourcesFromAdmin()" style="margin-top:8px">Ouvrir Documents</button></div>`;
     if (data.draft) aiDailyDraftCache[index] = data.draft;
     else aiDailyDraftCache[index] = { ...d, status:'published', is_premium:isPremium, category, level, published_at:new Date().toISOString() };
     showPublishedDailyDrafts = false;
@@ -2800,7 +2842,7 @@ async function publishAiDraft(index){
     renderAiDrafts();
     const destination = qcmDestinationText(q);
     const result = $('#aiResult');
-    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>${destination}</b> ✅<br>Il est rangé dans <b>Mes QCM → Voir historique publié</b><br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>${destination}</b> ✅<br>Il apparaît dans <b>Nouveaux QCM</b> et dans le module <b>${escapeHtml(q.category || 'Culture générale')}</b>.<br>Il est rangé dans <b>Mes QCM → Voir historique publié</b><br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
     toast('QCM publié dans ' + destination + ' ✅');
     setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 250);
   }catch(err){ toast(err.message); }
@@ -3931,39 +3973,112 @@ function renderErrors(){
 function formationGroups(){
   return {
     'Matières':[
-      ['img/subject-history-geo.svg','Histoire-Géographie','Histoire-Géo'],
-      ['img/subject-svt.svg','SVT','SVT'],
-      ['img/subject-french.svg','Français','Français'],
-      ['img/subject-math.svg','Mathématiques','Mathématiques'],
-      ['img/subject-svt.svg','Physique-Chimie','Physique-Chimie'],
-      ['img/subject-psychotech.svg','Psychotechnique','Psychotechnique']
+      ['img/subject-history-geo.svg','Histoire-Géographie','Histoire-Géo',''],
+      ['img/subject-svt.svg','SVT','SVT',''],
+      ['img/subject-french.svg','Français','Français',''],
+      ['img/subject-math.svg','Mathématiques','Mathématiques',''],
+      ['img/subject-svt.svg','Physique-Chimie','Physique-Chimie',''],
+      ['img/subject-psychotech.svg','Psychotechnique','Psychotechnique','']
     ],
     'Concours & examens':[
-      ['img/level-bac.svg','BAC','Culture générale'],
-      ['img/level-bepc.svg','BEPC','Culture générale'],
-      ['img/subject-greffier.svg','Greffier (SG & Parquet)','Greffier / Droit'],
-      ['img/subject-economy.svg','Économie & Droit','Greffier / Droit']
+      ['img/level-bac.svg','BAC','Culture générale','BAC'],
+      ['img/level-bepc.svg','BEPC','Culture générale','BEPC'],
+      ['img/subject-greffier.svg','Greffier (SG & Parquet)','Greffier / Droit','Concours'],
+      ['img/subject-economy.svg','Économie & Droit','Greffier / Droit','Concours']
     ],
     'Culture & monde':[
-      ['img/subject-culture.svg','Culture générale','Culture générale'],
-      ['img/subject-history-geo.svg','Géographie du monde','Histoire-Géo']
+      ['img/subject-culture.svg','Culture générale','Culture générale',''],
+      ['img/subject-history-geo.svg','Géographie du monde','Histoire-Géo','']
     ],
     'Burkina Faso':[
-      ['img/subject-burkina.svg','Les 47 provinces','Burkina Faso'],
-      ['img/subject-history-geo.svg','Histoire du Faso','Burkina Faso'],
-      ['img/subject-culture.svg','Culture burkinabè','Burkina Faso']
+      ['img/subject-burkina.svg','Les 47 provinces','Burkina Faso',''],
+      ['img/subject-history-geo.svg','Histoire du Faso','Burkina Faso',''],
+      ['img/subject-culture.svg','Culture burkinabè','Burkina Faso','']
     ]
   };
 }
 
-function startFormationQuiz(title, cat){
+function startFormationQuiz(title, cat, level=''){
   const paid = isPaidCategory(cat);
   if (paid){
-    startQuiz({n:'all', time:0, title, cat});
+    startQuiz({n:'all', time:0, title, cat, level:level || undefined});
     return;
   }
   const freeLimit = hasOpenAccess() ? 'all' : 10;
-  startQuiz({n:freeLimit, time:0, title, cat, free:true});
+  startQuiz({n:freeLimit, time:0, title, cat, level:level || undefined, free:true});
+}
+
+function normalizeModuleCategory(value){
+  const normalized = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (['histoire geo','histoire geographie'].includes(normalized)) return 'histoire geo';
+  if (['physique chimie','physique'].includes(normalized)) return 'physique chimie';
+  if (['greffier droit','droit greffier'].includes(normalized)) return 'greffier droit';
+  return normalized;
+}
+
+function publicationMatchesModule(set, module=currentModuleQcm){
+  if (normalizeModuleCategory(set?.category) !== normalizeModuleCategory(module?.category)) return false;
+  return !module?.level || String(set?.level || '').toLowerCase() === String(module.level).toLowerCase();
+}
+
+function categoryHasPublishedAccess(category, premium){
+  return publishedQcmCache.some(set => normalizeModuleCategory(set.category) === normalizeModuleCategory(category) && Boolean(set.is_premium) === Boolean(premium));
+}
+
+function moduleBankCount(module=currentModuleQcm){
+  return questionBank().filter(q => q.c === module.category && (!module.level || q.level === module.level)).length;
+}
+
+function openFormationModule(title, category, level='', image='img/subject-culture.svg'){
+  currentModuleQcm = { title, category, level:level || '', image:image || 'img/subject-culture.svg' };
+  show('moduleqcm');
+  renderCurrentModuleHeader();
+  loadCurrentModuleQcm(true);
+}
+
+function renderCurrentModuleHeader(){
+  const module = currentModuleQcm;
+  const count = moduleBankCount(module);
+  const paidBank = isPaidCategory(module.category);
+  const title = module.title || module.category || 'Formation';
+  $('#moduleQcmTitle') && ($('#moduleQcmTitle').textContent = title);
+  $('#moduleQcmHeading') && ($('#moduleQcmHeading').textContent = title);
+  const image = $('#moduleQcmImage');
+  if (image){ image.src = module.image || 'img/subject-culture.svg'; image.alt = 'Illustration ' + title; }
+  $('#moduleQcmAccess') && ($('#moduleQcmAccess').textContent = 'Séries gratuites et Premium du même module');
+  $('#moduleQcmDescription') && ($('#moduleQcmDescription').textContent = `Les QCM publiés en ${module.category}${module.level ? ' · ' + module.level : ''} sont classés ici automatiquement.`);
+  const meta = $('#moduleBankMeta');
+  if (meta) meta.textContent = `${formatQcmCount(count)} corrigés${paidBank ? ' · banque Premium' : hasOpenAccess() ? ' disponibles' : ' · 10 gratuits par session'}`;
+  const button = $('#moduleBankButton');
+  button?.classList.toggle('locked', paidBank && !hasOpenAccess());
+}
+
+function startCurrentModuleBank(){
+  const module = currentModuleQcm;
+  startFormationQuiz(module.title, module.category, module.level || '');
+}
+
+async function loadCurrentModuleQcm(force=false){
+  const wrap = $('#modulePublishedQcmList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty">Chargement des QCM du module...</div>';
+  try{
+    await fetchPublishedQcmPublications(force);
+    renderCurrentModulePublications();
+  }catch(err){
+    wrap.innerHTML = `<div class="pay-note error">${escapeHtml(err.message || 'QCM du module indisponibles')}</div>`;
+  }
+}
+
+function renderCurrentModulePublications(){
+  const wrap = $('#modulePublishedQcmList');
+  if (!wrap) return;
+  const items = publishedQcmCache.map((set, idx)=>({set, idx})).filter(({set})=>publicationMatchesModule(set));
+  if (!items.length){
+    wrap.innerHTML = '<div class="empty"><div class="big">📭</div>Aucune nouvelle série publiée dans ce module pour le moment.<br>La banque du module reste disponible ci-dessus.</div>';
+    return;
+  }
+  wrap.innerHTML = items.map(({set, idx})=>publishedQcmCardHtml(set, idx)).join('');
 }
 
 function renderFormations(filter){
@@ -3975,28 +4090,27 @@ function renderFormations(filter){
   const html = keys.map(g=>{
     const rawItems = groups[g] || [];
     const items = rawItems.filter(([, , cat]) => {
-      if (currentFormFilter === 'Gratuit') return isFreeCategory(cat);
-      if (currentFormFilter === 'Premium') return isPaidCategory(cat);
+      if (currentFormFilter === 'Gratuit') return isFreeCategory(cat) || categoryHasPublishedAccess(cat, false);
+      if (currentFormFilter === 'Premium') return isPaidCategory(cat) || categoryHasPublishedAccess(cat, true);
       return true;
     });
     if (!items.length) return '';
     return `
     <div class="section"><div class="section-head"><h2>${g}</h2></div>
     <div class="form-list">
-      ${items.map(([img,name,cat])=>{
-        const total = qcmCount(cat);
+      ${items.map(([img,name,cat,level])=>{
+        const total = questionBank().filter(q=>q.c === cat && (!level || q.level === level)).length;
         const paid = isPaidCategory(cat);
-        const locked = paid && !hasOpenAccess();
-        const safeTitle = name.replace(/'/g,"\'");
-        const safeCat = cat.replace(/'/g,"\'");
-        const titleHtml = paid ? `${name} <span class="premium-pill">🔒 PREMIUM</span>` : name;
-        const desc = paid
-          ? `${formatQcmCount(total)} corrigés Premium · abonnement requis`
-          : `${hasOpenAccess() ? formatQcmCount(total) + ' corrigés disponibles' : '10 QCM gratuits pour débuter aujourd’hui'}`;
-        return `<button class="form-item ${locked?'locked':''} ${paid?'paid':''}" onclick="startFormationQuiz('${safeTitle}','${safeCat}')">
-          <img class="form-thumb" src="${img}" alt="${name}">
+        const publishedCount = publishedQcmCache.filter(set=>publicationMatchesModule(set,{category:cat,level:level || ''})).length;
+        const titleHtml = escapeHtml(name);
+        const bankDesc = paid
+          ? `Banque du module : ${formatQcmCount(total)} Premium`
+          : `${hasOpenAccess() ? formatQcmCount(total) + ' corrigés disponibles' : '10 QCM gratuits pour débuter'}`;
+        const desc = publishedCount ? `${bankDesc} · ${publishedCount} nouvelle${publishedCount>1?'s':''} série${publishedCount>1?'s':''}` : bankDesc;
+        return `<button class="form-item" onclick='openFormationModule(${JSON.stringify(name)},${JSON.stringify(cat)},${JSON.stringify(level || '')},${JSON.stringify(img)})'>
+          <img class="form-thumb" src="${img}" alt="${escapeHtml(name)}">
           <span class="fi-body"><h4>${titleHtml}</h4><p>${desc}</p></span>
-          <span class="${paid?'lock-dot':'chev'}">${paid?'🔒':'›'}</span>
+          <span class="chev">›</span>
         </button>`;
       }).join('')}
     </div></div>`;
@@ -4031,20 +4145,44 @@ function mapPublishedQuestion(row){
   };
 }
 
+async function fetchPublishedQcmPublications(force=false){
+  if (!force && publishedQcmLoadedAt && Date.now() - publishedQcmLoadedAt < 30000) return publishedQcmCache;
+  const res = await fetchWithTimeout('/api/qcm-publications', { headers:authHeaders({ 'Cache-Control':'no-cache' }), cache:'no-store' });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw new Error(data.message || 'Nouveaux QCM indisponibles');
+  publishedQcmCache = data.publications || [];
+  publishedQcmLoadedAt = Date.now();
+  return publishedQcmCache;
+}
+
 async function loadPublishedQcm(filter){
   currentPublishedQcmFilter = filter || currentPublishedQcmFilter || 'all';
   const wrap = $('#publishedQcmList');
   if (!wrap) return;
   wrap.innerHTML = '<div class="empty">Chargement des nouveaux QCM...</div>';
   try{
-    const res = await fetchWithTimeout('/api/qcm-publications', { headers:authHeaders({ 'Cache-Control':'no-cache' }), cache:'no-store' });
-    const data = await res.json().catch(()=>({}));
-    if (!res.ok) throw new Error(data.message || 'Nouveaux QCM indisponibles');
-    publishedQcmCache = data.publications || [];
+    await fetchPublishedQcmPublications(true);
     renderPublishedQcm();
+    if (currentScreenId === 'formations') renderFormations(currentFormFilter);
   }catch(err){
-    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    wrap.innerHTML = `<div class="pay-note error">${escapeHtml(err.message || 'Nouveaux QCM indisponibles')}</div>`;
   }
+}
+
+function publishedQcmCardHtml(set, idx){
+  const locked = Boolean(set.locked || (set.is_premium && !hasOpenAccess()));
+  const date = set.date ? formatDate(set.date) : 'Date non précisée';
+  const count = Number(set.questionCount || set.questions?.length || 0);
+  const action = locked ? 'Débloquer Premium' : (!hasOpenAccess() && !set.is_premium ? 'Commencer 10 QCM gratuits' : 'Commencer le quiz');
+  return `<div class="published-qcm-card ${set.is_premium ? 'premium' : 'free'} ${locked ? 'locked' : ''}">
+    <div class="published-qcm-top">
+      <span>${set.is_premium ? '🔒 Premium' : '✅ Gratuit'}</span>
+      <span>📅 ${escapeHtml(date)}</span>
+    </div>
+    <h3>${escapeHtml(set.title || 'Nouveau QCM')}</h3>
+    <p>${escapeHtml(set.category || 'Catégorie')} · ${escapeHtml(set.level || 'Niveau')} · ${count} QCM</p>
+    <button class="btn ${locked ? 'btn-ghost' : 'btn-green'} btn-block" onclick="startPublishedQcm(${idx})">${action}</button>
+  </div>`;
 }
 
 function renderPublishedQcm(){
@@ -4059,21 +4197,7 @@ function renderPublishedQcm(){
     wrap.innerHTML = '<div class="empty">Aucun nouveau QCM dans ce filtre pour le moment.</div>';
     return;
   }
-  wrap.innerHTML = items.map(({set, idx})=>{
-    const locked = Boolean(set.locked || (set.is_premium && !hasOpenAccess()));
-    const date = set.date ? formatDate(set.date) : 'Date non précisée';
-    const count = Number(set.questionCount || set.questions?.length || 0);
-    const action = locked ? 'Débloquer Premium' : (!hasOpenAccess() && !set.is_premium ? 'Commencer 10 QCM gratuits' : 'Commencer le quiz');
-    return `<div class="published-qcm-card ${set.is_premium ? 'premium' : 'free'} ${locked ? 'locked' : ''}">
-      <div class="published-qcm-top">
-        <span>${set.is_premium ? '🔒 Premium' : '✅ Gratuit'}</span>
-        <span>📅 ${escapeHtml(date)}</span>
-      </div>
-      <h3>${escapeHtml(set.title || 'Nouveau QCM')}</h3>
-      <p>${escapeHtml(set.category || 'Catégorie')} · ${escapeHtml(set.level || 'Niveau')} · ${count} QCM</p>
-      <button class="btn ${locked ? 'btn-ghost' : 'btn-green'} btn-block" onclick="startPublishedQcm(${idx})">${action}</button>
-    </div>`;
-  }).join('');
+  wrap.innerHTML = items.map(({set, idx})=>publishedQcmCardHtml(set, idx)).join('');
 }
 
 function filterPublishedQcm(el, filter){
@@ -4263,14 +4387,15 @@ function refreshCurrentOnlineScreen(){
   if (!navigator.onLine) return;
   if (currentScreenId === 'resources') loadResources();
   if (currentScreenId === 'publishedqcm') loadPublishedQcm(currentPublishedQcmFilter);
-  if (currentScreenId === 'formations') loadSupabaseQuestions().then(()=>renderFormations(currentFormFilter));
+  if (currentScreenId === 'moduleqcm') loadCurrentModuleQcm(true);
+  if (currentScreenId === 'formations') Promise.all([loadSupabaseQuestions(), fetchPublishedQcmPublications(true).catch(()=>[]) ]).then(()=>renderFormations(currentFormFilter));
 }
 
 async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'pasted-qcm-separated-publish-v6') location.reload();
+    if (data.build && data.build !== 'navigation-modules-v7') location.reload();
   }catch{}
 }
 
@@ -4283,7 +4408,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=pasted-qcm-separated-publish-v6')
+    navigator.serviceWorker.register('/sw.js?v=navigation-modules-v7')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
@@ -4301,7 +4426,7 @@ window.addEventListener('scroll', ()=>{
 });
 
 document.addEventListener('DOMContentLoaded', ()=>{
-  loadSupabaseQuestions().then(()=>renderFormations(currentFormFilter));
+  Promise.all([loadSupabaseQuestions(), fetchPublishedQcmPublications().catch(()=>[]) ]).then(()=>renderFormations(currentFormFilter));
   renderHome();
   renderFormations('Tout');
   renderAccount();

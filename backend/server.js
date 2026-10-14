@@ -4510,7 +4510,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'pasted-qcm-separated-publish-v6',
+    build: 'navigation-modules-v7',
     time: new Date().toISOString()
   });
 });

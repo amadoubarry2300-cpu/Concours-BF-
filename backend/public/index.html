@@ -9,25 +9,54 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=pasted-qcm-separated-publish-v6">
+<link rel="manifest" href="/manifest.webmanifest?v=navigation-modules-v7">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=pasted-qcm-separated-publish-v6">
+<link rel="stylesheet" href="css/styles.css?v=navigation-modules-v7">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
 <div class="app">
 
-  <!-- ===== topbar ===== -->
+  <!-- ===== barre supérieure ===== -->
   <header class="topbar" id="topbar">
-    <div class="brand"><img class="brand-logo-img" src="img/logo.png" alt="Logo Réussite Concours BF"><span class="brand-title"><span>Réussite</span><em>Concours BF</em></span></div>
+    <button class="menu-toggle" id="appMenuToggle" type="button" onclick="toggleAppMenu()" aria-label="Ouvrir le menu" aria-controls="appMenu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <button class="brand brand-home" type="button" onclick="show('home')" aria-label="Accueil Réussite Concours BF">
+      <img class="brand-logo-img" src="img/logo.png" alt="Logo Réussite Concours BF">
+      <span class="brand-title"><span>Réussite</span><em>Concours BF</em></span>
+    </button>
     <div class="top-actions">
-      <button class="install-chip" id="installAppBtn" onclick="installAndroidApp()" style="display:none">📲 Installer</button>
-      <button class="account-chip" id="accountChip" onclick="openAccountMenu()">👤 Connexion</button>
-      <div class="streak-pill">🔥 <span id="streakVal">0</span> j</div>
+      <button class="account-chip" id="accountChip" onclick="openAccountMenu()" aria-label="Connexion">👤 Connexion</button>
     </div>
   </header>
+
+  <!-- ===== menu principal ===== -->
+  <div class="app-menu-backdrop" id="appMenuBackdrop" onclick="closeAppMenu()" aria-hidden="true"></div>
+  <aside class="app-menu" id="appMenu" aria-hidden="true" aria-label="Menu principal">
+    <div class="app-menu-head">
+      <div class="app-menu-brand"><img src="img/logo.png" alt=""><span><b>Réussite Concours BF</b><small>Choisis une rubrique</small></span></div>
+      <button class="app-menu-close" type="button" onclick="closeAppMenu()" aria-label="Fermer le menu">×</button>
+    </div>
+    <nav class="app-menu-nav" aria-label="Toutes les fonctionnalités">
+      <button onclick="menuNavigate('home')"><span>🏠</span><b>Accueil</b><small>Mon espace</small></button>
+      <button onclick="menuNavigate('formations')"><span>🗂️</span><b>Formations</b><small>Tous les modules</small></button>
+      <button onclick="menuNavigate('publishedqcm')"><span>📌</span><b>Nouveaux QCM</b><small>Publications récentes</small></button>
+      <button onclick="menuNavigate('resources')"><span>📚</span><b>Documents</b><small>PDF et fichiers</small></button>
+      <button onclick="menuNavigate('revision')"><span>📘</span><b>Fiches courtes</b><small>Révision rapide</small></button>
+      <button onclick="menuNavigate('news')"><span>📰</span><b>Actualités</b><small>Concours officiels</small></button>
+      <button onclick="menuNavigate('passport')"><span>🛂</span><b>Passeport</b><small>Parcours candidat</small></button>
+      <button onclick="menuNavigate('stats')"><span>📊</span><b>Progression</b><small>Scores et résultats</small></button>
+      <button onclick="menuNavigate('subscription')"><span>⭐</span><b>Accès Premium</b><small>Abonnement</small></button>
+      <button onclick="openAccountFromMenu()"><span>👤</span><b>Mon compte</b><small>Profil et accès</small></button>
+      <button onclick="menuNavigate('contact')"><span>💬</span><b>Assistance</b><small>Nous contacter</small></button>
+      <button id="appMenuAdminBtn" onclick="menuNavigate('admin')" style="display:none"><span>🛠️</span><b>Administration</b><small>Gérer les contenus</small></button>
+    </nav>
+    <button class="app-menu-install" id="installAppBtn" onclick="installAndroidApp()" style="display:none">📲 Installer l’application</button>
+    <div class="app-menu-foot"><span>🔥 Série de révision</span><b><span id="streakVal">0</span> jour(s)</b></div>
+  </aside>
 
   <!-- ================= HOME ================= -->
   <section class="screen active" id="home">
@@ -126,28 +155,28 @@
       <div class="section-head"><h2>À découvrir</h2><a href="#" onclick="show('formations');return false;">Tout voir ›</a></div>
     </div>
     <div class="carousel">
-      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Histoire-Géographie',cat:'Histoire-Géo'})">
+      <button class="disc-card" onclick="openFormationModule('Histoire-Géographie','Histoire-Géo','','img/subject-history-geo.svg')">
         <img class="disc-img" src="img/subject-history-geo.svg" alt="Illustration Histoire-Géographie"><h4>Histoire-Géographie</h4><p>Matières</p>
       </button>
-      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Culture générale',cat:'Culture générale'})">
+      <button class="disc-card" onclick="openFormationModule('Culture générale','Culture générale','','img/subject-culture.svg')">
         <img class="disc-img" src="img/subject-culture.svg" alt="Illustration Culture générale"><h4>Culture générale</h4><p>Culture & monde</p>
       </button>
-      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'BAC',cat:'Culture générale'})">
+      <button class="disc-card" onclick="openFormationModule('BAC','Culture générale','BAC','img/level-bac.svg')">
         <img class="disc-img" src="img/level-bac.svg" alt="Illustration BAC"><h4>BAC</h4><p>Concours & examens</p>
       </button>
-      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'BEPC',cat:'Culture générale'})">
+      <button class="disc-card" onclick="openFormationModule('BEPC','Culture générale','BEPC','img/level-bepc.svg')">
         <img class="disc-img" src="img/level-bepc.svg" alt="Illustration BEPC"><h4>BEPC</h4><p>Concours & examens</p>
       </button>
-      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Greffier',cat:'Culture générale'})">
+      <button class="disc-card" onclick="openFormationModule('Greffier','Greffier / Droit','Concours','img/subject-greffier.svg')">
         <img class="disc-img" src="img/subject-greffier.svg" alt="Illustration Greffier"><h4>Greffier</h4><p>Concours professionnels</p>
       </button>
-      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Les 47 provinces',cat:'Burkina Faso'})">
+      <button class="disc-card" onclick="openFormationModule('Les 47 provinces','Burkina Faso','','img/subject-burkina.svg')">
         <img class="disc-img" src="img/subject-burkina.svg" alt="Illustration Burkina Faso"><h4>Les 47 provinces</h4><p>Burkina Faso</p>
       </button>
-      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Mathématiques',cat:'Mathématiques'})">
+      <button class="disc-card" onclick="openFormationModule('Mathématiques','Mathématiques','','img/subject-math.svg')">
         <img class="disc-img" src="img/subject-math.svg" alt="Illustration Mathématiques"><h4>Mathématiques</h4><p>Matières</p>
       </button>
-      <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'Psychotechnique',cat:'Psychotechnique'})">
+      <button class="disc-card" onclick="openFormationModule('Psychotechnique','Psychotechnique','','img/subject-psychotech.svg')">
         <img class="disc-img" src="img/subject-psychotech.svg" alt="Illustration Psychotechnique"><h4>Psychotechnique</h4><p>Concours</p>
       </button>
       <button class="disc-card" onclick="startQuiz({n:10,time:0,title:'SVT',cat:'SVT'})">
@@ -317,6 +346,28 @@
     </div>
     <div id="formWrap"></div>
     <div style="height:20px"></div>
+  </section>
+
+  <!-- ================= MODULE DE FORMATION ================= -->
+  <section class="screen" id="moduleqcm">
+    <div class="quiz-top module-qcm-top">
+      <button class="quiz-close" onclick="show('formations')" aria-label="Retour aux formations">✕</button>
+      <div><span>Module</span><h2 id="moduleQcmTitle">Formation</h2></div>
+    </div>
+    <div class="module-qcm-page">
+      <div class="module-qcm-hero">
+        <img id="moduleQcmImage" src="img/subject-culture.svg" alt="">
+        <div><span id="moduleQcmAccess">QCM gratuits et Premium</span><h1 id="moduleQcmHeading">Formation</h1><p id="moduleQcmDescription">Retrouve ici la banque du module et toutes les nouvelles séries publiées.</p></div>
+      </div>
+      <button class="module-bank-card" id="moduleBankButton" onclick="startCurrentModuleBank()">
+        <span class="module-bank-icon">▶</span>
+        <span><b>Commencer la banque du module</b><small id="moduleBankMeta">QCM corrigés disponibles</small></span>
+        <em>›</em>
+      </button>
+      <div class="module-publications-head"><div><span>Classés automatiquement</span><h2>Nouveaux QCM du module</h2></div><button class="mini-btn" onclick="loadCurrentModuleQcm(true)">Actualiser</button></div>
+      <div id="modulePublishedQcmList" class="module-publications-list"><div class="empty">Chargement des QCM du module...</div></div>
+    </div>
+    <div style="height:24px"></div>
   </section>
 
   <!-- ================= QCM PUBLIÉS ================= -->
@@ -1285,7 +1336,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=pasted-qcm-separated-publish-v6"></script>
-<script src="js/app.js?v=pasted-qcm-separated-publish-v6"></script>
+<script src="js/questions.js?v=navigation-modules-v7"></script>
+<script src="js/app.js?v=navigation-modules-v7"></script>
 </body>
 </html>
