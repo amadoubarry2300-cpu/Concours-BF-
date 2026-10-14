@@ -6,18 +6,71 @@ const {
   normalizePastedQcmBookSource,
   signPastedQcmBookSource,
   verifyPastedQcmBookSource,
-  buildPastedQcmBookPdf
+  buildQcmDraftPdf,
+  buildPastedQcmBookPdf,
+  PDF_THEME_KEYS
 } = await import('../backend/server.js');
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const fontAssets = [
-  '../backend/public/fonts/DejaVuSans.ttf',
-  '../backend/public/fonts/DejaVuSans-Bold.ttf',
-  '../backend/public/fonts/DejaVuSerif.ttf',
-  '../backend/public/fonts/DejaVuSerif-Bold.ttf',
   '../backend/public/fonts/Lato-Regular.ttf',
-  '../backend/public/fonts/Lato-Heavy.ttf'
+  '../backend/public/fonts/Lato-Heavy.ttf',
+  '../backend/public/fonts/Lato-Italic.ttf',
+  '../backend/public/fonts/Roboto-Regular.ttf',
+  '../backend/public/fonts/Roboto-Black.ttf',
+  '../backend/public/fonts/Roboto-Italic.ttf',
+  '../backend/public/fonts/SourceSans3-Regular.ttf',
+  '../backend/public/fonts/SourceSans3-Black.ttf',
+  '../backend/public/fonts/SourceSans3-Italic.ttf'
 ];
-fontAssets.forEach(file => assert(fs.statSync(new URL(file, import.meta.url)).size > 300000, `police professionnelle absente : ${file}`));
+fontAssets.forEach(file => assert(fs.statSync(new URL(file, import.meta.url)).size > 50000, `police Google Fonts absente : ${file}`));
+assert(PDF_THEME_KEYS.length === 4, `nombre de designs premium inattendu : ${PDF_THEME_KEYS.length}`);
+
+function ttfSupportsCodePoint(file, codePoint){
+  const buffer = fs.readFileSync(new URL(file, import.meta.url));
+  const numTables = buffer.readUInt16BE(4);
+  let cmapOffset = -1;
+  for (let i=0; i<numTables; i++){
+    const entry = 12 + i * 16;
+    if (buffer.toString('ascii', entry, entry + 4) === 'cmap') cmapOffset = buffer.readUInt32BE(entry + 8);
+  }
+  if (cmapOffset < 0) return false;
+  const subtableCount = buffer.readUInt16BE(cmapOffset + 2);
+  for (let i=0; i<subtableCount; i++){
+    const subtable = cmapOffset + buffer.readUInt32BE(cmapOffset + 4 + i * 8 + 4);
+    const format = buffer.readUInt16BE(subtable);
+    if (format === 12){
+      const groupCount = buffer.readUInt32BE(subtable + 12);
+      for (let group=0; group<groupCount; group++){
+        const pos = subtable + 16 + group * 12;
+        const start = buffer.readUInt32BE(pos);
+        const end = buffer.readUInt32BE(pos + 4);
+        if (codePoint >= start && codePoint <= end) return buffer.readUInt32BE(pos + 8) + codePoint - start !== 0;
+      }
+    }
+    if (format === 4 && codePoint <= 0xffff){
+      const segmentCount = buffer.readUInt16BE(subtable + 6) / 2;
+      const endCodes = subtable + 14;
+      const startCodes = endCodes + segmentCount * 2 + 2;
+      const deltas = startCodes + segmentCount * 2;
+      const ranges = deltas + segmentCount * 2;
+      for (let segment=0; segment<segmentCount; segment++){
+        const start = buffer.readUInt16BE(startCodes + segment * 2);
+        const end = buffer.readUInt16BE(endCodes + segment * 2);
+        if (codePoint < start || codePoint > end) continue;
+        const delta = buffer.readInt16BE(deltas + segment * 2);
+        const range = buffer.readUInt16BE(ranges + segment * 2);
+        if (!range) return ((codePoint + delta) & 0xffff) !== 0;
+        const glyphPos = ranges + segment * 2 + range + (codePoint - start) * 2;
+        return glyphPos + 2 <= buffer.length && buffer.readUInt16BE(glyphPos) !== 0;
+      }
+    }
+  }
+  return false;
+}
+const requiredGlyphs = [...'ÀÂÇÉÈÊËÎÏÔÙÛÜŸœŒ√−≤≥×÷π²³⁻⁴±Δσ∞≠≈′∫∑∂'];
+fontAssets.filter(file => !file.includes('Italic')).forEach(file => {
+  requiredGlyphs.forEach(glyph => assert(ttfSupportsCodePoint(file, glyph.codePointAt(0)), `glyphe ${glyph} absent : ${file}`));
+});
 
 const body = {
   title:'Physique-Chimie 3e — Préparation concours directs et professionnels',
@@ -93,12 +146,40 @@ const unicodeSource = {
     explanation:'Comme √9 = 3, les solutions sont comprises entre −3 et 3. Les signes √, −, ≤, ≥, ×, ÷, π, ², ³ et 10⁻⁴ doivent rester lisibles.'
   }]
 };
-for (const theme of ['lato-premium', 'dejavu-serif-edition', 'dejavu-sans-classique']){
-  process.env.PDF_FONT_THEME = theme;
-  const unicodePdf = await buildPastedQcmBookPdf(unicodeSource);
+for (const theme of PDF_THEME_KEYS){
+  const unicodePdf = await buildPastedQcmBookPdf({ ...unicodeSource, theme });
+  const pageCount = (unicodePdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
   assert(unicodePdf.subarray(0, 4).toString() === '%PDF', `PDF mathématique invalide : ${theme}`);
   assert(unicodePdf.length > 20000, `police mathématique non incorporée : ${theme}`);
+  assert(pageCount === 2, `pagination inattendue pour ${theme} : ${pageCount} pages`);
 }
+process.env.PDF_FONT_THEME = 'roboto-academie';
+const dailyPdf = await buildQcmDraftPdf({
+  title:unicodeSource.metadata.title,
+  date:unicodeSource.metadata.date,
+  category:unicodeSource.metadata.category,
+  level:unicodeSource.metadata.level,
+  questions:unicodeSource.questions
+});
+assert(dailyPdf.subarray(0, 4).toString() === '%PDF' && dailyPdf.length > 20000, 'PDF quotidien Google Fonts invalide');
+delete process.env.PDF_FONT_THEME;
+
+const compactQuestions = Array.from({ length:9 }, (_, index) => ({
+  question_text:`Quel nombre vient immédiatement après ${index + 1} ?`,
+  option_a:String(index + 1),
+  option_b:String(index + 2),
+  option_c:'',
+  option_d:'',
+  correct_answer:1,
+  explanation:`Le nombre suivant est ${index + 2}.`
+}));
+const compactPdf = await buildPastedQcmBookPdf({
+  metadata:{ title:'Test de pagination automatique', date:'2026-10-14', category:'Mathématiques', level:'CE2' },
+  questions:compactQuestions,
+  theme:'source-sans-moderne'
+});
+const compactPageCount = (compactPdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
+assert(compactPageCount === 4, `la pagination ne place pas 3 QCM courts par page : ${compactPageCount - 1} pages de contenu pour 9 QCM`);
 delete process.env.PDF_FONT_THEME;
 
 const pdf = await buildPastedQcmBookPdf(signedSource);

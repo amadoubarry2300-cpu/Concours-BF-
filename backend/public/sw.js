@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'payment-network-validation-v8';
+const CACHE_VERSION = 'google-fonts-pdf-designs-v9';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=payment-network-validation-v8',
-  '/js/questions.js?v=payment-network-validation-v8',
-  '/js/app.js?v=payment-network-validation-v8',
+  '/css/styles.css?v=google-fonts-pdf-designs-v9',
+  '/js/questions.js?v=google-fonts-pdf-designs-v9',
+  '/js/app.js?v=google-fonts-pdf-designs-v9',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

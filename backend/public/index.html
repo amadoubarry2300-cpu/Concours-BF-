@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=payment-network-validation-v8">
+<link rel="manifest" href="/manifest.webmanifest?v=google-fonts-pdf-designs-v9">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=payment-network-validation-v8">
+<link rel="stylesheet" href="css/styles.css?v=google-fonts-pdf-designs-v9">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -748,6 +748,15 @@
             <option>Burkina Faso</option><option>Culture générale</option><option>Histoire-Géo</option><option>Mathématiques</option><option>Physique-Chimie</option><option>Psychotechnique</option><option>Français</option><option>SVT</option><option>Greffier / Droit</option>
           </select>
 
+          <label class="field-label" for="pastedQcmPdfTheme">Design du livre PDF</label>
+          <select class="input" id="pastedQcmPdfTheme" onchange="clearPastedQcmPdfPreview()">
+            <option value="source-sans-moderne" selected>Moderne — Source Sans 3</option>
+            <option value="roboto-academie">Académie — Roboto</option>
+            <option value="lato-patrimoine">Patrimoine — Lato</option>
+            <option value="lato-elegance">Élégance — Lato</option>
+          </select>
+          <p class="admin-help">Chaque design utilise une police Google Fonts intégrée, une couverture et une mise en page différentes.</p>
+
           <div class="admin-paste-destination">
             <b>Destination après validation</b>
             <div class="admin-paste-destination-grid">
@@ -1337,7 +1346,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=payment-network-validation-v8"></script>
-<script src="js/app.js?v=payment-network-validation-v8"></script>
+<script src="js/questions.js?v=google-fonts-pdf-designs-v9"></script>
+<script src="js/app.js?v=google-fonts-pdf-designs-v9"></script>
 </body>
 </html>

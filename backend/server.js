@@ -2890,34 +2890,66 @@ function subjectNumber(date){
   return String((day % 99) + 1).padStart(2, '0');
 }
 
-function setupPdfFonts(doc){
+const PDF_THEME_KEYS = [
+  'lato-patrimoine',
+  'roboto-academie',
+  'source-sans-moderne',
+  'lato-elegance'
+];
+
+function setupPdfFonts(doc, requestedTheme = ''){
   const bundledFonts = path.join(PUBLIC_DIR, 'fonts');
-  const families = [
-    {
-      key:'lato-premium',
+  const fontFiles = {
+    lato:{
+      family:'Lato',
       regular:path.join(bundledFonts, 'Lato-Regular.ttf'),
       bold:path.join(bundledFonts, 'Lato-Heavy.ttf'),
       italic:path.join(bundledFonts, 'Lato-Italic.ttf')
     },
+    roboto:{
+      family:'Roboto',
+      regular:path.join(bundledFonts, 'Roboto-Regular.ttf'),
+      bold:path.join(bundledFonts, 'Roboto-Black.ttf'),
+      italic:path.join(bundledFonts, 'Roboto-Italic.ttf')
+    },
+    sourceSans:{
+      family:'Source Sans 3',
+      regular:path.join(bundledFonts, 'SourceSans3-Regular.ttf'),
+      bold:path.join(bundledFonts, 'SourceSans3-Black.ttf'),
+      italic:path.join(bundledFonts, 'SourceSans3-Italic.ttf')
+    }
+  };
+  const designs = [
     {
-      key:'dejavu-serif-edition',
-      regular:path.join(bundledFonts, 'DejaVuSerif.ttf'),
-      bold:path.join(bundledFonts, 'DejaVuSerif-Bold.ttf'),
-      italic:path.join(bundledFonts, 'DejaVuSerif.ttf')
+      key:'lato-patrimoine', font:'lato', variant:'heritage', label:'Édition Patrimoine',
+      palette:{ paper:'#fffef9', ink:'#151515', primary:'#087a46', secondary:'#c92532', accent:'#e4a11b', muted:'#5b5b55', border:'#aaa59c', soft:'#f1f6ee', correction:'#edf7ef', correctionBorder:'#8eaa91', answer:'#075b36' }
     },
     {
-      key:'dejavu-sans-classique',
-      regular:path.join(bundledFonts, 'DejaVuSans.ttf'),
-      bold:path.join(bundledFonts, 'DejaVuSans-Bold.ttf'),
-      italic:path.join(bundledFonts, 'DejaVuSans.ttf')
+      key:'roboto-academie', font:'roboto', variant:'academy', label:'Édition Académie',
+      palette:{ paper:'#ffffff', ink:'#10233f', primary:'#123c73', secondary:'#9d2638', accent:'#d59c2f', muted:'#586577', border:'#a9b8c9', soft:'#eef4fa', correction:'#edf5fb', correctionBorder:'#8eacc7', answer:'#123c73' }
+    },
+    {
+      key:'source-sans-moderne', font:'sourceSans', variant:'modern', label:'Édition Moderne',
+      palette:{ paper:'#ffffff', ink:'#14213d', primary:'#2553a4', secondary:'#e4542f', accent:'#0f9d84', muted:'#5c6574', border:'#afbdd4', soft:'#eef3ff', correction:'#eaf8f5', correctionBorder:'#83bfb3', answer:'#087765' }
+    },
+    {
+      key:'lato-elegance', font:'lato', variant:'elegant', label:'Édition Élégance',
+      palette:{ paper:'#fffdf8', ink:'#25201d', primary:'#671f31', secondary:'#b7802f', accent:'#275c55', muted:'#6b625c', border:'#b9aa99', soft:'#f7f0e5', correction:'#f3f6ef', correctionBorder:'#a8b49a', answer:'#275c55' }
     }
-  ].filter(family => fs.existsSync(family.regular) && fs.existsSync(family.bold));
-  if (!families.length){
-    throw Object.assign(new Error('Police mathématique Unicode indisponible pour le PDF.'), { status:500 });
+  ].map(design => ({ ...design, ...fontFiles[design.font] }))
+    .filter(design => fs.existsSync(design.regular) && fs.existsSync(design.bold));
+  if (!designs.length){
+    throw Object.assign(new Error('Police Google Fonts Unicode indisponible pour le PDF.'), { status:500 });
   }
-  const requested = cleanText(process.env.PDF_FONT_THEME, 80).toLowerCase();
-  const selected = families.find(family => family.key === requested)
-    || families[crypto.randomInt(0, families.length)];
+  const requested = cleanText(requestedTheme || process.env.PDF_FONT_THEME, 80).toLowerCase();
+  const legacyAliases = {
+    'lato-premium':'lato-patrimoine',
+    'dejavu-serif-edition':'roboto-academie',
+    'dejavu-sans-classique':'source-sans-moderne'
+  };
+  const requestedKey = legacyAliases[requested] || requested;
+  const selected = designs.find(design => design.key === requestedKey)
+    || designs[crypto.randomInt(0, designs.length)];
   doc.registerFont('RCBF-Regular', selected.regular);
   doc.registerFont('RCBF-Bold', selected.bold);
   if (fs.existsSync(selected.italic)) doc.registerFont('RCBF-Italic', selected.italic);
@@ -2925,7 +2957,11 @@ function setupPdfFonts(doc){
     regular:'RCBF-Regular',
     bold:'RCBF-Bold',
     italic:fs.existsSync(selected.italic) ? 'RCBF-Italic' : 'RCBF-Regular',
-    theme:selected.key
+    family:selected.family,
+    theme:selected.key,
+    variant:selected.variant,
+    label:selected.label,
+    palette:selected.palette
   };
 }
 
@@ -2944,6 +2980,7 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
       }
     });
     const fonts = setupPdfFonts(doc);
+    const palette = fonts.palette;
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -2973,7 +3010,7 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
       doc.roundedRect(x, y, w, h, h / 2).fill(fill);
       font('bold', size, color).text(pdfCleanText(label), x + 8, y + (h - size) / 2 - 1, { width:w - 16, align:'center', ellipsis:true });
     };
-    const decorativeDots = (x, y, color='#e5e7eb') => {
+    const decorativeDots = (x, y, color=palette.border) => {
       doc.save().fillColor(color).opacity(0.45);
       for (let r=0; r<8; r++){
         for (let c=0; c<9; c++) doc.circle(x + c * 9, y + r * 9, 1.35).fill();
@@ -2985,85 +3022,86 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
       if (fs.existsSync(logoPath)){
         try{ doc.image(logoPath, x + 4, y + 4, { fit:[size - 8, size - 8] }); return; }catch{}
       }
-      font('bold', size * 0.22, '#057a55').text('RCBF', x + 4, y + size * 0.38, { width:size - 8, align:'center' });
+      font('bold', size * 0.22, palette.answer).text('RCBF', x + 4, y + size * 0.38, { width:size - 8, align:'center' });
     };
 
     function drawCover(){
-      doc.rect(0, 0, pageW, pageH).fill('#ffffff');
+      doc.rect(0, 0, pageW, pageH).fill(palette.paper);
       // Grandes courbes colorées, inspirées de documents de formation sans copie exacte.
       doc.save();
-      doc.moveTo(0, 0).lineTo(0, 138).bezierCurveTo(120, 70, 205, 40, 345, 0).closePath().fill('#003b7a');
-      doc.moveTo(pageW, 0).lineTo(pageW, pageH).lineTo(pageW - 76, pageH).bezierCurveTo(pageW - 20, 610, pageW - 42, 270, pageW, 90).closePath().fill('#003b7a');
-      doc.moveTo(pageW - 18, 12).bezierCurveTo(pageW - 86, 150, pageW - 88, 332, pageW - 36, 475).lineWidth(6).stroke('#f5a623');
-      doc.moveTo(0, pageH - 52).bezierCurveTo(120, pageH - 12, 245, pageH - 92, 390, pageH - 44).lineWidth(18).stroke('#d71920');
-      doc.moveTo(0, pageH - 22).bezierCurveTo(142, pageH + 8, 294, pageH - 70, 462, pageH - 24).lineWidth(20).stroke('#0e9f6e');
+      doc.moveTo(0, 0).lineTo(0, 138).bezierCurveTo(120, 70, 205, 40, 345, 0).closePath().fill(palette.primary);
+      doc.moveTo(pageW, 0).lineTo(pageW, pageH).lineTo(pageW - 76, pageH).bezierCurveTo(pageW - 20, 610, pageW - 42, 270, pageW, 90).closePath().fill(palette.primary);
+      doc.moveTo(pageW - 18, 12).bezierCurveTo(pageW - 86, 150, pageW - 88, 332, pageW - 36, 475).lineWidth(6).stroke(palette.accent);
+      doc.moveTo(0, pageH - 52).bezierCurveTo(120, pageH - 12, 245, pageH - 92, 390, pageH - 44).lineWidth(18).stroke(palette.secondary);
+      doc.moveTo(0, pageH - 22).bezierCurveTo(142, pageH + 8, 294, pageH - 70, 462, pageH - 24).lineWidth(20).stroke(palette.accent);
       doc.restore();
       decorativeDots(pageW - 118, 30, '#9ca3af');
       decorativeDots(256, 410, '#d1d5db');
 
-      doc.roundedRect(36, 38, 248, 76, 22).fillOpacity(0.96).fill('#ffffff').fillOpacity(1).strokeColor('#e5e7eb').lineWidth(0.8).stroke();
+      doc.roundedRect(36, 38, 248, 76, 22).fillOpacity(0.96).fill('#ffffff').fillOpacity(1).strokeColor(palette.border).lineWidth(0.8).stroke();
       appLogo(50, 50, 52);
-      font('bold', 19, '#003b7a').text('Réussite', 112, 55, { width:160 });
-      font('bold', 20, '#0e9f6e').text('Concours BF', 112, 79, { width:165 });
-      pill(pageW - 190, 54, 120, 30, 'BURKINA FASO', '#ffffff', '#003b7a', 9);
+      font('bold', 19, palette.primary).text('Réussite', 112, 55, { width:160 });
+      font('bold', 20, palette.accent).text('Concours BF', 112, 79, { width:165 });
+      pill(pageW - 190, 54, 120, 30, 'BURKINA FASO', '#ffffff', palette.primary, 9);
 
-      font('bold', 46, '#003b7a').text('PRÉPARATION', 118, 146, { width:420, align:'center' });
+      font('bold', 46, palette.primary).text('PRÉPARATION', 118, 146, { width:420, align:'center' });
+      font('bold', 9.5, palette.secondary).text(fonts.label.toUpperCase(), 205, 191, { width:220, align:'center', characterSpacing:0.6 });
       doc.save();
-      doc.moveTo(150, 210).lineTo(450, 210).lineTo(432, 256).lineTo(132, 256).closePath().fill('#d71920');
+      doc.moveTo(150, 210).lineTo(450, 210).lineTo(432, 256).lineTo(132, 256).closePath().fill(palette.secondary);
       font('bold', 31, '#ffffff').text('INTENSIVE', 154, 216, { width:276, align:'center' });
       doc.restore();
-      font('bold', 47, '#0b7f2a').text('CONCOURS', 126, 272, { width:390, align:'center' });
+      font('bold', 47, palette.answer).text('CONCOURS', 126, 272, { width:390, align:'center' });
 
       // Illustration simple : livres + diplôme + cible.
       const bx = 66, by = 260;
-      const bookColors = ['#003b7a','#0e9f6e','#f97316','#d71920','#6d28d9'];
+      const bookColors = [palette.primary,palette.accent,'#f97316',palette.secondary,'#6d28d9'];
       bookColors.forEach((c, i) => {
         doc.roundedRect(bx, by + i * 28, 148, 24, 5).fill(c);
         font('bold', 8.5, '#ffffff').text(['CULTURE GÉNÉRALE','MATHÉMATIQUES','HISTOIRE-GÉO','FRANÇAIS','INSTITUTIONS'][i], bx + 15, by + i * 28 + 7, { width:118, align:'center' });
       });
-      doc.roundedRect(74, by + 150, 122, 34, 8).fill('#fef3c7').strokeColor('#f5a623').stroke();
+      doc.roundedRect(74, by + 150, 122, 34, 8).fill('#fef3c7').strokeColor(palette.accent).stroke();
       font('bold', 8, '#92400e').text('QCM CORRIGÉS', 83, by + 161, { width:104, align:'center' });
-      doc.circle(382, 379, 30).lineWidth(8).stroke('#d71920');
-      doc.circle(382, 379, 18).lineWidth(5).stroke('#003b7a');
-      doc.moveTo(382,379).lineTo(416,350).lineWidth(3).stroke('#0e9f6e');
+      doc.circle(382, 379, 30).lineWidth(8).stroke(palette.secondary);
+      doc.circle(382, 379, 18).lineWidth(5).stroke(palette.primary);
+      doc.moveTo(382,379).lineTo(416,350).lineWidth(3).stroke(palette.accent);
 
-      doc.roundedRect(206, 326, 318, 106, 16).fill('#003b7a');
+      doc.roundedRect(206, 326, 318, 106, 16).fill(palette.primary);
       font('bold', 72, '#ffffff').text(year, 222, 326, { width:286, align:'center' });
-      font('bold', 13, '#003b7a').text('UNE PRÉPARATION AUJOURD’HUI,', 212, 454, { width:292, align:'center' });
-      font('bold', 15, '#d71920').text('VOTRE RÉUSSITE DEMAIN !', 212, 473, { width:292, align:'center' });
-      doc.moveTo(225, 496).lineTo(495, 496).lineWidth(1.5).stroke('#003b7a');
+      font('bold', 13, palette.primary).text('UNE PRÉPARATION AUJOURD’HUI,', 212, 454, { width:292, align:'center' });
+      font('bold', 15, palette.secondary).text('VOTRE RÉUSSITE DEMAIN !', 212, 473, { width:292, align:'center' });
+      doc.moveTo(225, 496).lineTo(495, 496).lineWidth(1.5).stroke(palette.primary);
 
       const cardY = 548;
-      doc.roundedRect(54, cardY, 218, 78, 10).fill('#ffffff').strokeColor('#003b7a').lineWidth(1.2).stroke();
-      doc.rect(54, cardY + 43, 218, 35).fill('#0e9f6e');
-      font('bold', 12, '#0e9f6e').text('DATE DU SUJET', 86, cardY + 15, { width:160 });
+      doc.roundedRect(54, cardY, 218, 78, 10).fill('#ffffff').strokeColor(palette.primary).lineWidth(1.2).stroke();
+      doc.rect(54, cardY + 43, 218, 35).fill(palette.accent);
+      font('bold', 12, palette.accent).text('DATE DU SUJET', 86, cardY + 15, { width:160 });
       font('bold', 14.5, '#ffffff').text(formattedDate.toUpperCase(), 66, cardY + 53, { width:194, align:'center', lineBreak:false });
 
-      doc.roundedRect(322, cardY, 218, 78, 10).fill('#ffffff').strokeColor('#d71920').lineWidth(1.2).stroke();
-      doc.rect(322, cardY + 43, 218, 35).fill('#d71920');
-      font('bold', 12, '#d71920').text('SUJET', 354, cardY + 15, { width:160 });
+      doc.roundedRect(322, cardY, 218, 78, 10).fill('#ffffff').strokeColor(palette.secondary).lineWidth(1.2).stroke();
+      doc.rect(322, cardY + 43, 218, 35).fill(palette.secondary);
+      font('bold', 12, palette.secondary).text('SUJET', 354, cardY + 15, { width:160 });
       font('bold', 17, '#ffffff').text(`N° ${subjectNumber(date)}  •  ${qCount} QCM`, 334, cardY + 53, { width:194, align:'center', lineBreak:false });
 
-      doc.roundedRect(66, 646, 462, 42, 12).fill('#003b7a');
+      doc.roundedRect(66, 646, 462, 42, 12).fill(palette.primary);
       font('bold', 13, '#ffffff').text(`MODULE : ${moduleName.toUpperCase()}`, 86, 657, { width:215, align:'left', ellipsis:true });
       font('bold', 13, '#fbbf24').text(`NIVEAU : ${levelName.toUpperCase()}`, 304, 657, { width:198, align:'right', ellipsis:true });
 
-      doc.roundedRect(72, 710, 450, 39, 12).fill('#ecfdf5').strokeColor('#0e9f6e').lineWidth(1).stroke();
-      font('bold', 14, '#065f46').text('QCM corrigés pour entraînement intensif', 88, 721, { width:418, align:'center' });
-      font('bold', 13.5, '#d71920').text('BURKINA FASO', 54, pageH - 72, { width:220, align:'center', lineBreak:false });
-      font('regular', 9.2, '#057a55').text('Ouagadougou • reussiteconcoursbf@yahoo.com', 300, pageH - 69, { width:236, align:'left', lineBreak:false });
+      doc.roundedRect(72, 710, 450, 39, 12).fill(palette.correction).strokeColor(palette.accent).lineWidth(1).stroke();
+      font('bold', 14, palette.answer).text('QCM corrigés pour entraînement intensif', 88, 721, { width:418, align:'center' });
+      font('bold', 13.5, palette.secondary).text('BURKINA FASO', 54, pageH - 72, { width:220, align:'center', lineBreak:false });
+      font('regular', 9.2, palette.answer).text('Ouagadougou • reussiteconcoursbf@yahoo.com', 300, pageH - 69, { width:236, align:'left', lineBreak:false });
     }
 
     function drawPageFrame(){
-      doc.rect(0, 0, pageW, pageH).fill('#ffffff');
-      doc.rect(0, 0, pageW, 58).fill('#003b7a');
-      doc.rect(0, 58, pageW, 5).fill('#0e9f6e');
+      doc.rect(0, 0, pageW, pageH).fill(palette.paper);
+      doc.rect(0, 0, pageW, 58).fill(palette.primary);
+      doc.rect(0, 58, pageW, 5).fill(palette.accent);
       appLogo(40, 14, 34);
       font('bold', 12, '#ffffff').text('Réussite Concours BF', 84, 18, { width:180 });
-      font('regular', 8.5, '#dbeafe').text(`${moduleName} • ${levelName} • ${formattedDate}`, 84, 35, { width:280, ellipsis:true });
-      pill(pageW - 152, 18, 112, 24, `Sujet N° ${subjectNumber(date)}`, '#ffffff', '#003b7a', 8.5);
-      doc.moveTo(margin, pageH - 62).lineTo(pageW - margin, pageH - 62).lineWidth(0.6).stroke('#e5e7eb');
-      font('regular', 8, '#6b7280').text('Réussite Concours BF — Préparation aux examens et concours', margin, pageH - 54, { width:contentW, align:'center', lineBreak:false });
+      font('regular', 8.5, palette.soft).text(`${moduleName} • ${levelName} • ${formattedDate}`, 84, 35, { width:280, ellipsis:true });
+      pill(pageW - 152, 18, 112, 24, `Sujet N° ${subjectNumber(date)}`, '#ffffff', palette.primary, 8.5);
+      doc.moveTo(margin, pageH - 62).lineTo(pageW - margin, pageH - 62).lineWidth(0.6).stroke(palette.border);
+      font('regular', 8, palette.muted).text('Réussite Concours BF — Préparation aux examens et concours', margin, pageH - 54, { width:contentW, align:'center', lineBreak:false });
       doc.y = 86;
     }
 
@@ -3073,9 +3111,9 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
       const explanation = pdfCleanText(q.explanation || 'Correction à vérifier.');
       const answer = answerLabel(q.correct_answer);
       const qW = contentW - 54;
-      const qH = textH(qText, qW, 'bold', 17.5, { lineGap:3 });
-      const optH = opts.reduce((sum, opt) => sum + Math.max(28, textH(opt, contentW - 82, 'regular', 15.2, { lineGap:2 }) + 8), 0);
-      const corrH = Math.max(52, textH(explanation, contentW - 74, 'regular', 11.2, { lineGap:1.5 }) + 31);
+      const qH = textH(qText, qW, 'bold', 18.4, { lineGap:3 });
+      const optH = opts.reduce((sum, opt) => sum + Math.max(28, textH(opt, contentW - 82, 'regular', 15.5, { lineGap:2 }) + 8), 0);
+      const corrH = Math.max(52, textH(explanation, contentW - 74, 'regular', 11.8, { lineGap:1.5 }) + 31);
       return Math.max(188, 54 + qH + optH + corrH);
     }
 
@@ -3084,30 +3122,30 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
       if (doc.y + blockH > pageH - 82){ doc.addPage(); drawPageFrame(); }
       const startY = doc.y;
       const numW = 36;
-      font('bold', 21, '#111827').text(`${idx + 1}.`, margin, startY + 1, { width:numW, align:'right' });
-      font('bold', 17.5, '#111827').text(pdfCleanText(q.question_text || 'Question'), margin + 52, startY, { width:contentW - 56, lineGap:3 });
+      font('bold', 21, palette.ink).text(`${idx + 1}.`, margin, startY + 1, { width:numW, align:'right' });
+      font('bold', 18.4, palette.ink).text(pdfCleanText(q.question_text || 'Question'), margin + 52, startY, { width:contentW - 56, lineGap:3 });
       let y = Math.max(startY + 44, doc.y + 10);
       const opts = [q.option_a, q.option_b, q.option_c, q.option_d].map(pdfCleanText);
       opts.forEach((opt, optIdx) => {
         const label = ['A','B','C','D'][optIdx];
-        const h = Math.max(28, textH(opt, contentW - 82, 'regular', 15.2, { lineGap:2 }) + 8);
-        font('bold', 15.2, '#111827').text(`${label}.`, margin + 54, y, { width:26 });
-        font('regular', 15.2, '#111827').text(opt, margin + 86, y, { width:contentW - 92, lineGap:2 });
+        const h = Math.max(28, textH(opt, contentW - 82, 'regular', 15.5, { lineGap:2 }) + 8);
+        font('bold', 15.5, palette.ink).text(`${label}.`, margin + 54, y, { width:26 });
+        font('regular', 15.5, palette.ink).text(opt, margin + 86, y, { width:contentW - 92, lineGap:2 });
         y += h;
       });
       const answer = answerLabel(q.correct_answer);
       const corrY = y + 6;
-      doc.roundedRect(margin + 52, corrY, contentW - 58, Math.max(42, blockH - (corrY - startY) - 10), 12).fill('#f0fdf4').strokeColor('#bbf7d0').lineWidth(0.6).stroke();
-      font('bold', 11.2, '#065f46').text(`Réponse : ${answer}`, margin + 66, corrY + 10, { width:112 });
-      font('bold', 11.2, '#065f46').text('Correction', margin + 66, corrY + 28, { width:90 });
-      font('regular', 11.2, '#064e3b').text(pdfCleanText(q.explanation || ''), margin + 162, corrY + 28, { width:contentW - 182, lineGap:1.5 });
+      doc.roundedRect(margin + 52, corrY, contentW - 58, Math.max(42, blockH - (corrY - startY) - 10), 12).fill(palette.correction).strokeColor(palette.correctionBorder).lineWidth(0.6).stroke();
+      font('bold', 12.2, palette.answer).text(`Réponse : ${answer}`, margin + 66, corrY + 10, { width:112 });
+      font('bold', 12.2, palette.answer).text('Correction', margin + 66, corrY + 28, { width:90 });
+      font('regular', 11.8, palette.ink).text(pdfCleanText(q.explanation || ''), margin + 162, corrY + 28, { width:contentW - 182, lineGap:1.5 });
       doc.y = startY + blockH + 14;
     }
 
     drawCover();
     doc.addPage();
     drawPageFrame();
-    font('bold', 24, '#003b7a').text('Questions à choix multiple', margin, doc.y, { width:contentW, align:'center' });
+    font('bold', 24, palette.primary).text('Questions à choix multiple', margin, doc.y, { width:contentW, align:'center' });
     doc.y += 24;
     correctedQuestions.forEach((q, idx) => drawQuestion(q, idx));
     doc.end();
@@ -3115,7 +3153,7 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
 }
 
 
-async function buildPastedQcmBookPdf({ metadata = {}, questions = [] } = {}){
+async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = '' } = {}){
   const rows = (Array.isArray(questions) ? questions : []).map(applyQuestionCorrection);
   if (!rows.length) throw Object.assign(new Error('Aucun QCM propre à placer dans le PDF.'), { status:400 });
   return new Promise((resolve, reject) => {
@@ -3133,7 +3171,9 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [] } = {}){
         Keywords:'concours, QCM, Burkina Faso, préparation'
       }
     });
-    const fonts = setupPdfFonts(doc);
+    const fonts = setupPdfFonts(doc, theme);
+    const palette = fonts.palette;
+    const variant = fonts.variant;
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -3150,7 +3190,7 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [] } = {}){
     const labels = ['A','B','C','D'];
     let contentPage = 0;
 
-    const font = (kind='regular', size=10, color='#111111') => {
+    const font = (kind='regular', size=10, color=palette.ink) => {
       doc.font(fonts[kind] || fonts.regular).fontSize(size).fillColor(color);
       return doc;
     };
@@ -3158,85 +3198,192 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [] } = {}){
       doc.font(fonts[kind] || fonts.regular).fontSize(size);
       return doc.heightOfString(pdfCleanText(value), { width, ...options });
     };
-    const paper = () => {
-      doc.rect(0, 0, pageW, pageH).fill('#fffef8');
-      doc.save().opacity(0.045).strokeColor('#6b6258').lineWidth(0.25);
-      for (let y=26; y<pageH; y+=34) doc.moveTo(18, y).lineTo(pageW - 18, y + ((y / 34) % 2 ? 0.7 : -0.7)).stroke();
-      doc.opacity(0.06).fillColor('#796f63');
-      for (let i=0; i<54; i++){
-        const x = 24 + ((i * 83) % Math.floor(pageW - 48));
-        const y = 20 + ((i * 137) % Math.floor(pageH - 40));
-        doc.circle(x, y, i % 4 === 0 ? 0.7 : 0.42).fill();
-      }
-      doc.restore();
-    };
-    const logo = (x, y, size=50) => {
-      doc.roundedRect(x, y, size, size, 8).fill('#ffffff').strokeColor('#d8d4ca').lineWidth(0.7).stroke();
-      if (fs.existsSync(logoPath)){
-        try{ doc.image(logoPath, x + 3, y + 3, { fit:[size - 6, size - 6], align:'center', valign:'center' }); return; }catch{}
-      }
-      font('bold', size * 0.2, '#087a46').text('RCBF', x + 3, y + size * 0.4, { width:size - 6, align:'center' });
-    };
-    const fitTitleSize = (value, width, maxHeight, start=35, min=22) => {
+    const fitTitleSize = (value, width, maxHeight, start=37, min=22) => {
       for (let size=start; size>=min; size-=1){
         if (height(value, width, 'bold', size, { lineGap:2, align:'center' }) <= maxHeight) return size;
       }
       return min;
     };
+    const paper = () => {
+      doc.rect(0, 0, pageW, pageH).fill(palette.paper);
+      if (variant === 'heritage'){
+        doc.save().opacity(0.035).strokeColor(palette.muted).lineWidth(0.25);
+        for (let y=28; y<pageH; y+=35) doc.moveTo(20, y).lineTo(pageW - 20, y + ((y / 35) % 2 ? 0.6 : -0.6)).stroke();
+        doc.restore();
+      }else if (variant === 'academy'){
+        doc.save().opacity(0.05).fillColor(palette.primary);
+        for (let y=32; y<pageH; y+=28){
+          for (let x=30; x<pageW; x+=28) doc.circle(x, y, 0.55).fill();
+        }
+        doc.restore();
+      }else if (variant === 'modern'){
+        doc.save().opacity(0.028).fillColor(palette.primary);
+        for (let x=-pageH; x<pageW; x+=120){
+          doc.moveTo(x, 0).lineTo(x + 45, 0).lineTo(x + pageH + 45, pageH).lineTo(x + pageH, pageH).closePath().fill();
+        }
+        doc.restore();
+      }else{
+        doc.save().opacity(0.065).strokeColor(palette.secondary).lineWidth(0.45);
+        doc.circle(34, 34, 54).stroke();
+        doc.circle(pageW - 34, pageH - 34, 54).stroke();
+        doc.restore();
+      }
+    };
+    const logo = (x, y, size=50, border=palette.border) => {
+      doc.roundedRect(x, y, size, size, variant === 'modern' ? 14 : 7).fillAndStroke('#ffffff', border);
+      if (fs.existsSync(logoPath)){
+        try{ doc.image(logoPath, x + 3, y + 3, { fit:[size - 6, size - 6], align:'center', valign:'center' }); return; }catch{}
+      }
+      font('bold', size * 0.2, palette.primary).text('RCBF', x + 3, y + size * 0.4, { width:size - 6, align:'center' });
+    };
+
+    function drawCoverBrand(){
+      if (variant === 'heritage'){
+        doc.rect(23, 22, pageW - 46, pageH - 44).lineWidth(1.15).strokeColor(palette.ink).stroke();
+        doc.rect(30, 29, pageW - 60, pageH - 58).lineWidth(0.35).strokeColor(palette.muted).stroke();
+        doc.rect(30, 29, pageW - 60, 9).fill(palette.primary);
+        doc.rect(30, 38, pageW - 60, 4).fill(palette.secondary);
+        logo(54, 64, 70);
+        font('bold', 25, palette.ink).text('RÉUSSITE', 142, 68, { width:300 });
+        font('bold', 26, palette.primary).text('CONCOURS BF', 142, 98, { width:330 });
+        font('bold', 9.5, palette.muted).text('COLLECTION PRÉPARATION AUX CONCOURS', 142, 132, { width:360, characterSpacing:0.7 });
+        doc.moveTo(54, 158).lineTo(pageW - 54, 158).lineWidth(1.2).stroke(palette.ink);
+        doc.moveTo(54, 164).lineTo(pageW - 168, 164).lineWidth(4).stroke(palette.primary);
+      }else if (variant === 'academy'){
+        doc.rect(0, 0, pageW, 169).fill(palette.primary);
+        doc.rect(0, 169, pageW, 8).fill(palette.accent);
+        doc.rect(pageW - 26, 177, 8, pageH - 205).fill(palette.secondary);
+        logo(52, 46, 76, '#ffffff');
+        font('bold', 27, '#ffffff').text('RÉUSSITE CONCOURS BF', 150, 58, { width:380 });
+        font('bold', 10, '#ffffff').text('BIBLIOTHÈQUE ACADÉMIQUE • BURKINA FASO', 151, 99, { width:360, characterSpacing:0.8 });
+        font('regular', 10.5, '#ffffff').text('Préparation méthodique aux examens et concours', 151, 123, { width:360 });
+      }else if (variant === 'modern'){
+        doc.moveTo(0, 0).lineTo(450, 0).lineTo(374, 176).lineTo(0, 226).closePath().fill(palette.primary);
+        doc.circle(pageW - 68, 62, 42).fill(palette.secondary);
+        doc.circle(pageW - 68, 62, 23).fill(palette.accent);
+        logo(48, 48, 72, '#ffffff');
+        font('bold', 28, '#ffffff').text('RÉUSSITE', 143, 54, { width:250 });
+        font('bold', 29, '#ffffff').text('CONCOURS BF', 143, 89, { width:260 });
+        font('bold', 9.5, '#ffffff').text('COLLECTION GRAND FORMAT', 144, 131, { width:240, characterSpacing:1 });
+        doc.roundedRect(396, 135, 145, 35, 17).fill(palette.soft);
+        font('bold', 9.5, palette.primary).text('BURKINA FASO', 408, 147, { width:121, align:'center' });
+      }else{
+        doc.rect(24, 22, pageW - 48, pageH - 44).lineWidth(2).strokeColor(palette.primary).stroke();
+        doc.rect(32, 30, pageW - 64, pageH - 60).lineWidth(0.55).strokeColor(palette.secondary).stroke();
+        doc.moveTo(90, 83).lineTo(219, 83).lineWidth(1).stroke(palette.secondary);
+        doc.moveTo(pageW - 219, 83).lineTo(pageW - 90, 83).lineWidth(1).stroke(palette.secondary);
+        logo(pageW / 2 - 37, 48, 74, palette.secondary);
+        font('bold', 24, palette.primary).text('RÉUSSITE CONCOURS BF', 80, 132, { width:pageW - 160, align:'center', characterSpacing:0.5 });
+        font('regular', 10.5, palette.muted).text('COLLECTION D’EXCELLENCE • BURKINA FASO', 80, 164, { width:pageW - 160, align:'center', characterSpacing:0.8 });
+      }
+    }
+
+    function drawMetadataPanel(metaY){
+      if (variant === 'academy'){
+        doc.roundedRect(58, metaY, pageW - 116, 148, 8).fillAndStroke('#ffffff', palette.border);
+        doc.rect(58, metaY, pageW - 116, 31).fill(palette.primary);
+        font('bold', 11, '#ffffff').text('FICHE DU SUJET', 76, metaY + 10, { width:pageW - 152, align:'center', characterSpacing:0.7 });
+        const cells = [
+          ['MODULE', moduleName.toUpperCase()],
+          ['NIVEAU', levelName.toUpperCase()],
+          ['ÉDITION', formattedDate.toUpperCase()]
+        ];
+        cells.forEach((cell, index) => {
+          const x = 72 + index * 151;
+          if (index) doc.moveTo(x - 12, metaY + 48).lineTo(x - 12, metaY + 131).lineWidth(0.55).stroke(palette.border);
+          font('bold', 9.5, palette.secondary).text(cell[0], x, metaY + 57, { width:126, align:'center' });
+          font('bold', index === 2 ? 11.5 : 14, palette.ink).text(cell[1], x, metaY + 83, { width:126, height:42, align:'center', ellipsis:true });
+        });
+        return;
+      }
+      if (variant === 'modern'){
+        const rowsData = [
+          ['MODULE', moduleName.toUpperCase(), palette.primary],
+          ['NIVEAU', levelName.toUpperCase(), palette.accent],
+          ['ÉDITION', formattedDate.toUpperCase(), palette.secondary]
+        ];
+        rowsData.forEach((cell, index) => {
+          const y = metaY + index * 49;
+          doc.roundedRect(65, y, pageW - 130, 40, 12).fillAndStroke('#ffffff', palette.border);
+          doc.roundedRect(65, y, 112, 40, 12).fill(cell[2]);
+          font('bold', 10, '#ffffff').text(cell[0], 77, y + 14, { width:88, align:'center' });
+          font('bold', index === 2 ? 12 : 15, palette.ink).text(cell[1], 193, y + 11, { width:312, align:'right', ellipsis:true, lineBreak:false });
+        });
+        return;
+      }
+      doc.roundedRect(62, metaY, pageW - 124, 154, variant === 'elegant' ? 2 : 7).fillAndStroke('#ffffff', variant === 'elegant' ? palette.secondary : palette.ink);
+      doc.rect(62, metaY, variant === 'elegant' ? pageW - 124 : 8, variant === 'elegant' ? 5 : 154).fill(variant === 'elegant' ? palette.secondary : palette.primary);
+      const details = [
+        ['MODULE', moduleName.toUpperCase(), 23, 18, 16],
+        ['NIVEAU', levelName.toUpperCase(), 69, 64, 16],
+        ['ÉDITION', formattedDate.toUpperCase(), 115, 111, 14.5]
+      ];
+      details.forEach((item, index) => {
+        font('bold', 11, palette.muted).text(item[0], 90, metaY + item[2], { width:106 });
+        font('bold', item[4], palette.ink).text(item[1], 202, metaY + item[3], { width:300, align:'right', ellipsis:true });
+        if (index < 2) doc.moveTo(90, metaY + 53 + index * 46).lineTo(pageW - 88, metaY + 53 + index * 46).lineWidth(0.45).stroke(palette.border);
+      });
+    }
 
     function drawCover(){
       paper();
-      doc.rect(23, 22, pageW - 46, pageH - 44).lineWidth(1.15).strokeColor('#181818').stroke();
-      doc.rect(30, 29, pageW - 60, pageH - 58).lineWidth(0.35).strokeColor('#797979').stroke();
-      doc.rect(30, 29, pageW - 60, 9).fill('#07844d');
-      doc.rect(30, 38, pageW - 60, 4).fill('#d51f2b');
-
-      logo(54, 64, 70);
-      font('bold', 25, '#111111').text('RÉUSSITE', 142, 68, { width:300 });
-      font('bold', 26, '#07844d').text('CONCOURS BF', 142, 98, { width:330 });
-      font('bold', 9.5, '#5b5b55').text('COLLECTION PRÉPARATION AUX CONCOURS', 142, 132, { width:360, characterSpacing:0.7 });
-      doc.moveTo(54, 158).lineTo(pageW - 54, 158).lineWidth(1.2).stroke('#111111');
-      doc.moveTo(54, 164).lineTo(pageW - 168, 164).lineWidth(4).stroke('#07844d');
-
-      font('bold', 14, '#d51f2b').text('CAHIER D’ENTRAÎNEMENT CORRIGÉ', 62, 198, { width:pageW - 124, align:'center', characterSpacing:0.4 });
-      const titleSize = fitTitleSize(cleanTitle.toUpperCase(), pageW - 126, 156, 38, 23);
-      font('bold', titleSize, '#111111').text(cleanTitle.toUpperCase(), 63, 236, { width:pageW - 126, align:'center', lineGap:2 });
-
+      drawCoverBrand();
+      const titleLabelY = variant === 'elegant' ? 202 : 198;
+      font('bold', 13.5, palette.secondary).text(fonts.label.toUpperCase(), 62, titleLabelY, { width:pageW - 124, align:'center', characterSpacing:0.45 });
+      const titleY = variant === 'modern' ? 239 : 236;
+      const titleSize = fitTitleSize(cleanTitle.toUpperCase(), pageW - 126, 150, variant === 'modern' ? 40 : 37, 23);
+      font('bold', titleSize, palette.ink).text(cleanTitle.toUpperCase(), 63, titleY, { width:pageW - 126, align:'center', lineGap:2 });
       const metaY = 424;
-      doc.roundedRect(62, metaY, pageW - 124, 154, 7).fill('#ffffff').strokeColor('#2e2e2e').lineWidth(0.8).stroke();
-      doc.rect(62, metaY, 8, 154).fill('#07844d');
-      font('bold', 11, '#5d5d58').text('MODULE', 90, metaY + 23, { width:106 });
-      font('bold', 16, '#111111').text(moduleName.toUpperCase(), 202, metaY + 18, { width:300, align:'right', ellipsis:true });
-      doc.moveTo(90, metaY + 53).lineTo(pageW - 88, metaY + 53).lineWidth(0.45).stroke('#c8c5bd');
-      font('bold', 11, '#5d5d58').text('NIVEAU', 90, metaY + 69, { width:106 });
-      font('bold', 16, '#111111').text(levelName.toUpperCase(), 202, metaY + 64, { width:300, align:'right', ellipsis:true });
-      doc.moveTo(90, metaY + 99).lineTo(pageW - 88, metaY + 99).lineWidth(0.45).stroke('#c8c5bd');
-      font('bold', 11, '#5d5d58').text('ÉDITION', 90, metaY + 115, { width:106 });
-      font('bold', 14.5, '#111111').text(formattedDate.toUpperCase(), 194, metaY + 111, { width:308, align:'right', ellipsis:true });
+      drawMetadataPanel(metaY);
 
-      doc.roundedRect(92, 614, pageW - 184, 48, 6).fill('#111111');
-      font('bold', 17, '#ffffff').text(`${rows.length} QCM • RÉPONSES • EXPLICATIONS`, 106, 629, { width:pageW - 212, align:'center', lineBreak:false });
-      font('bold', 13, '#07844d').text('QUESTIONS EN GRAND FORMAT', 62, 684, { width:pageW - 124, align:'center', characterSpacing:0.6 });
-      font('regular', 10.5, '#343434').text('Support WhatsApp : +226 74 01 37 04', 62, 728, { width:pageW - 124, align:'center' });
-      font('regular', 9.5, '#555555').text('Ouagadougou • reussiteconcoursbf@yahoo.com', 62, 746, { width:pageW - 124, align:'center' });
-      font('bold', 9, '#d51f2b').text('BURKINA FASO', 62, pageH - 66, { width:pageW - 124, align:'center', characterSpacing:1.1 });
+      doc.roundedRect(84, 618, pageW - 168, 50, variant === 'modern' ? 18 : 5).fill(palette.primary);
+      font('bold', 16.5, '#ffffff').text(`${rows.length} QCM • RÉPONSES • EXPLICATIONS`, 98, 634, { width:pageW - 196, align:'center', lineBreak:false });
+      font('bold', 13, palette.accent).text('QUESTIONS ULTRA LISIBLES EN GRAND FORMAT', 62, 690, { width:pageW - 124, align:'center', characterSpacing:0.35 });
+      font('regular', 10.5, palette.ink).text('Support WhatsApp : +226 74 01 37 04', 62, 731, { width:pageW - 124, align:'center' });
+      font('regular', 9.5, palette.muted).text('Ouagadougou • reussiteconcoursbf@yahoo.com', 62, 749, { width:pageW - 124, align:'center' });
+      font('bold', 9, palette.secondary).text('BURKINA FASO', 62, pageH - 66, { width:pageW - 124, align:'center', characterSpacing:1.1 });
     }
 
     function drawContentPage(){
       contentPage += 1;
       paper();
-      doc.rect(24, 22, pageW - 48, pageH - 44).lineWidth(0.55).strokeColor('#86817a').stroke();
-      doc.rect(24, 22, 7, pageH - 44).fill('#07844d');
-      logo(45, 34, 35);
-      font('bold', 12, '#111111').text('RÉUSSITE CONCOURS BF', 91, 37, { width:200 });
-      font('bold', 8.5, '#07844d').text('CAHIER D’ENTRAÎNEMENT CORRIGÉ', 91, 54, { width:250, characterSpacing:0.35 });
-      font('bold', 9, '#111111').text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, pageW - 252, 40, { width:190, align:'right', ellipsis:true, lineBreak:false });
-      font('regular', 8, '#5b5b55').text(formattedDate, pageW - 252, 56, { width:190, align:'right', lineBreak:false });
-      doc.moveTo(45, 80).lineTo(pageW - 45, 80).lineWidth(1.4).stroke('#111111');
-      doc.moveTo(45, 84).lineTo(pageW - 195, 84).lineWidth(3.2).stroke('#07844d');
-      font('bold', 8.5, '#55514b').text('QUESTIONS CORRIGÉES', 45, pageH - 62, { width:190, lineBreak:false });
-      font('bold', 9, '#111111').text(`PAGE ${contentPage}`, pageW - 130, pageH - 63, { width:84, align:'right', lineBreak:false });
-      doc.y = 99;
+      if (variant === 'academy'){
+        doc.rect(23, 22, pageW - 46, pageH - 44).lineWidth(0.7).strokeColor(palette.border).stroke();
+        doc.rect(23, 22, pageW - 46, 65).fill(palette.primary);
+        doc.rect(23, 87, pageW - 46, 5).fill(palette.accent);
+        logo(39, 34, 42, '#ffffff');
+        font('bold', 13, '#ffffff').text('RÉUSSITE CONCOURS BF', 95, 40, { width:230 });
+        font('regular', 8.5, '#ffffff').text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, 95, 61, { width:300, ellipsis:true, lineBreak:false });
+        font('bold', 9, '#ffffff').text(`PAGE ${contentPage}`, pageW - 132, 49, { width:84, align:'right' });
+      }else if (variant === 'modern'){
+        doc.roundedRect(24, 24, pageW - 48, 62, 15).fill(palette.primary);
+        doc.circle(pageW - 67, 55, 22).fill(palette.secondary);
+        logo(39, 34, 42, '#ffffff');
+        font('bold', 13, '#ffffff').text('RÉUSSITE CONCOURS BF', 95, 39, { width:230 });
+        font('bold', 8.5, '#ffffff').text('CAHIER D’ENTRAÎNEMENT CORRIGÉ', 95, 60, { width:260, characterSpacing:0.25 });
+        font('bold', 9, '#ffffff').text(String(contentPage).padStart(2, '0'), pageW - 78, 49, { width:22, align:'center' });
+      }else if (variant === 'elegant'){
+        doc.rect(24, 22, pageW - 48, pageH - 44).lineWidth(1).strokeColor(palette.primary).stroke();
+        doc.rect(30, 28, pageW - 60, pageH - 56).lineWidth(0.35).strokeColor(palette.secondary).stroke();
+        logo(44, 37, 38, palette.secondary);
+        font('bold', 12, palette.primary).text('RÉUSSITE CONCOURS BF', 95, 42, { width:220 });
+        font('regular', 8.5, palette.muted).text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, 95, 61, { width:280, ellipsis:true, lineBreak:false });
+        doc.moveTo(44, 88).lineTo(pageW - 44, 88).lineWidth(1).stroke(palette.secondary);
+        font('bold', 9, palette.primary).text(`PAGE ${contentPage}`, pageW - 131, 50, { width:85, align:'right' });
+      }else{
+        doc.rect(24, 22, pageW - 48, pageH - 44).lineWidth(0.55).strokeColor(palette.border).stroke();
+        doc.rect(24, 22, 7, pageH - 44).fill(palette.primary);
+        logo(45, 34, 35);
+        font('bold', 12, palette.ink).text('RÉUSSITE CONCOURS BF', 91, 37, { width:200 });
+        font('bold', 8.5, palette.primary).text('CAHIER D’ENTRAÎNEMENT CORRIGÉ', 91, 54, { width:250, characterSpacing:0.35 });
+        font('bold', 9, palette.ink).text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, pageW - 252, 40, { width:190, align:'right', ellipsis:true, lineBreak:false });
+        font('regular', 8, palette.muted).text(formattedDate, pageW - 252, 56, { width:190, align:'right', lineBreak:false });
+        doc.moveTo(45, 80).lineTo(pageW - 45, 80).lineWidth(1.4).stroke(palette.ink);
+        doc.moveTo(45, 84).lineTo(pageW - 195, 84).lineWidth(3.2).stroke(palette.primary);
+      }
+      font('bold', 8.5, palette.muted).text('QUESTIONS CORRIGÉES', 45, pageH - 62, { width:190, lineBreak:false });
+      font('bold', 9, palette.ink).text(`PAGE ${contentPage}`, pageW - 130, pageH - 63, { width:84, align:'right', lineBreak:false });
+      doc.y = variant === 'modern' ? 101 : 103;
     }
 
     function normalizedOptions(q){
@@ -3250,48 +3397,67 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [] } = {}){
       const qText = pdfCleanText(q.question_text || 'Question');
       const explanation = pdfCleanText(q.explanation || 'La réponse indiquée est la bonne réponse.');
       const cardW = contentW - 8;
-      const questionW = cardW - 78;
-      const optionW = cardW - 111;
-      const correctionW = cardW - 78;
-      const explanationW = correctionW - 130;
-      const questionH = height(qText, questionW, 'bold', 17.8, { lineGap:2 });
-      const optionHeights = opts.map(opt => Math.max(21, height(opt, optionW, 'regular', 13.2, { lineGap:1 }) + 5));
-      const explanationH = height(explanation, explanationW, 'regular', 10.5, { lineGap:1.2 });
-      const correctionH = Math.max(47, 31 + explanationH);
-      const blockH = 11 + questionH + 7 + optionHeights.reduce((sum, h) => sum + h, 0) + 6 + correctionH + 9;
+      const questionW = cardW - 82;
+      const optionW = cardW - 116;
+      const correctionW = cardW - 82;
+      const explanationW = correctionW - 132;
+      const questionH = height(qText, questionW, 'bold', 18.6, { lineGap:2.2 });
+      const optionHeights = opts.map(opt => Math.max(23, height(opt, optionW, 'regular', 13.8, { lineGap:1.2 }) + 6));
+      const explanationH = height(explanation, explanationW, 'regular', 11.4, { lineGap:1.35 });
+      const correctionH = Math.max(51, 32 + explanationH);
+      const blockH = 12 + questionH + 10 + optionHeights.reduce((sum, h) => sum + h, 0) + 7 + correctionH + 10;
       return { opts, qText, explanation, questionH, optionHeights, correctionH, blockH };
     }
 
     function drawQuestion(q, index){
       const metrics = blockMetrics(q);
-      const bottom = pageH - 68;
+      const bottom = pageH - 70;
       if (doc.y + metrics.blockH > bottom){ doc.addPage(); drawContentPage(); }
       const x = margin + 4;
       const y = doc.y;
       const w = contentW - 8;
-      doc.save().fillColor('#ffffff').opacity(0.82).roundedRect(x, y, w, metrics.blockH, 5).fill().restore();
-      doc.roundedRect(x, y, w, metrics.blockH, 5).lineWidth(0.55).strokeColor('#b9b6af').stroke();
-      doc.rect(x, y, 5, metrics.blockH).fill('#07844d');
-      doc.roundedRect(x + 16, y + 10, 34, 27, 5).fill('#111111');
-      font('bold', 13, '#ffffff').text(String(index + 1).padStart(2, '0'), x + 18, y + 16, { width:30, align:'center', lineBreak:false });
-      const questionX = x + 62;
-      font('bold', 17.8, '#080808').text(metrics.qText, questionX, y + 9, { width:w - 78, lineGap:2 });
-      let cursorY = y + 11 + metrics.questionH + 10;
+      if (variant === 'modern'){
+        doc.roundedRect(x, y, w, metrics.blockH, 12).fillAndStroke(palette.soft, palette.border);
+        doc.roundedRect(x + 14, y + 10, 37, 37, 18.5).fill(palette.primary);
+      }else if (variant === 'academy'){
+        doc.roundedRect(x, y, w, metrics.blockH, 3).fillAndStroke('#ffffff', palette.border);
+        doc.rect(x, y, w, 5).fill(palette.primary);
+        doc.rect(x + 15, y + 12, 37, 31).fill(palette.primary);
+      }else if (variant === 'elegant'){
+        doc.rect(x, y, w, metrics.blockH).fillAndStroke('#ffffff', palette.border);
+        doc.rect(x, y, w, 4).fill(palette.secondary);
+        doc.roundedRect(x + 15, y + 11, 38, 30, 2).fillAndStroke(palette.soft, palette.primary);
+      }else{
+        doc.save().fillColor('#ffffff').opacity(0.92).roundedRect(x, y, w, metrics.blockH, 5).fill().restore();
+        doc.roundedRect(x, y, w, metrics.blockH, 5).lineWidth(0.55).strokeColor(palette.border).stroke();
+        doc.rect(x, y, 5, metrics.blockH).fill(palette.primary);
+        doc.roundedRect(x + 16, y + 10, 36, 29, 5).fill(palette.ink);
+      }
+      const numberColor = variant === 'elegant' ? palette.ink : '#ffffff';
+      font('bold', 13.4, numberColor).text(String(index + 1).padStart(2, '0'), x + 18, y + (variant === 'modern' ? 21 : 18), { width:31, align:'center', lineBreak:false });
+      const questionX = x + 65;
+      font('bold', 18.6, palette.ink).text(metrics.qText, questionX, y + 10, { width:w - 82, lineGap:2.2 });
+      let cursorY = y + 12 + metrics.questionH + 10;
       metrics.opts.forEach((opt, optionIndex) => {
         const h = metrics.optionHeights[optionIndex];
-        doc.circle(questionX + 11, cursorY + 9, 9).lineWidth(1.2).strokeColor('#111111').stroke();
-        font('bold', 9.5, '#111111').text(labels[optionIndex], questionX + 3, cursorY + 5.2, { width:16, align:'center', lineBreak:false });
-        font('regular', 13.2, '#151515').text(opt, questionX + 31, cursorY + 1, { width:w - 111, lineGap:1 });
+        if (variant === 'modern'){
+          doc.roundedRect(questionX, cursorY + 1, 22, 19, 9).fill(palette.primary);
+          font('bold', 9.8, '#ffffff').text(labels[optionIndex], questionX + 3, cursorY + 6, { width:16, align:'center', lineBreak:false });
+        }else{
+          doc.circle(questionX + 11, cursorY + 10, 9).lineWidth(1.2).strokeColor(variant === 'elegant' ? palette.secondary : palette.ink).stroke();
+          font('bold', 9.8, palette.ink).text(labels[optionIndex], questionX + 3, cursorY + 6, { width:16, align:'center', lineBreak:false });
+        }
+        font('regular', 13.8, palette.ink).text(opt, questionX + 33, cursorY + 1, { width:w - 116, lineGap:1.2 });
         cursorY += h;
       });
-      const correctionY = cursorY + 4;
-      const correctionW = w - 78;
-      doc.roundedRect(questionX, correctionY, correctionW, metrics.correctionH, 5).fill('#f0f6ef').strokeColor('#8eaa91').lineWidth(0.55).stroke();
+      const correctionY = cursorY + 5;
+      const correctionW = w - 82;
+      doc.roundedRect(questionX, correctionY, correctionW, metrics.correctionH, variant === 'modern' ? 9 : 4).fillAndStroke(palette.correction, palette.correctionBorder);
       const answer = answerLabel(q.correct_answer);
-      font('bold', 11.5, '#075b36').text(`BONNE RÉPONSE : ${answer}`, questionX + 12, correctionY + 9, { width:correctionW - 24 });
-      font('bold', 10.8, '#111111').text('EXPLICATION :', questionX + 12, correctionY + 29, { width:100, lineBreak:false });
-      font('regular', 10.5, '#222222').text(metrics.explanation, questionX + 118, correctionY + 28, { width:correctionW - 130, lineGap:1.2 });
-      doc.y = y + metrics.blockH + 9;
+      font('bold', 12.4, palette.answer).text(`BONNE RÉPONSE : ${answer}`, questionX + 13, correctionY + 9, { width:correctionW - 26 });
+      font('bold', 11.2, palette.ink).text('EXPLICATION :', questionX + 13, correctionY + 31, { width:105, lineBreak:false });
+      font('regular', 11.4, palette.ink).text(metrics.explanation, questionX + 122, correctionY + 30, { width:correctionW - 135, lineGap:1.35 });
+      doc.y = y + metrics.blockH + 10;
     }
 
     drawCover();
@@ -3301,7 +3467,6 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [] } = {}){
     doc.end();
   });
 }
-
 async function preparePastedQcmBook(body = {}){
   const metadata = pastedQcmImportMetadata(body);
   const existingRows = await collectExistingQcmRows({ includeDaily:false });
@@ -4557,7 +4722,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'payment-network-validation-v8',
+    build: 'google-fonts-pdf-designs-v9',
     time: new Date().toISOString()
   });
 });
@@ -5539,7 +5704,11 @@ app.post('/api/admin/questions/import/pdf', requireAdmin, async (req, res, next)
         rejected:result.rejected
       });
     }
-    const buffer = await buildPastedQcmBookPdf({ metadata:result.metadata, questions:result.questions });
+    const buffer = await buildPastedQcmBookPdf({
+      metadata:result.metadata,
+      questions:result.questions,
+      theme:cleanText(req.body?.pdf_theme, 80).toLowerCase()
+    });
     const baseName = safeFileName(result.metadata.title || 'Cahier-QCM').replace(/\.pdf$/i, '').slice(0, 90) || 'Cahier-QCM';
     const fileName = `${baseName}-${result.metadata.date || todayId()}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
@@ -6299,7 +6468,9 @@ export {
   normalizePastedQcmBookSource,
   signPastedQcmBookSource,
   verifyPastedQcmBookSource,
+  buildQcmDraftPdf,
   buildPastedQcmBookPdf,
+  PDF_THEME_KEYS,
   isDirectProfessionalCompetitionNews,
   extractOfficialCandidates,
   normalizeOfficialNewsDraft,

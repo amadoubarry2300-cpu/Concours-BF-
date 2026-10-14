@@ -1407,13 +1407,14 @@ function pastedQcmPayload(){
     date:$('#pastedQcmDate')?.value || today(),
     category:$('#pastedQcmCategory')?.value || 'Culture générale',
     level:$('#pastedQcmLevel')?.value || 'Concours',
+    pdf_theme:$('#pastedQcmPdfTheme')?.value || 'source-sans-moderne',
     is_premium:$('input[name="pastedQcmDestination"]:checked')?.value === 'premium',
     text:$('#pastedQcmText')?.value || ''
   };
 }
 
 function pastedQcmContentSignature(payload = pastedQcmPayload()){
-  const { is_premium:_destination, ...content } = payload || {};
+  const { is_premium:_destination, pdf_theme:_design, ...content } = payload || {};
   return JSON.stringify(content);
 }
 
@@ -1512,6 +1513,15 @@ async function analyzePastedQcm(){
 }
 
 
+function pastedQcmPdfThemeLabel(theme){
+  return ({
+    'source-sans-moderne':'Moderne',
+    'roboto-academie':'Académie',
+    'lato-patrimoine':'Patrimoine',
+    'lato-elegance':'Élégance'
+  })[String(theme || '')] || 'Moderne';
+}
+
 function pastedQcmPdfFileName(title, date){
   const clean = String(title || 'Cahier-QCM')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -1574,7 +1584,7 @@ async function downloadPastedQcmBookPdf(){
     if (pdfPreview){
       pdfPreview.innerHTML = `<div class="admin-pdf-ready-card">
         <div class="admin-pdf-book-cover" aria-hidden="true"><span>RÉUSSITE<br>CONCOURS BF</span><b>${count} QCM</b><small>LIVRE CORRIGÉ</small></div>
-        <div class="admin-pdf-ready-info"><b>📕 ${escapeHtml(formPayload.title || 'Livre PDF corrigé')}</b><span>${count} QCM · ${Math.max(1, Math.round(blob.size / 1024))} Ko · ${escapeHtml(formPayload.level || '')}</span><small>Fichier créé, non téléchargé et non publié.</small></div>
+        <div class="admin-pdf-ready-info"><b>📕 ${escapeHtml(formPayload.title || 'Livre PDF corrigé')}</b><span>${count} QCM · Design ${escapeHtml(pastedQcmPdfThemeLabel(formPayload.pdf_theme))} · ${escapeHtml(formPayload.level || '')}</span><small>Fichier créé, non téléchargé et non publié.</small></div>
       </div>`;
     }
     if (pdfPublishBtn) pdfPublishBtn.style.display = 'block';
@@ -4462,7 +4472,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'payment-network-validation-v8') location.reload();
+    if (data.build && data.build !== 'google-fonts-pdf-designs-v9') location.reload();
   }catch{}
 }
 
@@ -4475,7 +4485,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=payment-network-validation-v8')
+    navigator.serviceWorker.register('/sw.js?v=google-fonts-pdf-designs-v9')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
