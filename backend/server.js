@@ -1175,7 +1175,10 @@ function normalizeQuestionKey(value){
     .replace(/[’']/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
     .split(/\s+/)
-    .filter(w => w && w.length > 1 && !QCM_STOPWORDS.has(w))
+    // Les lettres et chiffres isolés sont essentiels dans les suites
+    // psychotechniques (A-C-F-J-O, B-D-G-K, 1-4-9...). Les supprimer
+    // transformait à tort toutes ces questions en « complète suite ».
+    .filter(w => w && !QCM_STOPWORDS.has(w))
     .join(' ')
     .trim();
 }

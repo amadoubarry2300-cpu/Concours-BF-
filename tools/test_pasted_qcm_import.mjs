@@ -73,6 +73,24 @@ const fifty = parsePastedQcmText(fiftyRows.join('\n\n'), { ...metadata, category
 assert(fifty.questions.length === 50, `import 50 QCM limité à ${fifty.questions.length}`);
 assert(fifty.rejected.length === 0, 'un QCM valide a été rejeté dans l’import de 50');
 
+const distinctLetterSequences = parsePastedQcmText(`
+1. Complète la suite : A – C – F – J – O – ?
+A. E
+B. U
+C. A
+Réponse : B
+Explication : Les écarts augmentent successivement d’une lettre, ce qui conduit à la lettre U.
+
+2. Complète la suite : B – D – G – K – ?
+A. A
+B. E
+C. P
+Réponse : C
+Explication : Les écarts augmentent successivement d’une lettre, ce qui conduit à la lettre P.
+`, { ...metadata, category:'Psychotechnique', level:'Concours' });
+assert(distinctLetterSequences.questions.length === 2, `suites de lettres confondues : ${JSON.stringify(distinctLetterSequences.rejected)}`);
+assert(distinctLetterSequences.rejected.length === 0, 'une suite de lettres distincte a été rejetée comme doublon');
+
 const formulasAndPh = parsePastedQcmText(`
 1. Quelle relation permet de calculer correctement la vitesse moyenne d’un mobile ?
 A. Vitesse = distance × durée
