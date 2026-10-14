@@ -4092,7 +4092,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'admin-paste-qcm-v1') location.reload();
+    if (data.build && data.build !== 'admin-paste-qcm-v2') location.reload();
   }catch{}
 }
 
@@ -4105,7 +4105,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=admin-paste-qcm-v1')
+    navigator.serviceWorker.register('/sw.js?v=admin-paste-qcm-v2')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

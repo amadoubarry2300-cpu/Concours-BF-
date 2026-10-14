@@ -1135,6 +1135,17 @@ function normalizeQcmOptionKey(value){
   return String(value || '')
     .normalize('NFKC')
     .toLowerCase()
+    // Les opérateurs font partie de la réponse : « a × b », « a ÷ b » et
+    // « a + b » ne doivent jamais être confondus comme options répétées.
+    .replace(/(\d)[,.](\d)/g, '$1 decimal $2')
+    .replace(/[×*]/g, ' fois ')
+    .replace(/[÷/]/g, ' divisepar ')
+    .replace(/\+/g, ' plus ')
+    .replace(/[−-]/g, ' moins ')
+    .replace(/=/g, ' egal ')
+    .replace(/≤/g, ' inferieuregal ')
+    .replace(/≥/g, ' superieuregal ')
+    .replace(/≠/g, ' different ')
     .replace(/[^\p{L}\p{N}'’]+/gu, '')
     .trim();
 }
@@ -1291,7 +1302,9 @@ function qcmDeterministicFactIssue(q){
   if (/\bM[ée]diateur\s+du\s+Faso\b/i.test(text) && !questionIsHistorical && !/suppression|supprim[ée]/i.test(text)){
     return 'Institution supprimée présentée comme actuelle';
   }
-  if (/\bConseil\s+[ée]conomique(?:,?\s+social)?(?:\s+et\s+environnemental)?\b|\bCESE?\b/i.test(text)
+  const mentionsAbolishedConsultativeInstitution = /\bConseil\s+[ée]conomique(?:,?\s+social)?(?:\s+et\s+environnemental)?\b/i.test(text)
+    || /(?:^|[^\p{L}])(?:CES|CESE)(?=$|[^\p{L}])/u.test(text);
+  if (mentionsAbolishedConsultativeInstitution
       && !questionIsHistorical && !/suppression|supprim[ée]/i.test(text)){
     return 'Ancienne institution consultative présentée comme actuelle';
   }
@@ -4207,7 +4220,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'admin-paste-qcm-v1',
+    build: 'admin-paste-qcm-v2',
     time: new Date().toISOString()
   });
 });
