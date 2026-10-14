@@ -2844,7 +2844,9 @@ function subjectNumber(date){
 }
 
 function setupPdfFonts(doc){
+  const bundledFonts = path.join(PUBLIC_DIR, 'fonts');
   const candidates = [
+    [path.join(bundledFonts, 'DejaVuSans.ttf'), path.join(bundledFonts, 'DejaVuSans-Bold.ttf'), path.join(bundledFonts, 'DejaVuSans.ttf')],
     ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf'],
     ['/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf', '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf', '/usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf']
   ];
@@ -2856,7 +2858,7 @@ function setupPdfFonts(doc){
       return { regular:'RCBF-Regular', bold:'RCBF-Bold', italic:fs.existsSync(italic) ? 'RCBF-Italic' : 'RCBF-Regular' };
     }
   }
-  return { regular:'Helvetica', bold:'Helvetica-Bold', italic:'Helvetica-Oblique' };
+  throw Object.assign(new Error('Police mathématique Unicode indisponible pour le PDF.'), { status:500 });
 }
 
 async function buildQcmDraftPdf({ title, date, category, level, questions }){
@@ -3179,10 +3181,14 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [] } = {}){
       const opts = normalizedOptions(q);
       const qText = pdfCleanText(q.question_text || 'Question');
       const explanation = pdfCleanText(q.explanation || 'La réponse indiquée est la bonne réponse.');
-      const bodyW = contentW - 70;
-      const questionH = height(qText, bodyW, 'bold', 17.8, { lineGap:2 });
-      const optionHeights = opts.map(opt => Math.max(21, height(opt, bodyW - 42, 'regular', 13.2, { lineGap:1 }) + 5));
-      const explanationH = height(explanation, bodyW - 26, 'regular', 10.5, { lineGap:1.2 });
+      const cardW = contentW - 8;
+      const questionW = cardW - 78;
+      const optionW = cardW - 111;
+      const correctionW = cardW - 78;
+      const explanationW = correctionW - 114;
+      const questionH = height(qText, questionW, 'bold', 17.8, { lineGap:2 });
+      const optionHeights = opts.map(opt => Math.max(21, height(opt, optionW, 'regular', 13.2, { lineGap:1 }) + 5));
+      const explanationH = height(explanation, explanationW, 'regular', 10.5, { lineGap:1.2 });
       const correctionH = Math.max(47, 31 + explanationH);
       const blockH = 11 + questionH + 7 + optionHeights.reduce((sum, h) => sum + h, 0) + 6 + correctionH + 9;
       return { opts, qText, explanation, questionH, optionHeights, correctionH, blockH };
@@ -4483,7 +4489,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'pasted-qcm-pdf-direct-v3',
+    build: 'pasted-qcm-math-unicode-v4',
     time: new Date().toISOString()
   });
 });

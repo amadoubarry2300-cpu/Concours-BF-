@@ -4155,7 +4155,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'pasted-qcm-pdf-direct-v3') location.reload();
+    if (data.build && data.build !== 'pasted-qcm-math-unicode-v4') location.reload();
   }catch{}
 }
 
@@ -4168,7 +4168,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=pasted-qcm-pdf-direct-v3')
+    navigator.serviceWorker.register('/sw.js?v=pasted-qcm-math-unicode-v4')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
