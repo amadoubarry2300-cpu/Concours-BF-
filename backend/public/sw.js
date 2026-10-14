@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'google-fonts-pdf-designs-v9';
+const CACHE_VERSION = 'canva-fonts-minimal-pdf-v10';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=google-fonts-pdf-designs-v9',
-  '/js/questions.js?v=google-fonts-pdf-designs-v9',
-  '/js/app.js?v=google-fonts-pdf-designs-v9',
+  '/css/styles.css?v=canva-fonts-minimal-pdf-v10',
+  '/js/questions.js?v=canva-fonts-minimal-pdf-v10',
+  '/js/app.js?v=canva-fonts-minimal-pdf-v10',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

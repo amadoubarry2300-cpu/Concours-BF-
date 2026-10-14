@@ -1407,7 +1407,7 @@ function pastedQcmPayload(){
     date:$('#pastedQcmDate')?.value || today(),
     category:$('#pastedQcmCategory')?.value || 'Culture générale',
     level:$('#pastedQcmLevel')?.value || 'Concours',
-    pdf_theme:$('#pastedQcmPdfTheme')?.value || 'source-sans-moderne',
+    pdf_theme:$('#pastedQcmPdfTheme')?.value || 'montserrat-concours',
     is_premium:$('input[name="pastedQcmDestination"]:checked')?.value === 'premium',
     text:$('#pastedQcmText')?.value || ''
   };
@@ -1515,11 +1515,11 @@ async function analyzePastedQcm(){
 
 function pastedQcmPdfThemeLabel(theme){
   return ({
-    'source-sans-moderne':'Moderne',
-    'roboto-academie':'Académie',
-    'lato-patrimoine':'Patrimoine',
-    'lato-elegance':'Élégance'
-  })[String(theme || '')] || 'Moderne';
+    'montserrat-concours':'Montserrat',
+    'open-sans-epure':'Open Sans',
+    'roboto-classique':'Roboto',
+    'tinos-examen':'Tinos — style Times'
+  })[String(theme || '')] || 'Montserrat';
 }
 
 function pastedQcmPdfFileName(title, date){
@@ -4472,7 +4472,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'google-fonts-pdf-designs-v9') location.reload();
+    if (data.build && data.build !== 'canva-fonts-minimal-pdf-v10') location.reload();
   }catch{}
 }
 
@@ -4485,7 +4485,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=google-fonts-pdf-designs-v9')
+    navigator.serviceWorker.register('/sw.js?v=canva-fonts-minimal-pdf-v10')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

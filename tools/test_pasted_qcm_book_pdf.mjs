@@ -12,15 +12,18 @@ const {
 } = await import('../backend/server.js');
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const fontAssets = [
-  '../backend/public/fonts/Lato-Regular.ttf',
-  '../backend/public/fonts/Lato-Heavy.ttf',
-  '../backend/public/fonts/Lato-Italic.ttf',
+  '../backend/public/fonts/Montserrat-Regular.ttf',
+  '../backend/public/fonts/Montserrat-ExtraBold.ttf',
+  '../backend/public/fonts/Montserrat-Italic.ttf',
+  '../backend/public/fonts/OpenSans-Regular.ttf',
+  '../backend/public/fonts/OpenSans-ExtraBold.ttf',
+  '../backend/public/fonts/OpenSans-Italic.ttf',
   '../backend/public/fonts/Roboto-Regular.ttf',
   '../backend/public/fonts/Roboto-Black.ttf',
   '../backend/public/fonts/Roboto-Italic.ttf',
-  '../backend/public/fonts/SourceSans3-Regular.ttf',
-  '../backend/public/fonts/SourceSans3-Black.ttf',
-  '../backend/public/fonts/SourceSans3-Italic.ttf'
+  '../backend/public/fonts/Tinos-Regular.ttf',
+  '../backend/public/fonts/Tinos-Bold.ttf',
+  '../backend/public/fonts/Tinos-Italic.ttf'
 ];
 fontAssets.forEach(file => assert(fs.statSync(new URL(file, import.meta.url)).size > 50000, `police Google Fonts absente : ${file}`));
 assert(PDF_THEME_KEYS.length === 4, `nombre de designs premium inattendu : ${PDF_THEME_KEYS.length}`);
@@ -153,7 +156,7 @@ for (const theme of PDF_THEME_KEYS){
   assert(unicodePdf.length > 20000, `police mathématique non incorporée : ${theme}`);
   assert(pageCount === 2, `pagination inattendue pour ${theme} : ${pageCount} pages`);
 }
-process.env.PDF_FONT_THEME = 'roboto-academie';
+process.env.PDF_FONT_THEME = 'roboto-classique';
 const dailyPdf = await buildQcmDraftPdf({
   title:unicodeSource.metadata.title,
   date:unicodeSource.metadata.date,
@@ -176,7 +179,7 @@ const compactQuestions = Array.from({ length:9 }, (_, index) => ({
 const compactPdf = await buildPastedQcmBookPdf({
   metadata:{ title:'Test de pagination automatique', date:'2026-10-14', category:'Mathématiques', level:'CE2' },
   questions:compactQuestions,
-  theme:'source-sans-moderne'
+  theme:'open-sans-epure'
 });
 const compactPageCount = (compactPdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
 assert(compactPageCount === 4, `la pagination ne place pas 3 QCM courts par page : ${compactPageCount - 1} pages de contenu pour 9 QCM`);

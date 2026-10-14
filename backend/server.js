@@ -2894,20 +2894,26 @@ function subjectNumber(date){
 }
 
 const PDF_THEME_KEYS = [
-  'lato-patrimoine',
-  'roboto-academie',
-  'source-sans-moderne',
-  'lato-elegance'
+  'montserrat-concours',
+  'open-sans-epure',
+  'roboto-classique',
+  'tinos-examen'
 ];
 
 function setupPdfFonts(doc, requestedTheme = ''){
   const bundledFonts = path.join(PUBLIC_DIR, 'fonts');
   const fontFiles = {
-    lato:{
-      family:'Lato',
-      regular:path.join(bundledFonts, 'Lato-Regular.ttf'),
-      bold:path.join(bundledFonts, 'Lato-Heavy.ttf'),
-      italic:path.join(bundledFonts, 'Lato-Italic.ttf')
+    montserrat:{
+      family:'Montserrat',
+      regular:path.join(bundledFonts, 'Montserrat-Regular.ttf'),
+      bold:path.join(bundledFonts, 'Montserrat-ExtraBold.ttf'),
+      italic:path.join(bundledFonts, 'Montserrat-Italic.ttf')
+    },
+    openSans:{
+      family:'Open Sans',
+      regular:path.join(bundledFonts, 'OpenSans-Regular.ttf'),
+      bold:path.join(bundledFonts, 'OpenSans-ExtraBold.ttf'),
+      italic:path.join(bundledFonts, 'OpenSans-Italic.ttf')
     },
     roboto:{
       family:'Roboto',
@@ -2915,40 +2921,48 @@ function setupPdfFonts(doc, requestedTheme = ''){
       bold:path.join(bundledFonts, 'Roboto-Black.ttf'),
       italic:path.join(bundledFonts, 'Roboto-Italic.ttf')
     },
-    sourceSans:{
-      family:'Source Sans 3',
-      regular:path.join(bundledFonts, 'SourceSans3-Regular.ttf'),
-      bold:path.join(bundledFonts, 'SourceSans3-Black.ttf'),
-      italic:path.join(bundledFonts, 'SourceSans3-Italic.ttf')
+    tinos:{
+      family:'Tinos',
+      regular:path.join(bundledFonts, 'Tinos-Regular.ttf'),
+      bold:path.join(bundledFonts, 'Tinos-Bold.ttf'),
+      italic:path.join(bundledFonts, 'Tinos-Italic.ttf')
     }
   };
   const designs = [
     {
-      key:'lato-patrimoine', font:'lato', variant:'heritage', label:'Édition Patrimoine',
-      palette:{ paper:'#fffef9', ink:'#151515', primary:'#087a46', secondary:'#c92532', accent:'#e4a11b', muted:'#5b5b55', border:'#aaa59c', soft:'#f1f6ee', correction:'#edf7ef', correctionBorder:'#8eaa91', answer:'#075b36' }
+      key:'montserrat-concours', font:'montserrat', variant:'canva-bold', label:'Édition Concours',
+      type:{ question:15.8, option:12.5, answer:10.8, explanation:10.3 },
+      palette:{ paper:'#ffffff', ink:'#111827', primary:'#075f45', secondary:'#d92532', accent:'#f4b400', muted:'#596273', border:'#cbd5e1', soft:'#f7faf9', correction:'#ffffff', correctionBorder:'#d1d5db', answer:'#087a46' }
     },
     {
-      key:'roboto-academie', font:'roboto', variant:'academy', label:'Édition Académie',
-      palette:{ paper:'#ffffff', ink:'#10233f', primary:'#123c73', secondary:'#9d2638', accent:'#d59c2f', muted:'#586577', border:'#a9b8c9', soft:'#eef4fa', correction:'#edf5fb', correctionBorder:'#8eacc7', answer:'#123c73' }
+      key:'open-sans-epure', font:'openSans', variant:'canva-clean', label:'Édition Épurée',
+      type:{ question:16.1, option:13, answer:11, explanation:10.5 },
+      palette:{ paper:'#ffffff', ink:'#172033', primary:'#0a7890', secondary:'#ef5b35', accent:'#0e9f6e', muted:'#5f6877', border:'#cfd8df', soft:'#f8fafc', correction:'#ffffff', correctionBorder:'#d5dde3', answer:'#087a46' }
     },
     {
-      key:'source-sans-moderne', font:'sourceSans', variant:'modern', label:'Édition Moderne',
-      palette:{ paper:'#ffffff', ink:'#14213d', primary:'#2553a4', secondary:'#e4542f', accent:'#0f9d84', muted:'#5c6574', border:'#afbdd4', soft:'#eef3ff', correction:'#eaf8f5', correctionBorder:'#83bfb3', answer:'#087765' }
+      key:'roboto-classique', font:'roboto', variant:'canva-modern', label:'Édition Classique',
+      type:{ question:16.4, option:13.2, answer:11, explanation:10.5 },
+      palette:{ paper:'#ffffff', ink:'#17213a', primary:'#173f7a', secondary:'#e54b32', accent:'#0f9d74', muted:'#5b6473', border:'#c9d2dd', soft:'#f8fafc', correction:'#ffffff', correctionBorder:'#d0d7e0', answer:'#0b7655' }
     },
     {
-      key:'lato-elegance', font:'lato', variant:'elegant', label:'Édition Élégance',
-      palette:{ paper:'#fffdf8', ink:'#25201d', primary:'#671f31', secondary:'#b7802f', accent:'#275c55', muted:'#6b625c', border:'#b9aa99', soft:'#f7f0e5', correction:'#f3f6ef', correctionBorder:'#a8b49a', answer:'#275c55' }
+      key:'tinos-examen', font:'tinos', variant:'canva-serif', label:'Édition Examen',
+      type:{ question:17.4, option:14, answer:11.4, explanation:11 },
+      palette:{ paper:'#ffffff', ink:'#161616', primary:'#6b1f31', secondary:'#b9852e', accent:'#1d6656', muted:'#5f5a57', border:'#cfc7be', soft:'#fffdf8', correction:'#ffffff', correctionBorder:'#d6cec4', answer:'#275c4e' }
     }
   ].map(design => ({ ...design, ...fontFiles[design.font] }))
     .filter(design => fs.existsSync(design.regular) && fs.existsSync(design.bold));
   if (!designs.length){
-    throw Object.assign(new Error('Police Google Fonts Unicode indisponible pour le PDF.'), { status:500 });
+    throw Object.assign(new Error('Police de document Unicode indisponible pour le PDF.'), { status:500 });
   }
   const requested = cleanText(requestedTheme || process.env.PDF_FONT_THEME, 80).toLowerCase();
   const legacyAliases = {
-    'lato-premium':'lato-patrimoine',
-    'dejavu-serif-edition':'roboto-academie',
-    'dejavu-sans-classique':'source-sans-moderne'
+    'lato-premium':'montserrat-concours',
+    'lato-patrimoine':'montserrat-concours',
+    'roboto-academie':'roboto-classique',
+    'source-sans-moderne':'open-sans-epure',
+    'lato-elegance':'tinos-examen',
+    'dejavu-serif-edition':'tinos-examen',
+    'dejavu-sans-classique':'open-sans-epure'
   };
   const requestedKey = legacyAliases[requested] || requested;
   const selected = designs.find(design => design.key === requestedKey)
@@ -2964,6 +2978,7 @@ function setupPdfFonts(doc, requestedTheme = ''){
     theme:selected.key,
     variant:selected.variant,
     label:selected.label,
+    type:selected.type,
     palette:selected.palette
   };
 }
@@ -3138,10 +3153,10 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
       });
       const answer = answerLabel(q.correct_answer);
       const corrY = y + 6;
-      doc.roundedRect(margin + 52, corrY, contentW - 58, Math.max(42, blockH - (corrY - startY) - 10), 12).fill(palette.correction).strokeColor(palette.correctionBorder).lineWidth(0.6).stroke();
-      font('bold', 12.2, palette.answer).text(`Réponse : ${answer}`, margin + 66, corrY + 10, { width:112 });
-      font('bold', 12.2, palette.answer).text('Correction', margin + 66, corrY + 28, { width:90 });
-      font('regular', 11.8, palette.ink).text(pdfCleanText(q.explanation || ''), margin + 162, corrY + 28, { width:contentW - 182, lineGap:1.5 });
+      const corrHeight = Math.max(42, blockH - (corrY - startY) - 10);
+      doc.moveTo(margin + 54, corrY + 4).lineTo(margin + 54, corrY + corrHeight - 3).lineWidth(1.2).stroke(palette.correctionBorder);
+      font('bold', 12.2, palette.answer).text(`Réponse : ${answer}`, margin + 66, corrY + 6, { width:contentW - 78 });
+      font('italic', 11.8, palette.muted).text(`Explication : ${pdfCleanText(q.explanation || '')}`, margin + 66, corrY + 25, { width:contentW - 82, lineGap:1.5 });
       doc.y = startY + blockH + 14;
     }
 
@@ -3163,7 +3178,7 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
     const cleanTitle = safePdfTitle(metadata.title || 'Cahier de QCM corrigés');
     const doc = new PDFDocument({
       size:'A4',
-      margin:42,
+      margin:46,
       bufferPages:true,
       compress:true,
       info:{
@@ -3176,13 +3191,13 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
     });
     const fonts = setupPdfFonts(doc, theme);
     const palette = fonts.palette;
-    const variant = fonts.variant;
+    const type = fonts.type;
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const margin = 42;
+    const margin = 48;
     const pageW = doc.page.width;
     const pageH = doc.page.height;
     const contentW = pageW - margin * 2;
@@ -3192,6 +3207,7 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
     const formattedDate = formatDateForPdf(metadata.date || todayId());
     const labels = ['A','B','C','D'];
     let contentPage = 0;
+    let questionsOnPage = 0;
 
     const font = (kind='regular', size=10, color=palette.ink) => {
       doc.font(fonts[kind] || fonts.regular).fontSize(size).fillColor(color);
@@ -3201,192 +3217,101 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
       doc.font(fonts[kind] || fonts.regular).fontSize(size);
       return doc.heightOfString(pdfCleanText(value), { width, ...options });
     };
-    const fitTitleSize = (value, width, maxHeight, start=37, min=22) => {
+    const fitTitleSize = (value, width, maxHeight, start=39, min=23) => {
       for (let size=start; size>=min; size-=1){
-        if (height(value, width, 'bold', size, { lineGap:2, align:'center' }) <= maxHeight) return size;
+        if (height(value, width, 'bold', size, { lineGap:1.5, align:'center' }) <= maxHeight) return size;
       }
       return min;
     };
-    const paper = () => {
-      doc.rect(0, 0, pageW, pageH).fill(palette.paper);
-      if (variant === 'heritage'){
-        doc.save().opacity(0.035).strokeColor(palette.muted).lineWidth(0.25);
-        for (let y=28; y<pageH; y+=35) doc.moveTo(20, y).lineTo(pageW - 20, y + ((y / 35) % 2 ? 0.6 : -0.6)).stroke();
-        doc.restore();
-      }else if (variant === 'academy'){
-        doc.save().opacity(0.05).fillColor(palette.primary);
-        for (let y=32; y<pageH; y+=28){
-          for (let x=30; x<pageW; x+=28) doc.circle(x, y, 0.55).fill();
-        }
-        doc.restore();
-      }else if (variant === 'modern'){
-        doc.save().opacity(0.028).fillColor(palette.primary);
-        for (let x=-pageH; x<pageW; x+=120){
-          doc.moveTo(x, 0).lineTo(x + 45, 0).lineTo(x + pageH + 45, pageH).lineTo(x + pageH, pageH).closePath().fill();
-        }
-        doc.restore();
-      }else{
-        doc.save().opacity(0.065).strokeColor(palette.secondary).lineWidth(0.45);
-        doc.circle(34, 34, 54).stroke();
-        doc.circle(pageW - 34, pageH - 34, 54).stroke();
-        doc.restore();
-      }
-    };
-    const logo = (x, y, size=50, border=palette.border) => {
-      doc.roundedRect(x, y, size, size, variant === 'modern' ? 14 : 7).fillAndStroke('#ffffff', border);
+    const logo = (x, y, size=52) => {
       if (fs.existsSync(logoPath)){
-        try{ doc.image(logoPath, x + 3, y + 3, { fit:[size - 6, size - 6], align:'center', valign:'center' }); return; }catch{}
+        try{ doc.image(logoPath, x, y, { fit:[size, size], align:'center', valign:'center' }); return; }catch{}
       }
-      font('bold', size * 0.2, palette.primary).text('RCBF', x + 3, y + size * 0.4, { width:size - 6, align:'center' });
+      font('bold', size * 0.19, palette.primary).text('RCBF', x, y + size * 0.39, { width:size, align:'center' });
     };
-
-    function drawCoverBrand(){
-      if (variant === 'heritage'){
-        doc.rect(23, 22, pageW - 46, pageH - 44).lineWidth(1.15).strokeColor(palette.ink).stroke();
-        doc.rect(30, 29, pageW - 60, pageH - 58).lineWidth(0.35).strokeColor(palette.muted).stroke();
-        doc.rect(30, 29, pageW - 60, 9).fill(palette.primary);
-        doc.rect(30, 38, pageW - 60, 4).fill(palette.secondary);
-        logo(54, 64, 70);
-        font('bold', 25, palette.ink).text('RÉUSSITE', 142, 68, { width:300 });
-        font('bold', 26, palette.primary).text('CONCOURS BF', 142, 98, { width:330 });
-        font('bold', 9.5, palette.muted).text('COLLECTION PRÉPARATION AUX CONCOURS', 142, 132, { width:360, characterSpacing:0.7 });
-        doc.moveTo(54, 158).lineTo(pageW - 54, 158).lineWidth(1.2).stroke(palette.ink);
-        doc.moveTo(54, 164).lineTo(pageW - 168, 164).lineWidth(4).stroke(palette.primary);
-      }else if (variant === 'academy'){
-        doc.rect(0, 0, pageW, 169).fill(palette.primary);
-        doc.rect(0, 169, pageW, 8).fill(palette.accent);
-        doc.rect(pageW - 26, 177, 8, pageH - 205).fill(palette.secondary);
-        logo(52, 46, 76, '#ffffff');
-        font('bold', 27, '#ffffff').text('RÉUSSITE CONCOURS BF', 150, 58, { width:380 });
-        font('bold', 10, '#ffffff').text('BIBLIOTHÈQUE ACADÉMIQUE • BURKINA FASO', 151, 99, { width:360, characterSpacing:0.8 });
-        font('regular', 10.5, '#ffffff').text('Préparation méthodique aux examens et concours', 151, 123, { width:360 });
-      }else if (variant === 'modern'){
-        doc.moveTo(0, 0).lineTo(450, 0).lineTo(374, 176).lineTo(0, 226).closePath().fill(palette.primary);
-        doc.circle(pageW - 68, 62, 42).fill(palette.secondary);
-        doc.circle(pageW - 68, 62, 23).fill(palette.accent);
-        logo(48, 48, 72, '#ffffff');
-        font('bold', 28, '#ffffff').text('RÉUSSITE', 143, 54, { width:250 });
-        font('bold', 29, '#ffffff').text('CONCOURS BF', 143, 89, { width:260 });
-        font('bold', 9.5, '#ffffff').text('COLLECTION GRAND FORMAT', 144, 131, { width:240, characterSpacing:1 });
-        doc.roundedRect(396, 135, 145, 35, 17).fill(palette.soft);
-        font('bold', 9.5, palette.primary).text('BURKINA FASO', 408, 147, { width:121, align:'center' });
-      }else{
-        doc.rect(24, 22, pageW - 48, pageH - 44).lineWidth(2).strokeColor(palette.primary).stroke();
-        doc.rect(32, 30, pageW - 64, pageH - 60).lineWidth(0.55).strokeColor(palette.secondary).stroke();
-        doc.moveTo(90, 83).lineTo(219, 83).lineWidth(1).stroke(palette.secondary);
-        doc.moveTo(pageW - 219, 83).lineTo(pageW - 90, 83).lineWidth(1).stroke(palette.secondary);
-        logo(pageW / 2 - 37, 48, 74, palette.secondary);
-        font('bold', 24, palette.primary).text('RÉUSSITE CONCOURS BF', 80, 132, { width:pageW - 160, align:'center', characterSpacing:0.5 });
-        font('regular', 10.5, palette.muted).text('COLLECTION D’EXCELLENCE • BURKINA FASO', 80, 164, { width:pageW - 160, align:'center', characterSpacing:0.8 });
-      }
-    }
-
-    function drawMetadataPanel(metaY){
-      if (variant === 'academy'){
-        doc.roundedRect(58, metaY, pageW - 116, 148, 8).fillAndStroke('#ffffff', palette.border);
-        doc.rect(58, metaY, pageW - 116, 31).fill(palette.primary);
-        font('bold', 11, '#ffffff').text('FICHE DU SUJET', 76, metaY + 10, { width:pageW - 152, align:'center', characterSpacing:0.7 });
-        const cells = [
-          ['MODULE', moduleName.toUpperCase()],
-          ['NIVEAU', levelName.toUpperCase()],
-          ['ÉDITION', formattedDate.toUpperCase()]
-        ];
-        cells.forEach((cell, index) => {
-          const x = 72 + index * 151;
-          if (index) doc.moveTo(x - 12, metaY + 48).lineTo(x - 12, metaY + 131).lineWidth(0.55).stroke(palette.border);
-          font('bold', 9.5, palette.secondary).text(cell[0], x, metaY + 57, { width:126, align:'center' });
-          font('bold', index === 2 ? 11.5 : 14, palette.ink).text(cell[1], x, metaY + 83, { width:126, height:42, align:'center', ellipsis:true });
-        });
-        return;
-      }
-      if (variant === 'modern'){
-        const rowsData = [
-          ['MODULE', moduleName.toUpperCase(), palette.primary],
-          ['NIVEAU', levelName.toUpperCase(), palette.accent],
-          ['ÉDITION', formattedDate.toUpperCase(), palette.secondary]
-        ];
-        rowsData.forEach((cell, index) => {
-          const y = metaY + index * 49;
-          doc.roundedRect(65, y, pageW - 130, 40, 12).fillAndStroke('#ffffff', palette.border);
-          doc.roundedRect(65, y, 112, 40, 12).fill(cell[2]);
-          font('bold', 10, '#ffffff').text(cell[0], 77, y + 14, { width:88, align:'center' });
-          font('bold', index === 2 ? 12 : 15, palette.ink).text(cell[1], 193, y + 11, { width:312, align:'right', ellipsis:true, lineBreak:false });
-        });
-        return;
-      }
-      doc.roundedRect(62, metaY, pageW - 124, 154, variant === 'elegant' ? 2 : 7).fillAndStroke('#ffffff', variant === 'elegant' ? palette.secondary : palette.ink);
-      doc.rect(62, metaY, variant === 'elegant' ? pageW - 124 : 8, variant === 'elegant' ? 5 : 154).fill(variant === 'elegant' ? palette.secondary : palette.primary);
-      const details = [
-        ['MODULE', moduleName.toUpperCase(), 23, 18, 16],
-        ['NIVEAU', levelName.toUpperCase(), 69, 64, 16],
-        ['ÉDITION', formattedDate.toUpperCase(), 115, 111, 14.5]
-      ];
-      details.forEach((item, index) => {
-        font('bold', 11, palette.muted).text(item[0], 90, metaY + item[2], { width:106 });
-        font('bold', item[4], palette.ink).text(item[1], 202, metaY + item[3], { width:300, align:'right', ellipsis:true });
-        if (index < 2) doc.moveTo(90, metaY + 53 + index * 46).lineTo(pageW - 88, metaY + 53 + index * 46).lineWidth(0.45).stroke(palette.border);
-      });
-    }
+    const basePage = () => doc.rect(0, 0, pageW, pageH).fill('#ffffff');
 
     function drawCover(){
-      paper();
-      drawCoverBrand();
-      const titleLabelY = variant === 'elegant' ? 202 : 198;
-      font('bold', 13.5, palette.secondary).text(fonts.label.toUpperCase(), 62, titleLabelY, { width:pageW - 124, align:'center', characterSpacing:0.45 });
-      const titleY = variant === 'modern' ? 239 : 236;
-      const titleSize = fitTitleSize(cleanTitle.toUpperCase(), pageW - 126, 150, variant === 'modern' ? 40 : 37, 23);
-      font('bold', titleSize, palette.ink).text(cleanTitle.toUpperCase(), 63, titleY, { width:pageW - 126, align:'center', lineGap:2 });
-      const metaY = 424;
-      drawMetadataPanel(metaY);
+      basePage();
+      doc.rect(0, 0, 15, pageH).fill(palette.primary);
+      doc.rect(15, 0, 6, pageH).fill(palette.secondary);
+      doc.rect(21, 0, pageW - 21, 13).fill(palette.primary);
+      doc.rect(21, 13, pageW - 21, 5).fill(palette.accent);
 
-      doc.roundedRect(84, 618, pageW - 168, 50, variant === 'modern' ? 18 : 5).fill(palette.primary);
-      font('bold', 16.5, '#ffffff').text(`${rows.length} QCM • RÉPONSES • EXPLICATIONS`, 98, 634, { width:pageW - 196, align:'center', lineBreak:false });
-      font('bold', 13, palette.accent).text('QUESTIONS ULTRA LISIBLES EN GRAND FORMAT', 62, 690, { width:pageW - 124, align:'center', characterSpacing:0.35 });
-      font('regular', 10.5, palette.ink).text('Support WhatsApp : +226 74 01 37 04', 62, 731, { width:pageW - 124, align:'center' });
-      font('regular', 9.5, palette.muted).text('Ouagadougou • reussiteconcoursbf@yahoo.com', 62, 749, { width:pageW - 124, align:'center' });
-      font('bold', 9, palette.secondary).text('BURKINA FASO', 62, pageH - 66, { width:pageW - 124, align:'center', characterSpacing:1.1 });
+      if (fonts.variant === 'canva-bold'){
+        doc.save().opacity(0.08).fillColor(palette.primary);
+        doc.circle(pageW - 40, 95, 110).fill();
+        doc.circle(pageW - 85, pageH - 90, 150).fill();
+        doc.restore();
+      }else if (fonts.variant === 'canva-clean'){
+        doc.save().opacity(0.07).fillColor(palette.primary);
+        doc.moveTo(pageW - 180, 0).lineTo(pageW, 0).lineTo(pageW, 250).closePath().fill();
+        doc.restore();
+      }else if (fonts.variant === 'canva-modern'){
+        doc.save().fillColor(palette.primary).opacity(0.07);
+        doc.moveTo(21, pageH).lineTo(270, pageH).lineTo(21, pageH - 248).closePath().fill();
+        doc.restore();
+      }else{
+        doc.rect(34, 31, pageW - 67, pageH - 62).lineWidth(0.7).strokeColor(palette.secondary).stroke();
+      }
+
+      logo(55, 46, 74);
+      font('bold', 25, palette.ink).text('RÉUSSITE', 146, 58, { width:310 });
+      font('bold', 27, palette.primary).text('CONCOURS BF', 146, 89, { width:330 });
+      font('regular', 9.5, palette.muted).text('PRÉPARATION AUX EXAMENS ET CONCOURS', 147, 125, { width:350, characterSpacing:0.7 });
+      doc.moveTo(55, 157).lineTo(pageW - 55, 157).lineWidth(2.2).stroke(palette.primary);
+      doc.moveTo(55, 163).lineTo(pageW - 220, 163).lineWidth(4.5).stroke(palette.secondary);
+
+      font('bold', 13, palette.secondary).text('CAHIER DE QCM CORRIGÉS', 62, 204, { width:pageW - 124, align:'center', characterSpacing:0.55 });
+      const titleSize = fitTitleSize(cleanTitle.toUpperCase(), pageW - 126, 145, 39, 23);
+      font('bold', titleSize, palette.ink).text(cleanTitle.toUpperCase(), 63, 247, { width:pageW - 126, align:'center', lineGap:1.5 });
+
+      doc.rect(82, 407, pageW - 164, 67).fill(palette.primary);
+      font('bold', 25, '#ffffff').text(`${rows.length} QCM`, 98, 421, { width:pageW - 196, align:'center' });
+      font('regular', 10.5, '#ffffff').text('QUESTIONS • RÉPONSES • EXPLICATIONS', 98, 452, { width:pageW - 196, align:'center', characterSpacing:0.45 });
+
+      const metaX = 92, metaW = pageW - 184;
+      const metaRows = [
+        ['MODULE', moduleName.toUpperCase()],
+        ['NIVEAU', levelName.toUpperCase()],
+        ['ÉDITION', formattedDate.toUpperCase()]
+      ];
+      metaRows.forEach((row, index) => {
+        const y = 523 + index * 48;
+        font('bold', 10.5, palette.muted).text(row[0], metaX, y, { width:100 });
+        font('bold', index === 2 ? 12.5 : 15, palette.ink).text(row[1], metaX + 112, y - 3, { width:metaW - 112, align:'right', ellipsis:true });
+        doc.moveTo(metaX, y + 27).lineTo(metaX + metaW, y + 27).lineWidth(0.7).stroke(palette.border);
+      });
+
+      font('italic', 12, palette.primary).text('Une préparation sérieuse aujourd’hui, votre réussite demain.', 70, 693, { width:pageW - 140, align:'center' });
+      font('regular', 10, palette.ink).text('Support WhatsApp : +226 74 01 37 04', 70, 728, { width:pageW - 140, align:'center' });
+      font('regular', 9, palette.muted).text('Ouagadougou • reussiteconcoursbf@yahoo.com', 70, 746, { width:pageW - 140, align:'center' });
+      font('bold', 8.8, palette.secondary).text('BURKINA FASO', 70, pageH - 68, { width:pageW - 140, align:'center', characterSpacing:1 });
     }
 
     function drawContentPage(){
       contentPage += 1;
-      paper();
-      if (variant === 'academy'){
-        doc.rect(23, 22, pageW - 46, pageH - 44).lineWidth(0.7).strokeColor(palette.border).stroke();
-        doc.rect(23, 22, pageW - 46, 65).fill(palette.primary);
-        doc.rect(23, 87, pageW - 46, 5).fill(palette.accent);
-        logo(39, 34, 42, '#ffffff');
-        font('bold', 13, '#ffffff').text('RÉUSSITE CONCOURS BF', 95, 40, { width:230 });
-        font('regular', 8.5, '#ffffff').text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, 95, 61, { width:300, ellipsis:true, lineBreak:false });
-        font('bold', 9, '#ffffff').text(`PAGE ${contentPage}`, pageW - 132, 49, { width:84, align:'right' });
-      }else if (variant === 'modern'){
-        doc.roundedRect(24, 24, pageW - 48, 62, 15).fill(palette.primary);
-        doc.circle(pageW - 67, 55, 22).fill(palette.secondary);
-        logo(39, 34, 42, '#ffffff');
-        font('bold', 13, '#ffffff').text('RÉUSSITE CONCOURS BF', 95, 39, { width:230 });
-        font('bold', 8.5, '#ffffff').text('CAHIER D’ENTRAÎNEMENT CORRIGÉ', 95, 60, { width:260, characterSpacing:0.25 });
-        font('bold', 9, '#ffffff').text(String(contentPage).padStart(2, '0'), pageW - 78, 49, { width:22, align:'center' });
-      }else if (variant === 'elegant'){
-        doc.rect(24, 22, pageW - 48, pageH - 44).lineWidth(1).strokeColor(palette.primary).stroke();
-        doc.rect(30, 28, pageW - 60, pageH - 56).lineWidth(0.35).strokeColor(palette.secondary).stroke();
-        logo(44, 37, 38, palette.secondary);
-        font('bold', 12, palette.primary).text('RÉUSSITE CONCOURS BF', 95, 42, { width:220 });
-        font('regular', 8.5, palette.muted).text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, 95, 61, { width:280, ellipsis:true, lineBreak:false });
-        doc.moveTo(44, 88).lineTo(pageW - 44, 88).lineWidth(1).stroke(palette.secondary);
-        font('bold', 9, palette.primary).text(`PAGE ${contentPage}`, pageW - 131, 50, { width:85, align:'right' });
-      }else{
-        doc.rect(24, 22, pageW - 48, pageH - 44).lineWidth(0.55).strokeColor(palette.border).stroke();
-        doc.rect(24, 22, 7, pageH - 44).fill(palette.primary);
-        logo(45, 34, 35);
-        font('bold', 12, palette.ink).text('RÉUSSITE CONCOURS BF', 91, 37, { width:200 });
-        font('bold', 8.5, palette.primary).text('CAHIER D’ENTRAÎNEMENT CORRIGÉ', 91, 54, { width:250, characterSpacing:0.35 });
-        font('bold', 9, palette.ink).text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, pageW - 252, 40, { width:190, align:'right', ellipsis:true, lineBreak:false });
-        font('regular', 8, palette.muted).text(formattedDate, pageW - 252, 56, { width:190, align:'right', lineBreak:false });
-        doc.moveTo(45, 80).lineTo(pageW - 45, 80).lineWidth(1.4).stroke(palette.ink);
-        doc.moveTo(45, 84).lineTo(pageW - 195, 84).lineWidth(3.2).stroke(palette.primary);
+      questionsOnPage = 0;
+      basePage();
+      const railColor = fonts.variant === 'canva-clean' ? palette.border : palette.primary;
+      doc.moveTo(35, 28).lineTo(35, pageH - 34).lineWidth(1.5).stroke(railColor);
+      doc.moveTo(pageW - 35, 28).lineTo(pageW - 35, pageH - 34).lineWidth(1.5).stroke(railColor);
+      if (fonts.variant === 'canva-modern'){
+        doc.moveTo(40, 29).lineTo(190, 29).lineWidth(5).stroke(palette.secondary);
+      }else if (fonts.variant === 'canva-bold'){
+        doc.moveTo(40, 29).lineTo(190, 29).lineWidth(5).stroke(palette.accent);
       }
-      font('bold', 8.5, palette.muted).text('QUESTIONS CORRIGÉES', 45, pageH - 62, { width:190, lineBreak:false });
-      font('bold', 9, palette.ink).text(`PAGE ${contentPage}`, pageW - 130, pageH - 63, { width:84, align:'right', lineBreak:false });
-      doc.y = variant === 'modern' ? 101 : 103;
+      logo(48, 34, 36);
+      font('bold', 11.5, palette.ink).text('RÉUSSITE CONCOURS BF', 94, 38, { width:230 });
+      font('regular', 8.5, palette.primary).text(fonts.label.toUpperCase(), 94, 56, { width:240, characterSpacing:0.35 });
+      font('bold', 9.2, palette.ink).text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, pageW - 254, 41, { width:190, align:'right', ellipsis:true, lineBreak:false });
+      font('regular', 8.2, palette.muted).text(formattedDate, pageW - 254, 58, { width:190, align:'right', lineBreak:false });
+      doc.moveTo(48, 82).lineTo(pageW - 48, 82).lineWidth(1).stroke(palette.border);
+      font('bold', 13, palette.primary).text('QCM CORRIGÉS', 48, 91, { width:contentW, align:'center', characterSpacing:0.45 });
+      doc.moveTo(48, pageH - 70).lineTo(pageW - 48, pageH - 70).lineWidth(0.55).stroke(palette.border);
+      font('regular', 8, palette.muted).text('Réussite Concours BF', 48, pageH - 59, { width:190 });
+      font('bold', 8.5, palette.ink).text(`PAGE ${contentPage}`, pageW - 128, pageH - 59, { width:80, align:'right' });
+      doc.y = 122;
     }
 
     function normalizedOptions(q){
@@ -3399,68 +3324,43 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
       const opts = normalizedOptions(q);
       const qText = pdfCleanText(q.question_text || 'Question');
       const explanation = pdfCleanText(q.explanation || 'La réponse indiquée est la bonne réponse.');
-      const cardW = contentW - 8;
-      const questionW = cardW - 82;
-      const optionW = cardW - 116;
-      const correctionW = cardW - 82;
-      const explanationW = correctionW - 132;
-      const questionH = height(qText, questionW, 'bold', 18.6, { lineGap:2.2 });
-      const optionHeights = opts.map(opt => Math.max(23, height(opt, optionW, 'regular', 13.8, { lineGap:1.2 }) + 6));
-      const explanationH = height(explanation, explanationW, 'regular', 11.4, { lineGap:1.35 });
-      const correctionH = Math.max(51, 32 + explanationH);
-      const blockH = 12 + questionH + 10 + optionHeights.reduce((sum, h) => sum + h, 0) + 7 + correctionH + 10;
-      return { opts, qText, explanation, questionH, optionHeights, correctionH, blockH };
+      const questionW = contentW - 35;
+      const optionW = contentW - 58;
+      const explanationText = `Explication : ${explanation}`;
+      const questionH = height(qText, questionW, 'bold', type.question, { lineGap:1.7 });
+      const optionHeights = opts.map(opt => Math.max(type.option + 5, height(opt, optionW, 'regular', type.option, { lineGap:1 }) + 3));
+      const explanationH = height(explanationText, optionW, 'regular', type.explanation, { lineGap:1.1 });
+      const blockH = questionH + 8 + optionHeights.reduce((sum, value) => sum + value, 0) + 7 + type.answer + 5 + explanationH + 15;
+      return { opts, qText, explanationText, questionH, optionHeights, explanationH, blockH };
     }
 
     function drawQuestion(q, index){
       const metrics = blockMetrics(q);
-      const bottom = pageH - 70;
-      if (doc.y + metrics.blockH > bottom){ doc.addPage(); drawContentPage(); }
-      const x = margin + 4;
-      const y = doc.y;
-      const w = contentW - 8;
-      if (variant === 'modern'){
-        doc.roundedRect(x, y, w, metrics.blockH, 12).fillAndStroke(palette.soft, palette.border);
-        doc.roundedRect(x + 14, y + 10, 37, 37, 18.5).fill(palette.primary);
-      }else if (variant === 'academy'){
-        doc.roundedRect(x, y, w, metrics.blockH, 3).fillAndStroke('#ffffff', palette.border);
-        doc.rect(x, y, w, 5).fill(palette.primary);
-        doc.rect(x + 15, y + 12, 37, 31).fill(palette.primary);
-      }else if (variant === 'elegant'){
-        doc.rect(x, y, w, metrics.blockH).fillAndStroke('#ffffff', palette.border);
-        doc.rect(x, y, w, 4).fill(palette.secondary);
-        doc.roundedRect(x + 15, y + 11, 38, 30, 2).fillAndStroke(palette.soft, palette.primary);
-      }else{
-        doc.save().fillColor('#ffffff').opacity(0.92).roundedRect(x, y, w, metrics.blockH, 5).fill().restore();
-        doc.roundedRect(x, y, w, metrics.blockH, 5).lineWidth(0.55).strokeColor(palette.border).stroke();
-        doc.rect(x, y, 5, metrics.blockH).fill(palette.primary);
-        doc.roundedRect(x + 16, y + 10, 36, 29, 5).fill(palette.ink);
+      const bottom = pageH - 84;
+      if (questionsOnPage >= 4 || doc.y + metrics.blockH > bottom){
+        doc.addPage();
+        drawContentPage();
       }
-      const numberColor = variant === 'elegant' ? palette.ink : '#ffffff';
-      font('bold', 13.4, numberColor).text(String(index + 1).padStart(2, '0'), x + 18, y + (variant === 'modern' ? 21 : 18), { width:31, align:'center', lineBreak:false });
-      const questionX = x + 65;
-      font('bold', 18.6, palette.ink).text(metrics.qText, questionX, y + 10, { width:w - 82, lineGap:2.2 });
-      let cursorY = y + 12 + metrics.questionH + 10;
-      metrics.opts.forEach((opt, optionIndex) => {
-        const h = metrics.optionHeights[optionIndex];
-        if (variant === 'modern'){
-          doc.roundedRect(questionX, cursorY + 1, 22, 19, 9).fill(palette.primary);
-          font('bold', 9.8, '#ffffff').text(labels[optionIndex], questionX + 3, cursorY + 6, { width:16, align:'center', lineBreak:false });
-        }else{
-          doc.circle(questionX + 11, cursorY + 10, 9).lineWidth(1.2).strokeColor(variant === 'elegant' ? palette.secondary : palette.ink).stroke();
-          font('bold', 9.8, palette.ink).text(labels[optionIndex], questionX + 3, cursorY + 6, { width:16, align:'center', lineBreak:false });
-        }
-        font('regular', 13.8, palette.ink).text(opt, questionX + 33, cursorY + 1, { width:w - 116, lineGap:1.2 });
-        cursorY += h;
+      const x = margin;
+      const y = doc.y;
+      font('bold', type.question, palette.primary).text(`${index + 1}.`, x, y, { width:30, align:'right', lineBreak:false });
+      font('bold', type.question, palette.ink).text(metrics.qText, x + 36, y, { width:contentW - 36, lineGap:1.7 });
+      let cursorY = y + metrics.questionH + 8;
+      metrics.opts.forEach((option, optionIndex) => {
+        const optionH = metrics.optionHeights[optionIndex];
+        font('bold', type.option, palette.ink).text(`${labels[optionIndex]}.`, x + 36, cursorY, { width:23, lineBreak:false });
+        font('regular', type.option, palette.ink).text(option, x + 62, cursorY, { width:contentW - 62, lineGap:1 });
+        cursorY += optionH;
       });
-      const correctionY = cursorY + 5;
-      const correctionW = w - 82;
-      doc.roundedRect(questionX, correctionY, correctionW, metrics.correctionH, variant === 'modern' ? 9 : 4).fillAndStroke(palette.correction, palette.correctionBorder);
       const answer = answerLabel(q.correct_answer);
-      font('bold', 12.4, palette.answer).text(`BONNE RÉPONSE : ${answer}`, questionX + 13, correctionY + 9, { width:correctionW - 26 });
-      font('bold', 11.2, palette.ink).text('EXPLICATION :', questionX + 13, correctionY + 31, { width:105, lineBreak:false });
-      font('regular', 11.4, palette.ink).text(metrics.explanation, questionX + 122, correctionY + 30, { width:correctionW - 135, lineGap:1.35 });
-      doc.y = y + metrics.blockH + 10;
+      cursorY += 4;
+      font('bold', type.answer, palette.answer).text(`RÉPONSE : ${answer}`, x + 36, cursorY, { width:contentW - 36, lineBreak:false });
+      cursorY += type.answer + 7;
+      font('regular', type.explanation, palette.muted).text(metrics.explanationText, x + 36, cursorY, { width:contentW - 58, lineGap:1.1 });
+      cursorY += metrics.explanationH + 9;
+      doc.moveTo(x + 36, cursorY).lineTo(pageW - margin, cursorY).lineWidth(0.45).stroke(palette.border);
+      doc.y = cursorY + 9;
+      questionsOnPage += 1;
     }
 
     drawCover();
@@ -4725,7 +4625,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'google-fonts-pdf-designs-v9',
+    build: 'canva-fonts-minimal-pdf-v10',
     time: new Date().toISOString()
   });
 });

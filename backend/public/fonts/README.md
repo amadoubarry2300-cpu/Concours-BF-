@@ -1,11 +1,12 @@
 # Polices PDF intégrées
 
-Les PDF Réussite Concours BF incorporent localement trois familles professionnelles distribuées par Google Fonts :
+Les PDF Réussite Concours BF incorporent localement quatre familles professionnelles utilisées dans les modèles Canva et les documents bureautiques :
 
-- **Lato** — Regular, Heavy et Italic ; licence dans `LICENSE-Lato.txt`.
+- **Montserrat** — Regular, ExtraBold et Italic ; licence dans `LICENSE-Montserrat.txt`.
+- **Open Sans** — Regular, ExtraBold et Italic ; licence dans `LICENSE-OpenSans.txt`.
 - **Roboto** — Regular, Black et Italic ; licence dans `LICENSE-Roboto.txt`.
-- **Source Sans 3** — Regular, Black et Italic ; licence dans `LICENSE-SourceSans3.txt`.
+- **Tinos** — Regular, Bold et Italic ; alternative libre et métriquement compatible avec le style Times New Roman ; licence dans `LICENSE-Tinos.txt`.
 
-Roboto et Source Sans 3 ont été figées en instances statiques à partir des fontes variables officielles de la collection Google Fonts. Les fichiers sont servis localement : la génération de PDF ne dépend d’aucun appel réseau.
+Toutes les polices sont embarquées localement : la génération de PDF ne dépend d’aucun appel réseau. Les rares glyphes scientifiques absents des fontes Montserrat et Open Sans d’origine ont été complétés à partir de Roboto, sous la même licence OFL, afin d’éviter tout symbole manquant.
 
-Les graisses utilisées ont été contrôlées pour les accents français et les symboles mathématiques requis : `√ − ≤ ≥ × ÷ π ² ³ ⁻ ⁴`.
+Les graisses utilisées ont été contrôlées pour les accents français et les symboles mathématiques : `√ − ≤ ≥ × ÷ π ² ³ ⁻ ⁴ ± Δ σ ∞ ≠ ≈ ′ ∫ ∑ ∂`.
