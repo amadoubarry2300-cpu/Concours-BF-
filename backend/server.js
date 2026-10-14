@@ -1563,12 +1563,27 @@ function cleanPastedQcmLine(value){
     .trim();
 }
 
-function pastedQcmAnswerIndex(block){
-  const label = String(block?.answerLabel || '').trim().toUpperCase();
-  if (/^[A-D]$/.test(label)) return label.charCodeAt(0) - 65;
+function pastedQcmAnswerLabels(value){
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  const prefix = raw.match(/^((?:(?:l['’]?option|option)\s*)?[A-D](?:\s*(?:,|;|\/|\+|&|et)\s*(?:(?:l['’]?option|option)\s*)?[A-D]){0,3})(?=\s*(?:$|[.):-]))/i)?.[1] || '';
+  if (!prefix) return [];
+  return [...new Set((prefix.match(/\b[A-D]\b/gi) || []).map(label => label.toUpperCase()))];
+}
+
+function pastedQcmAnswerIndexes(block){
+  const explicit = Array.isArray(block?.answerLabels) ? block.answerLabels : [];
+  const labels = [...new Set([...explicit, block?.answerLabel].filter(Boolean).map(label => String(label).trim().toUpperCase()))]
+    .filter(label => /^[A-D]$/.test(label));
+  if (labels.length) return labels.map(label => label.charCodeAt(0) - 65);
   const answer = normalizeQcmOptionKey(String(block?.answerText || '').replace(/^option\s+/i, ''));
-  if (!answer) return -1;
-  return (block.options || []).findIndex(option => normalizeQcmOptionKey(option) === answer);
+  if (!answer) return [];
+  const index = (block.options || []).findIndex(option => normalizeQcmOptionKey(option) === answer);
+  return index >= 0 ? [index] : [];
+}
+
+function pastedQcmAnswerIndex(block){
+  return pastedQcmAnswerIndexes(block)[0] ?? -1;
 }
 
 function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
@@ -1598,6 +1613,7 @@ function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
         question:questionMatch[2],
         options:['','','',''],
         answerLabel:'',
+        answerLabels:[],
         answerText:'',
         explanation:'',
         answerTrailing:'',
@@ -1617,13 +1633,15 @@ function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
       current.part = 'option';
       continue;
     }
-    const answerMatch = line.match(/^\s*(?:(?:bonne\s+)?r[ée]ponse(?:\s+correcte)?|correct\s+answer)\s*(?:est\s*)?(?:[:\-–—]\s*)?(.+)$/i);
+    const answerMatch = line.match(/^\s*(?:(?:bonne(?:s)?\s+)?r[ée]ponse(?:s)?(?:\s+correcte(?:s)?)?|correct\s+answer(?:s)?)\s*(?:est|sont)?\s*(?:[:\-–—]\s*)?(.+)$/i);
     if (answerMatch){
       const answerBody = answerMatch[1].trim();
-      const labelMatch = answerBody.match(/^(?:l['’]?option\s+|option\s+)?([A-D])(?:\s*[.)]|\s*[:\-–—])?\s*(.*)$/i);
-      if (labelMatch){
-        current.answerLabel = labelMatch[1].toUpperCase();
-        current.answerTrailing = cleanPastedQcmLine(labelMatch[2]);
+      const answerLabels = pastedQcmAnswerLabels(answerBody);
+      if (answerLabels.length){
+        current.answerLabels = answerLabels;
+        current.answerLabel = answerLabels[0];
+        const prefix = answerBody.match(/^((?:(?:l['’]?option|option)\s*)?[A-D](?:\s*(?:,|;|\/|\+|&|et)\s*(?:(?:l['’]?option|option)\s*)?[A-D]){0,3})(?:\s*[.):-]\s*)?(.*)$/i);
+        current.answerTrailing = cleanPastedQcmLine(prefix?.[2] || '');
       }else{
         current.answerText = answerBody;
       }
@@ -1666,8 +1684,10 @@ function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
       if (block.duplicateOption) throw new Error('Une lettre de réponse est répétée dans les options.');
       if (!block.options[0] || !block.options[1]) throw new Error('Ajoute au moins les deux options A et B.');
       if (block.options[3] && !block.options[2]) throw new Error('Ajoute l’option C avant l’option D.');
-      const correctAnswer = pastedQcmAnswerIndex(block);
-      if (correctAnswer < 0) throw new Error('Bonne réponse introuvable. Utilise « Réponse : A, B, C ou D ».' );
+      const correctAnswers = pastedQcmAnswerIndexes(block);
+      if (!correctAnswers.length) throw new Error('Bonne réponse introuvable. Utilise « Réponse : A » ou « Réponses : A et C ».' );
+      if (correctAnswers.some(answer => !block.options[answer])) throw new Error('Une bonne réponse désigne une option absente.');
+      const correctAnswer = correctAnswers[0];
       let explanation = block.explanation;
       if (!explanation && block.answerTrailing){
         const correctOption = normalizeQcmOptionKey(block.options[correctAnswer]);
@@ -1686,7 +1706,7 @@ function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
       });
       const issue = aiQuestionQualityIssue(question, index) || publicQuestionQualityIssue(question);
       if (issue) throw new Error(issue);
-      questions.push({ ...question, import_number:block.number });
+      questions.push({ ...question, correct_answers:correctAnswers, import_number:block.number });
       addQuestionToDedupeIndex(question.question_text, index);
     }catch(err){
       rejected.push({ number:block.number, question:block.question || `QCM ${block.number}`, reason:err.message || 'Format non reconnu.' });
@@ -2883,6 +2903,21 @@ function answerLabel(index){
   return ['A','B','C','D'][Number(index || 0)] || 'A';
 }
 
+function questionAnswerIndexes(question = {}){
+  const values = Array.isArray(question?.correct_answers) && question.correct_answers.length
+    ? question.correct_answers
+    : [question?.correct_answer];
+  return [...new Set(values.map(Number).filter(index => Number.isInteger(index) && index >= 0 && index <= 3))];
+}
+
+function questionAnswerLabels(question = {}){
+  const labels = questionAnswerIndexes(question).map(answerLabel);
+  if (!labels.length) return answerLabel(question?.correct_answer);
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} et ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')} et ${labels.at(-1)}`;
+}
+
 function pdfYear(value){
   const raw = String(value || todayId()).slice(0, 4);
   return /^\d{4}$/.test(raw) ? raw : String(new Date().getFullYear());
@@ -3209,6 +3244,21 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
       'canva-modern':{ background:'#eef3fb', wash:'#dce6f5', answer:'#e4f2ed', explanation:'#f5f8fc', ink:'#17213a' },
       'canva-serif':{ background:'#f8f1f3', wash:'#efe0e4', answer:'#e7f2ed', explanation:'#fcf8f5', ink:'#20191b' }
     }[fonts.variant] || { background:'#f2f5f3', wash:'#e2ece7', answer:'#e4f5ec', explanation:'#f8faf9', ink:palette.ink };
+    // Les pages alternent automatiquement entre huit harmonies imprimables.
+    // L’ordre est déterministe pour qu’un même livre reste stable, mais il est
+    // décalé selon son titre et son design afin d’éviter un cahier monochrome.
+    const pageTones = [
+      { primary:'#087a55', secondary:'#dc4b3e', accent:'#f2b705', background:'#edf8f3', wash:'#d8eee5', answer:'#ddf4e8', explanation:'#f5fbf8', answerInk:'#08714f' },
+      { primary:'#0b7f91', secondary:'#e45f42', accent:'#15a77c', background:'#edf8fa', wash:'#d7edf1', answer:'#def3ef', explanation:'#f4fafb', answerInk:'#08705e' },
+      { primary:'#224f91', secondary:'#d64550', accent:'#f0b429', background:'#eef3fb', wash:'#dae4f4', answer:'#e1f1ea', explanation:'#f5f8fc', answerInk:'#116844' },
+      { primary:'#781f3a', secondary:'#b9862f', accent:'#24705f', background:'#f8f0f3', wash:'#ecdde2', answer:'#e3f1eb', explanation:'#fcf7f4', answerInk:'#176247' },
+      { primary:'#6540a4', secondary:'#d94f79', accent:'#f29f3d', background:'#f4f0fb', wash:'#e5dcf3', answer:'#e3f3ed', explanation:'#faf7fd', answerInk:'#17684d' },
+      { primary:'#31449a', secondary:'#d67b22', accent:'#e84d71', background:'#f0f2fb', wash:'#dde2f4', answer:'#e1f2ec', explanation:'#f8f8fd', answerInk:'#146a4b' },
+      { primary:'#a3491f', secondary:'#205f66', accent:'#e2ad27', background:'#faf2ed', wash:'#f0dfd5', answer:'#e0f1e9', explanation:'#fdf8f4', answerInk:'#17694b' },
+      { primary:'#1769aa', secondary:'#78459b', accent:'#e9ad21', background:'#edf5fb', wash:'#d8e8f4', answer:'#def1e9', explanation:'#f5f9fc', answerInk:'#126849' }
+    ];
+    const toneSeed = [...`${cleanTitle}|${fonts.theme}|${metadata.date || ''}`].reduce((sum, char) => (sum + char.codePointAt(0)) % pageTones.length, 0);
+    const pageTone = index => pageTones[(toneSeed + Math.max(0, index) * 3) % pageTones.length];
 
     const font = (kind='regular', size=10, color=visual.ink) => {
       doc.font(fonts[kind] || fonts.regular).fontSize(size).fillColor(color);
@@ -3312,9 +3362,10 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
     }
 
     function drawQuestionPage(q, index){
-      paper(visual.background);
-      doc.rect(0, 0, pageW, 132).fill(palette.primary);
-      doc.rect(0, 0, pageW, 8).fill(palette.accent);
+      const tone = pageTone(index);
+      paper(tone.background);
+      doc.rect(0, 0, pageW, 132).fill(tone.primary);
+      doc.rect(0, 0, pageW, 8).fill(tone.accent);
       doc.save().opacity(0.10).fillColor('#ffffff');
       doc.circle(pageW - 20, 25, 100).fill();
       doc.circle(pageW - 118, 90, 42).fill();
@@ -3328,48 +3379,50 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
       font('regular', 8.3, '#ffffff').text(formattedDate, pageW - 242, 56, { width:190, align:'right', lineBreak:false });
 
       shadowCard(31, 99, pageW - 62, 656, 20);
-      doc.roundedRect(54, 119, 154, 34, 17).fill(palette.primary);
+      doc.roundedRect(54, 119, 154, 34, 17).fill(tone.primary);
       font('bold', 11.3, '#ffffff').text(`QUESTION ${index + 1} / ${rows.length}`, 64, 130, { width:134, align:'center', lineBreak:false, characterSpacing:0.35 });
-      doc.roundedRect(pageW - 141, 119, 86, 34, 17).fill(visual.wash);
-      font('bold', 10.2, palette.primary).text('QCM CORRIGÉ', pageW - 134, 130, { width:72, align:'center', lineBreak:false });
+      doc.roundedRect(pageW - 141, 119, 86, 34, 17).fill(tone.wash);
+      font('bold', 10.2, tone.primary).text('QCM CORRIGÉ', pageW - 134, 130, { width:72, align:'center', lineBreak:false });
 
       const layout = pageLayout(q);
       const contentX = 65;
       const contentW = pageW - 130;
       let y = 174;
-      font('bold', layout.questionSize, palette.primary).text(`${index + 1}.`, contentX, y, { width:37, align:'right', lineBreak:false });
+      font('bold', layout.questionSize, tone.primary).text(`${index + 1}.`, contentX, y, { width:37, align:'right', lineBreak:false });
       font('bold', layout.questionSize, visual.ink).text(layout.qText, contentX + 46, y, { width:contentW - 46, lineGap:2.4 });
       y += layout.qH + 18;
 
       layout.opts.forEach((option, optionIndex) => {
         const rowH = layout.optionHs[optionIndex];
         if (optionIndex % 2 === 0){
-          doc.save().opacity(0.62).fillColor(visual.explanation).roundedRect(contentX + 32, y - 7, contentW - 32, rowH, 9).fill().restore();
+          doc.save().opacity(0.72).fillColor(tone.explanation).roundedRect(contentX + 32, y - 7, contentW - 32, rowH, 9).fill().restore();
         }
-        doc.circle(contentX + 48, y + 11, 15).fill(palette.primary);
+        doc.circle(contentX + 48, y + 11, 15).fill(tone.primary);
         font('bold', 13, '#ffffff').text(labels[optionIndex], contentX + 38, y + 6, { width:20, align:'center', lineBreak:false });
         font('regular', layout.optionSize, visual.ink).text(option, contentX + 75, y, { width:contentW - 82, lineGap:1.7 });
-        doc.moveTo(contentX + 75, y + rowH - 8).lineTo(contentX + contentW, y + rowH - 8).lineWidth(0.5).stroke(visual.wash);
+        doc.moveTo(contentX + 75, y + rowH - 8).lineTo(contentX + contentW, y + rowH - 8).lineWidth(0.5).stroke(tone.wash);
         y += rowH;
       });
 
-      const answer = answerLabel(q.correct_answer);
+      const answerIndexes = questionAnswerIndexes(q);
+      const answer = questionAnswerLabels(q);
+      const multiple = answerIndexes.length > 1;
       y += 10;
-      doc.roundedRect(contentX + 32, y, contentW - 32, 55, 12).fill(visual.answer);
-      doc.roundedRect(contentX + 32, y, 11, 55, 5).fill(palette.answer);
-      font('bold', 10.5, palette.answer).text('BONNE RÉPONSE', contentX + 58, y + 9, { width:180, characterSpacing:0.55 });
-      font('bold', layout.answerSize, visual.ink).text(`RÉPONSE : ${answer}`, contentX + 58, y + 25, { width:contentW - 75, lineBreak:false });
+      doc.roundedRect(contentX + 32, y, contentW - 32, 55, 12).fill(tone.answer);
+      doc.roundedRect(contentX + 32, y, 11, 55, 5).fill(tone.answerInk);
+      font('bold', 10.5, tone.answerInk).text(multiple ? 'BONNES RÉPONSES' : 'BONNE RÉPONSE', contentX + 58, y + 9, { width:190, characterSpacing:0.55 });
+      font('bold', layout.answerSize, visual.ink).text(`${multiple ? 'RÉPONSES' : 'RÉPONSE'} : ${answer}`, contentX + 58, y + 25, { width:contentW - 75, lineBreak:false });
       y += 67;
 
       const explanationBoxH = Math.max(82, layout.explanationH + 48);
-      doc.roundedRect(contentX + 32, y, contentW - 32, explanationBoxH, 12).fill(visual.explanation);
-      doc.rect(contentX + 32, y, 5, explanationBoxH).fill(palette.secondary);
-      font('bold', 10.5, palette.secondary).text('EXPLICATION SIMPLE', contentX + 52, y + 13, { width:220, characterSpacing:0.45 });
+      doc.roundedRect(contentX + 32, y, contentW - 32, explanationBoxH, 12).fill(tone.explanation);
+      doc.rect(contentX + 32, y, 5, explanationBoxH).fill(tone.secondary);
+      font('bold', 10.5, tone.secondary).text('EXPLICATION SIMPLE', contentX + 52, y + 13, { width:220, characterSpacing:0.45 });
       font('regular', layout.explanationSize, visual.ink).text(layout.explanation, contentX + 52, y + 33, { width:contentW - 72, lineGap:2.1 });
 
-      font('bold', 8.8, palette.primary).text('RÉUSSITE CONCOURS BF', 42, 776, { width:210, lineBreak:false });
+      font('bold', 8.8, tone.primary).text('RÉUSSITE CONCOURS BF', 42, 776, { width:210, lineBreak:false });
       font('regular', 8.2, palette.muted).text('Votre réussite, notre mission.', 205, 776, { width:180, align:'center', lineBreak:false });
-      font('bold', 8.8, palette.primary).text(`PAGE ${index + 1}`, pageW - 112, 776, { width:70, align:'right', lineBreak:false });
+      font('bold', 8.8, tone.primary).text(`PAGE ${index + 1}`, pageW - 112, 776, { width:70, align:'right', lineBreak:false });
     }
 
     drawCover();
@@ -3398,8 +3451,16 @@ async function preparePastedQcmBook(body = {}){
   parsed.questions.forEach(question => {
     const existing = exactExisting.get(normalizeQuestionKey(question.question_text));
     if (existing){
+      // Un livre à réponses multiples doit conserver exactement les réponses
+      // collées par l’administrateur au lieu d’être ramené à l’ancienne réponse
+      // unique éventuellement déjà publiée dans le quiz interactif.
+      if (questionAnswerIndexes(question).length > 1){
+        questions.push(question);
+        return;
+      }
       const canonical = {
         ...existing,
+        correct_answers:questionAnswerIndexes(existing),
         import_number:question.import_number,
         category:existing.category || metadata.category,
         level:existing.level || metadata.level,
@@ -3437,6 +3498,7 @@ function normalizePastedQcmBookSource(input = {}){
     option_c:cleanEducationalText(question?.option_c, 500),
     option_d:cleanEducationalText(question?.option_d, 500),
     correct_answer:Number(question?.correct_answer),
+    correct_answers:questionAnswerIndexes(question),
     explanation:cleanEducationalText(question?.explanation, 3000),
   }));
   return { metadata, questions };
@@ -4635,7 +4697,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'digital-color-book-v11',
+    build: 'multicolor-multi-answer-v12',
     time: new Date().toISOString()
   });
 });
@@ -5641,6 +5703,13 @@ app.post('/api/admin/questions/import/publish', requireAdmin, async (req, res, n
     if (!result.questions.length){
       return res.status(400).json({ message:'Aucun QCM propre et complet à publier.', rejected:result.rejected });
     }
+    const multipleAnswerCount = result.questions.filter(question => questionAnswerIndexes(question).length > 1).length;
+    if (multipleAnswerCount){
+      return res.status(400).json({
+        message:`${multipleAnswerCount} QCM comportent plusieurs bonnes réponses. Ils sont acceptés dans le livre PDF, mais le quiz interactif actuel reste réservé aux questions à réponse unique.`,
+        rejected:[]
+      });
+    }
     const payload = result.questions.map(question => ({
       ...adminQuestionPayload(question),
       source:result.metadata.title,
@@ -6383,6 +6452,7 @@ export {
   verifyPastedQcmBookSource,
   buildQcmDraftPdf,
   buildPastedQcmBookPdf,
+  questionAnswerLabels,
   PDF_THEME_KEYS,
   isDirectProfessionalCompetitionNews,
   extractOfficialCandidates,

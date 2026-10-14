@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'digital-color-book-v11';
+const CACHE_VERSION = 'multicolor-multi-answer-v12';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=digital-color-book-v11',
-  '/js/questions.js?v=digital-color-book-v11',
-  '/js/app.js?v=digital-color-book-v11',
+  '/css/styles.css?v=multicolor-multi-answer-v12',
+  '/js/questions.js?v=multicolor-multi-answer-v12',
+  '/js/app.js?v=multicolor-multi-answer-v12',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

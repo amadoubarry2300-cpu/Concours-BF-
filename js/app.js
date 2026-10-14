@@ -1437,8 +1437,13 @@ function updatePastedQcmDestinationButtons(){
   const destination = premium ? 'Premium payant' : 'Gratuit';
   const quizBtn = $('#pastedQcmPublishBtn');
   const pdfBtn = $('#pastedQcmPdfPublishBtn');
-  const ready = Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0);
-  if (quizBtn && ready) quizBtn.textContent = `🧩 Publier le quiz de ${ready} QCM dans ${destination}`;
+  const previewQuestions = Array.isArray(pastedQcmPreviewCache?.questions) ? pastedQcmPreviewCache.questions : [];
+  const ready = Number(pastedQcmPreviewCache?.ready || previewQuestions.length || 0);
+  const hasMultipleAnswers = previewQuestions.some(q => Array.isArray(q?.correct_answers) && q.correct_answers.length > 1);
+  if (quizBtn){
+    quizBtn.style.display = ready && !hasMultipleAnswers ? 'block' : 'none';
+    if (ready && !hasMultipleAnswers) quizBtn.textContent = `🧩 Publier le quiz de ${ready} QCM dans ${destination}`;
+  }
   if (pdfBtn && pastedQcmPdfCache) pdfBtn.textContent = `📕 Publier le livre PDF dans ${destination}`;
 }
 
@@ -1449,21 +1454,26 @@ function renderPastedQcmPreview(data){
   if (!wrap || !publishBtn || !pdfBtn) return;
   const questions = Array.isArray(data?.questions) ? data.questions : [];
   const rejected = Array.isArray(data?.rejected) ? data.rejected : [];
-  publishBtn.style.display = questions.length ? 'block' : 'none';
+  const hasMultipleAnswers = questions.some(q => Array.isArray(q?.correct_answers) && q.correct_answers.length > 1);
+  publishBtn.style.display = questions.length && !hasMultipleAnswers ? 'block' : 'none';
   pdfBtn.style.display = 'block';
   const destination = pastedQcmPayload().is_premium ? 'Premium payant' : 'Gratuit';
-  publishBtn.textContent = `🧩 Publier le quiz de ${questions.length} QCM dans ${destination}`;
+  if (!hasMultipleAnswers) publishBtn.textContent = `🧩 Publier le quiz de ${questions.length} QCM dans ${destination}`;
   const readyHtml = questions.length ? `
-    <div class="admin-paste-section-head ready"><b>✅ ${questions.length} QCM prêt${questions.length>1?'s':''}</b><span>À relire avant publication</span></div>
+    <div class="admin-paste-section-head ready"><b>✅ ${questions.length} QCM prêt${questions.length>1?'s':''}</b><span>${hasMultipleAnswers ? 'Réponses multiples conservées pour le livre PDF' : 'À relire avant publication'}</span></div>
     ${questions.map((q, index)=>{
-      const answer = ['A','B','C','D'][Number(q.correct_answer)] || '?';
+      const answerIndexes = Array.isArray(q?.correct_answers) && q.correct_answers.length ? q.correct_answers : [q.correct_answer];
+      const normalizedAnswerIndexes = [...new Set(answerIndexes.map(Number).filter(value => value >= 0 && value <= 3))];
+      const answerLabels = normalizedAnswerIndexes.map(value => ['A','B','C','D'][value]);
+      const answer = answerLabels.length > 2 ? `${answerLabels.slice(0,-1).join(', ')} et ${answerLabels.at(-1)}` : (answerLabels.join(' et ') || '?');
+      const multipleAnswers = normalizedAnswerIndexes.length > 1;
       const options = [q.option_a,q.option_b,q.option_c,q.option_d].filter(option => String(option || '').trim());
       const optionsHtml = options.map((option, optionIndex)=>`<p><b>${'ABCD'[optionIndex]}.</b> ${renderMathText(option)}</p>`).join('');
       return `<details class="admin-q-item admin-paste-preview-card" ${index < 2 ? 'open' : ''}>
         <summary><b>QCM ${escapeHtml(q.import_number || index + 1)}</b><span>${renderMathText(q.question_text || '')}</span></summary>
         <div class="admin-paste-preview-body">
           ${optionsHtml}
-          <div class="admin-paste-correction"><b>Bonne réponse : ${answer}</b><span>${renderMathText(q.explanation || '')}</span></div>
+          <div class="admin-paste-correction"><b>${multipleAnswers ? 'Bonnes réponses' : 'Bonne réponse'} : ${answer}</b><span>${renderMathText(q.explanation || '')}</span></div>
         </div>
       </details>`;
     }).join('')}` : '';
@@ -1498,8 +1508,9 @@ async function analyzePastedQcm(){
     pastedQcmPreviewSignature = pastedQcmContentSignature();
     const blocked = Number(data.rejected?.length || 0);
     const ready = Number(data.ready || data.questions?.length || 0);
+    const multipleAnswerCount = (Array.isArray(data.questions) ? data.questions : []).filter(q => Array.isArray(q?.correct_answers) && q.correct_answers.length > 1).length;
     if (result){
-      result.innerHTML = `<div class="pay-note ${ready ? 'success' : 'error'}"><b>${ready} QCM prêt${ready>1?'s':''}</b>${blocked ? ` · ${blocked} bloqué${blocked>1?'s':''}` : ' · aucun problème détecté'}<br>Titre : <b>${escapeHtml(data.metadata?.title || '')}</b> · Date : <b>${escapeHtml(formatDate(data.metadata?.date))}</b> · Module : <b>${escapeHtml(data.metadata?.category || '')}</b></div>`;
+      result.innerHTML = `<div class="pay-note ${ready ? 'success' : 'error'}"><b>${ready} QCM prêt${ready>1?'s':''}</b>${blocked ? ` · ${blocked} bloqué${blocked>1?'s':''}` : ' · aucun problème détecté'}${multipleAnswerCount ? `<br><b>${multipleAnswerCount} QCM à réponses multiples conservés exactement pour le livre PDF.</b>` : ''}<br>Titre : <b>${escapeHtml(data.metadata?.title || '')}</b> · Date : <b>${escapeHtml(formatDate(data.metadata?.date))}</b> · Module : <b>${escapeHtml(data.metadata?.category || '')}</b></div>`;
     }
     renderPastedQcmPreview(data);
     return data;
@@ -4472,7 +4483,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'digital-color-book-v11') location.reload();
+    if (data.build && data.build !== 'multicolor-multi-answer-v12') location.reload();
   }catch{}
 }
 
@@ -4485,7 +4496,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=digital-color-book-v11')
+    navigator.serviceWorker.register('/sw.js?v=multicolor-multi-answer-v12')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

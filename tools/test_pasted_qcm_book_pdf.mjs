@@ -8,6 +8,7 @@ const {
   verifyPastedQcmBookSource,
   buildQcmDraftPdf,
   buildPastedQcmBookPdf,
+  questionAnswerLabels,
   PDF_THEME_KEYS
 } = await import('../backend/server.js');
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -120,6 +121,14 @@ const signedSource = normalizePastedQcmBookSource({ metadata:prepared.metadata, 
 const pdfToken = signPastedQcmBookSource(signedSource);
 assert(verifyPastedQcmBookSource(signedSource, pdfToken), 'source PDF validée non reconnue');
 assert(!verifyPastedQcmBookSource({ ...signedSource, questions:[{ ...signedSource.questions[0], question_text:'Question modifiée' }] }, pdfToken), 'source PDF modifiée acceptée');
+const multipleSource = normalizePastedQcmBookSource({
+  metadata:prepared.metadata,
+  questions:[{ ...prepared.questions[0], correct_answer:0, correct_answers:[0, 2] }]
+});
+assert(JSON.stringify(multipleSource.questions[0].correct_answers) === '[0,2]', 'réponses multiples perdues dans la source PDF signée');
+assert(questionAnswerLabels(multipleSource.questions[0]) === 'A et C', 'libellé français des réponses multiples invalide');
+const multiplePdf = await buildPastedQcmBookPdf({ ...multipleSource, theme:'tinos-examen' });
+assert((multiplePdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length === 2, 'pagination du PDF à réponses multiples invalide');
 const existingPrepared = await preparePastedQcmBook({
   title:'Réutilisation d’un QCM publié',
   date:'2026-10-14',
@@ -136,6 +145,21 @@ Explication : Cette correction volontairement différente doit être remplacée 
 assert(existingPrepared.questions.length === 1, 'QCM publié exact refusé dans le livre');
 assert(existingPrepared.questions[0].option_a === '6 cm', 'version canonique publiée non réutilisée');
 assert(existingPrepared.questions[0].correct_answer === 2, 'bonne réponse canonique publiée non réutilisée');
+const multiplePrepared = await preparePastedQcmBook({
+  title:'SVT — Réponses multiples',
+  date:'2026-10-14',
+  category:'SVT',
+  level:'BAC',
+  text:`1. Au cours de la prophase, quels événements se produisent ?
+A. Les chromosomes se condensent
+B. Les chromosomes s’alignent sur la plaque équatoriale
+C. L’enveloppe nucléaire disparaît progressivement
+D. Les chromatides se séparent immédiatement
+Réponses : A et C
+Explication : Les chromosomes se condensent et l’enveloppe nucléaire disparaît progressivement pendant la prophase.`
+});
+assert(multiplePrepared.questions.length === 1, `livre à réponses multiples refusé : ${JSON.stringify(multiplePrepared.rejected)}`);
+assert(JSON.stringify(multiplePrepared.questions[0].correct_answers) === '[0,2]', 'réponses multiples altérées pendant la préparation du livre');
 
 const unicodeSource = {
   metadata:{ title:'Contrôle des signes mathématiques', date:'2026-10-14', category:'Mathématiques', level:'BEPC' },

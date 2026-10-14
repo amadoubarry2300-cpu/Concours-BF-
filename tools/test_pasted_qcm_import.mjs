@@ -121,4 +121,37 @@ assert(formulasAndPh.rejected.length === 0, 'formule ou mot « espèces » rejet
 assert(!qcmDeterministicFactIssue({ question_text:'Dilution d’une solution acide', explanation:'La concentration en espèces acides diminue.' }), '« espèces » confondu avec le CES');
 assert(qcmDeterministicFactIssue({ question_text:'Quel est le rôle actuel du CESE ?', explanation:'Le CESE conseille les pouvoirs publics.' }), 'acronyme CESE non détecté');
 
+const multipleAnswers = parsePastedQcmText(`
+1. Au cours de la prophase, quels événements se produisent ?
+A. Les chromosomes se condensent
+B. Les chromosomes s’alignent sur la plaque équatoriale
+C. L’enveloppe nucléaire disparaît progressivement
+D. Les chromatides se séparent immédiatement
+Réponses : A et C
+Explication : Les chromosomes se condensent et l’enveloppe nucléaire disparaît progressivement pendant la prophase.
+
+2. La méiose permet notamment :
+A. La formation des cellules reproductrices
+B. La réduction du nombre de chromosomes
+C. La multiplication des cellules somatiques uniquement
+D. La production de cellules haploïdes
+Réponses : A, B et D
+Explication : La méiose réduit le nombre de chromosomes et produit des cellules haploïdes participant à la reproduction.
+
+3. Quels mécanismes participent à la diversité génétique ?
+A. L’absence totale de variation
+B. Les mutations
+C. La disparition de tous les chromosomes
+D. La recombinaison génétique
+Bonnes réponses : B / D
+Explication : Les mutations et la recombinaison produisent de nouvelles variations génétiques.
+`, { ...metadata, category:'SVT', level:'BAC' });
+assert(multipleAnswers.detected === 3, `QCM multiples détectés : ${multipleAnswers.detected}`);
+assert(multipleAnswers.questions.length === 3, `QCM multiples acceptés : ${JSON.stringify(multipleAnswers.rejected)}`);
+assert(multipleAnswers.rejected.length === 0, 'une réponse multiple valide a été rejetée');
+assert(JSON.stringify(multipleAnswers.questions[0].correct_answers) === '[0,2]', '« A et C » mal interprété');
+assert(JSON.stringify(multipleAnswers.questions[1].correct_answers) === '[0,1,3]', '« A, B et D » mal interprété');
+assert(JSON.stringify(multipleAnswers.questions[2].correct_answers) === '[1,3]', '« B / D » mal interprété');
+assert(multipleAnswers.questions[1].correct_answer === 0, 'compatibilité de la première réponse perdue');
+
 console.log('IMPORT TEXTE QCM OK');
