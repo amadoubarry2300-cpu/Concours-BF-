@@ -47,7 +47,9 @@ def norm(value: object) -> str:
 
 
 def option_norm(value: object) -> str:
-    return re.sub(r"[^\w'’]+", '', unicodedata.normalize('NFKC', str(value or '')).lower(), flags=re.UNICODE)
+    text = unicodedata.normalize('NFKC', str(value or '')).lower()
+    text = text.replace('×', '*').replace('÷', '/').replace('−', '-')
+    return re.sub(r"[^\w'’+\-*/=<>≤≥^√%.,]+", '', text, flags=re.UNICODE)
 
 
 def options(question: dict) -> list[str]:

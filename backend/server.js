@@ -3044,6 +3044,225 @@ async function buildQcmDraftPdf({ title, date, category, level, questions }){
   });
 }
 
+
+async function buildPastedQcmBookPdf({ metadata = {}, questions = [] } = {}){
+  const rows = (Array.isArray(questions) ? questions : []).map(applyQuestionCorrection);
+  if (!rows.length) throw Object.assign(new Error('Aucun QCM propre à placer dans le PDF.'), { status:400 });
+  return new Promise((resolve, reject) => {
+    const cleanTitle = safePdfTitle(metadata.title || 'Cahier de QCM corrigés');
+    const doc = new PDFDocument({
+      size:'A4',
+      margin:42,
+      bufferPages:true,
+      compress:true,
+      info:{
+        Title:cleanTitle,
+        Author:'Réussite Concours BF',
+        Subject:'Cahier de QCM corrigés',
+        Creator:'Réussite Concours BF',
+        Keywords:'concours, QCM, Burkina Faso, préparation'
+      }
+    });
+    const fonts = setupPdfFonts(doc);
+    const chunks = [];
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const margin = 42;
+    const pageW = doc.page.width;
+    const pageH = doc.page.height;
+    const contentW = pageW - margin * 2;
+    const logoPath = path.join(PUBLIC_DIR, 'img', 'logo.png');
+    const moduleName = pdfCleanText(metadata.category || 'Module');
+    const levelName = pdfCleanText(metadata.level || 'Niveau');
+    const formattedDate = formatDateForPdf(metadata.date || todayId());
+    const labels = ['A','B','C','D'];
+    let contentPage = 0;
+
+    const font = (kind='regular', size=10, color='#111111') => {
+      doc.font(fonts[kind] || fonts.regular).fontSize(size).fillColor(color);
+      return doc;
+    };
+    const height = (value, width, kind='regular', size=10, options={}) => {
+      doc.font(fonts[kind] || fonts.regular).fontSize(size);
+      return doc.heightOfString(pdfCleanText(value), { width, ...options });
+    };
+    const paper = () => {
+      doc.rect(0, 0, pageW, pageH).fill('#fffef8');
+      doc.save().opacity(0.045).strokeColor('#6b6258').lineWidth(0.25);
+      for (let y=26; y<pageH; y+=34) doc.moveTo(18, y).lineTo(pageW - 18, y + ((y / 34) % 2 ? 0.7 : -0.7)).stroke();
+      doc.opacity(0.06).fillColor('#796f63');
+      for (let i=0; i<54; i++){
+        const x = 24 + ((i * 83) % Math.floor(pageW - 48));
+        const y = 20 + ((i * 137) % Math.floor(pageH - 40));
+        doc.circle(x, y, i % 4 === 0 ? 0.7 : 0.42).fill();
+      }
+      doc.restore();
+    };
+    const logo = (x, y, size=50) => {
+      doc.roundedRect(x, y, size, size, 8).fill('#ffffff').strokeColor('#d8d4ca').lineWidth(0.7).stroke();
+      if (fs.existsSync(logoPath)){
+        try{ doc.image(logoPath, x + 3, y + 3, { fit:[size - 6, size - 6], align:'center', valign:'center' }); return; }catch{}
+      }
+      font('bold', size * 0.2, '#087a46').text('RCBF', x + 3, y + size * 0.4, { width:size - 6, align:'center' });
+    };
+    const fitTitleSize = (value, width, maxHeight, start=35, min=22) => {
+      for (let size=start; size>=min; size-=1){
+        if (height(value, width, 'bold', size, { lineGap:2, align:'center' }) <= maxHeight) return size;
+      }
+      return min;
+    };
+
+    function drawCover(){
+      paper();
+      doc.rect(23, 22, pageW - 46, pageH - 44).lineWidth(1.15).strokeColor('#181818').stroke();
+      doc.rect(30, 29, pageW - 60, pageH - 58).lineWidth(0.35).strokeColor('#797979').stroke();
+      doc.rect(30, 29, pageW - 60, 9).fill('#07844d');
+      doc.rect(30, 38, pageW - 60, 4).fill('#d51f2b');
+
+      logo(54, 64, 70);
+      font('bold', 25, '#111111').text('RÉUSSITE', 142, 68, { width:300 });
+      font('bold', 26, '#07844d').text('CONCOURS BF', 142, 98, { width:330 });
+      font('bold', 9.5, '#5b5b55').text('COLLECTION PRÉPARATION AUX CONCOURS', 142, 132, { width:360, characterSpacing:0.7 });
+      doc.moveTo(54, 158).lineTo(pageW - 54, 158).lineWidth(1.2).stroke('#111111');
+      doc.moveTo(54, 164).lineTo(pageW - 168, 164).lineWidth(4).stroke('#07844d');
+
+      font('bold', 14, '#d51f2b').text('CAHIER D’ENTRAÎNEMENT CORRIGÉ', 62, 198, { width:pageW - 124, align:'center', characterSpacing:0.4 });
+      const titleSize = fitTitleSize(cleanTitle.toUpperCase(), pageW - 126, 156, 38, 23);
+      font('bold', titleSize, '#111111').text(cleanTitle.toUpperCase(), 63, 236, { width:pageW - 126, align:'center', lineGap:2 });
+
+      const metaY = 424;
+      doc.roundedRect(62, metaY, pageW - 124, 154, 7).fill('#ffffff').strokeColor('#2e2e2e').lineWidth(0.8).stroke();
+      doc.rect(62, metaY, 8, 154).fill('#07844d');
+      font('bold', 11, '#5d5d58').text('MODULE', 90, metaY + 23, { width:106 });
+      font('bold', 16, '#111111').text(moduleName.toUpperCase(), 202, metaY + 18, { width:300, align:'right', ellipsis:true });
+      doc.moveTo(90, metaY + 53).lineTo(pageW - 88, metaY + 53).lineWidth(0.45).stroke('#c8c5bd');
+      font('bold', 11, '#5d5d58').text('NIVEAU', 90, metaY + 69, { width:106 });
+      font('bold', 16, '#111111').text(levelName.toUpperCase(), 202, metaY + 64, { width:300, align:'right', ellipsis:true });
+      doc.moveTo(90, metaY + 99).lineTo(pageW - 88, metaY + 99).lineWidth(0.45).stroke('#c8c5bd');
+      font('bold', 11, '#5d5d58').text('ÉDITION', 90, metaY + 115, { width:106 });
+      font('bold', 14.5, '#111111').text(formattedDate.toUpperCase(), 194, metaY + 111, { width:308, align:'right', ellipsis:true });
+
+      doc.roundedRect(92, 614, pageW - 184, 48, 6).fill('#111111');
+      font('bold', 17, '#ffffff').text(`${rows.length} QCM • RÉPONSES • EXPLICATIONS`, 106, 629, { width:pageW - 212, align:'center', lineBreak:false });
+      font('bold', 13, '#07844d').text('QUESTIONS EN GRAND FORMAT', 62, 684, { width:pageW - 124, align:'center', characterSpacing:0.6 });
+      font('regular', 10.5, '#343434').text('Support WhatsApp : +226 74 01 37 04', 62, 728, { width:pageW - 124, align:'center' });
+      font('regular', 9.5, '#555555').text('Ouagadougou • reussiteconcoursbf@yahoo.com', 62, 746, { width:pageW - 124, align:'center' });
+      font('bold', 9, '#d51f2b').text('BURKINA FASO', 62, pageH - 66, { width:pageW - 124, align:'center', characterSpacing:1.1 });
+    }
+
+    function drawContentPage(){
+      contentPage += 1;
+      paper();
+      doc.rect(24, 22, pageW - 48, pageH - 44).lineWidth(0.55).strokeColor('#86817a').stroke();
+      doc.rect(24, 22, 7, pageH - 44).fill('#07844d');
+      logo(45, 34, 35);
+      font('bold', 12, '#111111').text('RÉUSSITE CONCOURS BF', 91, 37, { width:200 });
+      font('bold', 8.5, '#07844d').text('CAHIER D’ENTRAÎNEMENT CORRIGÉ', 91, 54, { width:250, characterSpacing:0.35 });
+      font('bold', 9, '#111111').text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, pageW - 252, 40, { width:190, align:'right', ellipsis:true, lineBreak:false });
+      font('regular', 8, '#5b5b55').text(formattedDate, pageW - 252, 56, { width:190, align:'right', lineBreak:false });
+      doc.moveTo(45, 80).lineTo(pageW - 45, 80).lineWidth(1.4).stroke('#111111');
+      doc.moveTo(45, 84).lineTo(pageW - 195, 84).lineWidth(3.2).stroke('#07844d');
+      font('bold', 8.5, '#55514b').text('QUESTIONS CORRIGÉES', 45, pageH - 62, { width:190, lineBreak:false });
+      font('bold', 9, '#111111').text(`PAGE ${contentPage}`, pageW - 130, pageH - 63, { width:84, align:'right', lineBreak:false });
+      doc.y = 99;
+    }
+
+    function normalizedOptions(q){
+      return [q.option_a, q.option_b, q.option_c, q.option_d]
+        .map(pdfCleanText)
+        .filter(Boolean);
+    }
+
+    function blockMetrics(q){
+      const opts = normalizedOptions(q);
+      const qText = pdfCleanText(q.question_text || 'Question');
+      const explanation = pdfCleanText(q.explanation || 'La réponse indiquée est la bonne réponse.');
+      const bodyW = contentW - 70;
+      const questionH = height(qText, bodyW, 'bold', 17.8, { lineGap:2 });
+      const optionHeights = opts.map(opt => Math.max(21, height(opt, bodyW - 42, 'regular', 13.2, { lineGap:1 }) + 5));
+      const explanationH = height(explanation, bodyW - 26, 'regular', 10.5, { lineGap:1.2 });
+      const correctionH = Math.max(47, 31 + explanationH);
+      const blockH = 11 + questionH + 7 + optionHeights.reduce((sum, h) => sum + h, 0) + 6 + correctionH + 9;
+      return { opts, qText, explanation, questionH, optionHeights, correctionH, blockH };
+    }
+
+    function drawQuestion(q, index){
+      const metrics = blockMetrics(q);
+      const bottom = pageH - 68;
+      if (doc.y + metrics.blockH > bottom){ doc.addPage(); drawContentPage(); }
+      const x = margin + 4;
+      const y = doc.y;
+      const w = contentW - 8;
+      doc.save().fillColor('#ffffff').opacity(0.82).roundedRect(x, y, w, metrics.blockH, 5).fill().restore();
+      doc.roundedRect(x, y, w, metrics.blockH, 5).lineWidth(0.55).strokeColor('#b9b6af').stroke();
+      doc.rect(x, y, 5, metrics.blockH).fill('#07844d');
+      doc.roundedRect(x + 16, y + 10, 34, 27, 5).fill('#111111');
+      font('bold', 13, '#ffffff').text(String(index + 1).padStart(2, '0'), x + 18, y + 16, { width:30, align:'center', lineBreak:false });
+      const questionX = x + 62;
+      font('bold', 17.8, '#080808').text(metrics.qText, questionX, y + 9, { width:w - 78, lineGap:2 });
+      let cursorY = y + 11 + metrics.questionH + 10;
+      metrics.opts.forEach((opt, optionIndex) => {
+        const h = metrics.optionHeights[optionIndex];
+        doc.circle(questionX + 11, cursorY + 9, 9).lineWidth(1.2).strokeColor('#111111').stroke();
+        font('bold', 9.5, '#111111').text(labels[optionIndex], questionX + 3, cursorY + 5.2, { width:16, align:'center', lineBreak:false });
+        font('regular', 13.2, '#151515').text(opt, questionX + 31, cursorY + 1, { width:w - 111, lineGap:1 });
+        cursorY += h;
+      });
+      const correctionY = cursorY + 4;
+      const correctionW = w - 78;
+      doc.roundedRect(questionX, correctionY, correctionW, metrics.correctionH, 5).fill('#f0f6ef').strokeColor('#8eaa91').lineWidth(0.55).stroke();
+      const answer = answerLabel(q.correct_answer);
+      font('bold', 11.5, '#075b36').text(`BONNE RÉPONSE : ${answer}`, questionX + 12, correctionY + 9, { width:correctionW - 24 });
+      font('bold', 10.8, '#111111').text('EXPLICATION :', questionX + 12, correctionY + 29, { width:88, lineBreak:false });
+      font('regular', 10.5, '#222222').text(metrics.explanation, questionX + 102, correctionY + 28, { width:correctionW - 114, lineGap:1.2 });
+      doc.y = y + metrics.blockH + 9;
+    }
+
+    drawCover();
+    doc.addPage();
+    drawContentPage();
+    rows.forEach((question, index) => drawQuestion(question, index));
+    doc.end();
+  });
+}
+
+async function preparePastedQcmBook(body = {}){
+  // Le PDF brut suit exactement les mêmes règles de validation et de dédoublonnage
+  // que l’aperçu et la publication interactifs.
+  return preparePastedQcmImport(body);
+}
+
+function normalizePastedQcmBookSource(input = {}){
+  const rawMetadata = input?.metadata && typeof input.metadata === 'object' ? input.metadata : input;
+  const metadata = pastedQcmImportMetadata(rawMetadata);
+  const questions = (Array.isArray(input?.questions) ? input.questions : []).slice(0, 50).map(question => ({
+    category:cleanText(question?.category || metadata.category, 80),
+    level:cleanText(question?.level || metadata.level, 40),
+    question_text:cleanEducationalText(question?.question_text, 1200),
+    option_a:cleanEducationalText(question?.option_a, 500),
+    option_b:cleanEducationalText(question?.option_b, 500),
+    option_c:cleanEducationalText(question?.option_c, 500),
+    option_d:cleanEducationalText(question?.option_d, 500),
+    correct_answer:Number(question?.correct_answer),
+    explanation:cleanEducationalText(question?.explanation, 3000),
+  }));
+  return { metadata, questions };
+}
+
+function signPastedQcmBookSource(source){
+  const canonical = JSON.stringify(normalizePastedQcmBookSource(source));
+  return crypto.createHmac('sha256', SESSION_SECRET).update(canonical).digest('base64url');
+}
+
+function verifyPastedQcmBookSource(source, token){
+  const expected = signPastedQcmBookSource(source);
+  const received = String(token || '');
+  if (!received || received.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected));
+}
+
 function normalizeEditedDailyQuestions(rows, draft){
   if (!Array.isArray(rows) || !rows.length){
     throw Object.assign(new Error('Le PDF doit contenir au moins un QCM.'), { status:400 });
@@ -4225,7 +4444,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'admin-qcm-2-4-options-v1',
+    build: 'pasted-qcm-book-pdf-v1',
     time: new Date().toISOString()
   });
 });
@@ -5167,6 +5386,7 @@ app.get('/api/admin/questions', requireAdmin, async (req, res, next) => {
 app.post('/api/admin/questions/import/preview', requireAdmin, async (req, res, next) => {
   try{
     const result = await preparePastedQcmImport(req.body || {});
+    const bookSource = normalizePastedQcmBookSource({ metadata:result.metadata, questions:result.questions });
     res.json({
       ok:true,
       metadata:result.metadata,
@@ -5174,8 +5394,37 @@ app.post('/api/admin/questions/import/preview', requireAdmin, async (req, res, n
       ready:result.questions.length,
       rejected:result.rejected,
       ignoredLines:result.ignoredLines,
-      questions:result.questions
+      questions:result.questions,
+      pdfToken:signPastedQcmBookSource(bookSource)
     });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/questions/import/pdf', requireAdmin, async (req, res, next) => {
+  try{
+    let result;
+    if (req.body?.pdfToken && Array.isArray(req.body?.questions)){
+      const bookSource = normalizePastedQcmBookSource(req.body);
+      if (!verifyPastedQcmBookSource(bookSource, req.body.pdfToken)){
+        return res.status(409).json({ message:'Cet aperçu a changé. Vérifie de nouveau les QCM avant de créer le PDF.' });
+      }
+      result = { ...bookSource, rejected:[] };
+    }else{
+      result = await preparePastedQcmBook(req.body || {});
+    }
+    if (!result.questions.length){
+      return res.status(400).json({ message:'Aucun QCM propre et complet à placer dans le PDF.', rejected:result.rejected });
+    }
+    const buffer = await buildPastedQcmBookPdf({ metadata:result.metadata, questions:result.questions });
+    const baseName = safeFileName(result.metadata.title || 'Cahier-QCM').replace(/\.pdf$/i, '').slice(0, 90) || 'Cahier-QCM';
+    const fileName = `${baseName}-${result.metadata.date || todayId()}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-QCM-Count', String(result.questions.length));
+    res.setHeader('X-QCM-Rejected', String(result.rejected.length));
+    res.send(buffer);
   }catch(err){ next(err); }
 });
 
@@ -5922,6 +6171,11 @@ export {
   recoverDailyAiDraft,
   parsePastedQcmText,
   pastedQcmImportMetadata,
+  preparePastedQcmBook,
+  normalizePastedQcmBookSource,
+  signPastedQcmBookSource,
+  verifyPastedQcmBookSource,
+  buildPastedQcmBookPdf,
   isDirectProfessionalCompetitionNews,
   extractOfficialCandidates,
   normalizeOfficialNewsDraft,
