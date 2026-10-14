@@ -957,9 +957,11 @@ function adminQuestionPayload(body){
   if (!payload.category) throw Object.assign(new Error('Catégorie requise'), { status:400 });
   if (payload.question_text.length < 8) throw Object.assign(new Error('Question trop courte'), { status:400 });
   const opts = [payload.option_a, payload.option_b, payload.option_c, payload.option_d];
-  if (opts.some(o => !o)) throw Object.assign(new Error('Les 4 options sont obligatoires'), { status:400 });
-  if (new Set(opts.map(o => o.toLowerCase())).size !== 4) throw Object.assign(new Error('Les options doivent être différentes'), { status:400 });
-  if (!Number.isInteger(payload.correct_answer) || payload.correct_answer < 0 || payload.correct_answer > 3) throw Object.assign(new Error('Bonne réponse invalide'), { status:400 });
+  if (!opts[0] || !opts[1]) throw Object.assign(new Error('Au moins deux options A et B sont obligatoires'), { status:400 });
+  if (opts[3] && !opts[2]) throw Object.assign(new Error('Ajoute l’option C avant l’option D'), { status:400 });
+  const providedOptions = opts.filter(Boolean);
+  if (new Set(providedOptions.map(o => o.toLowerCase())).size !== providedOptions.length) throw Object.assign(new Error('Les options doivent être différentes'), { status:400 });
+  if (!Number.isInteger(payload.correct_answer) || payload.correct_answer < 0 || payload.correct_answer > 3 || !opts[payload.correct_answer]) throw Object.assign(new Error('Bonne réponse invalide'), { status:400 });
   if (payload.explanation.length < 15) throw Object.assign(new Error('Explication trop courte'), { status:400 });
   return payload;
 }
@@ -1397,9 +1399,11 @@ function aiQuestionQualityIssue(q, dedupeIndex){
   const opts = [q?.option_a, q?.option_b, q?.option_c, q?.option_d].map(v => strictCleanAiQcmText(v, 500));
   const explanation = strictCleanAiQcmText(q?.explanation, 3000);
   if (question.length < 24) return 'Question trop courte';
-  if (opts.some(o => o.length < 1)) return 'Option manquante';
-  if (new Set(opts.map(normalizeQcmOptionKey)).size !== 4) return 'Options répétées';
-  if (!Number.isInteger(Number(q?.correct_answer)) || Number(q.correct_answer) < 0 || Number(q.correct_answer) > 3) return 'Bonne réponse invalide';
+  if (!opts[0] || !opts[1]) return 'Au moins deux options sont obligatoires';
+  if (opts[3] && !opts[2]) return 'L’option D ne peut pas être utilisée sans l’option C';
+  const providedOptions = opts.filter(Boolean);
+  if (new Set(providedOptions.map(normalizeQcmOptionKey)).size !== providedOptions.length) return 'Options répétées';
+  if (!Number.isInteger(Number(q?.correct_answer)) || Number(q.correct_answer) < 0 || Number(q.correct_answer) > 3 || !opts[Number(q.correct_answer)]) return 'Bonne réponse invalide';
   if (explanation.length < 22) return 'Correction trop courte';
   const allText = [question, ...opts, explanation].join(' ');
   if (hasForbiddenAiQcmText(allText)) return 'Contenu interne ou commentaire IA détecté';
@@ -1610,7 +1614,8 @@ function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
     }
     try{
       if (block.duplicateOption) throw new Error('Une lettre de réponse est répétée dans les options.');
-      if (block.options.some(option => !option)) throw new Error('Les quatre options A, B, C et D sont obligatoires.');
+      if (!block.options[0] || !block.options[1]) throw new Error('Ajoute au moins les deux options A et B.');
+      if (block.options[3] && !block.options[2]) throw new Error('Ajoute l’option C avant l’option D.');
       const correctAnswer = pastedQcmAnswerIndex(block);
       if (correctAnswer < 0) throw new Error('Bonne réponse introuvable. Utilise « Réponse : A, B, C ou D ».' );
       let explanation = block.explanation;
@@ -4220,7 +4225,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'admin-paste-qcm-v2',
+    build: 'admin-qcm-2-4-options-v1',
     time: new Date().toISOString()
   });
 });

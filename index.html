@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=admin-paste-qcm-v2">
+<link rel="manifest" href="/manifest.webmanifest?v=admin-qcm-2-4-options-v1">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=admin-paste-qcm-v2">
+<link rel="stylesheet" href="css/styles.css?v=admin-qcm-2-4-options-v1">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -636,9 +636,10 @@
           <div class="admin-options-grid">
             <div><label class="field-label" for="adminOptionA">Option A</label><input class="input" id="adminOptionA" placeholder="Réponse A"></div>
             <div><label class="field-label" for="adminOptionB">Option B</label><input class="input" id="adminOptionB" placeholder="Réponse B"></div>
-            <div><label class="field-label" for="adminOptionC">Option C</label><input class="input" id="adminOptionC" placeholder="Réponse C"></div>
-            <div><label class="field-label" for="adminOptionD">Option D</label><input class="input" id="adminOptionD" placeholder="Réponse D"></div>
+            <div><label class="field-label" for="adminOptionC">Option C <span>(facultative)</span></label><input class="input" id="adminOptionC" placeholder="Réponse C — facultative"></div>
+            <div><label class="field-label" for="adminOptionD">Option D <span>(facultative)</span></label><input class="input" id="adminOptionD" placeholder="Réponse D — facultative"></div>
           </div>
+          <p class="admin-help">Tu peux proposer 2, 3 ou 4 choix. Les options A et B sont obligatoires ; ajoute ensuite C puis D si nécessaire.</p>
 
           <label class="field-label" for="adminCorrect">Bonne réponse</label>
           <select class="input" id="adminCorrect">
@@ -670,7 +671,7 @@
             <div>
               <div class="premium-kicker">Importation rapide</div>
               <h3>Coller 1 à 50 QCM</h3>
-              <p class="admin-help">Colle directement les QCM reçus dans un chat. L’outil sépare les questions, les quatre choix, la bonne réponse et l’explication, puis prépare un quiz lisible comme les autres dans l’application.</p>
+              <p class="admin-help">Colle directement les QCM reçus dans un chat. L’outil sépare les questions, les 2 à 4 choix, la bonne réponse et l’explication, puis prépare un quiz lisible comme les autres dans l’application.</p>
             </div>
             <span class="admin-paste-badge">Sans crédit IA</span>
           </div>
@@ -704,7 +705,7 @@
           <textarea class="input admin-textarea admin-paste-textarea" id="pastedQcmText" placeholder="1. Quelle est la capitale du Burkina Faso ?&#10;A. Bobo-Dioulasso&#10;B. Ouagadougou&#10;C. Koudougou&#10;D. Ouahigouya&#10;Réponse : B&#10;Explication : Ouagadougou est la capitale politique du Burkina Faso.&#10;&#10;2. Question suivante..."></textarea>
           <div class="admin-paste-format">
             <b>Format reconnu automatiquement</b>
-            <span>Question numérotée · options A à D · Réponse : A/B/C/D · Explication ou Correction</span>
+            <span>Question numérotée · 2 à 4 options consécutives (A-B, A-C ou A-D) · Réponse : A/B/C/D · Explication ou Correction</span>
           </div>
 
           <button class="btn btn-green btn-block" id="pastedQcmAnalyzeBtn" onclick="analyzePastedQcm()">Transformer et prévisualiser</button>
@@ -1271,7 +1272,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=admin-paste-qcm-v2"></script>
-<script src="js/app.js?v=admin-paste-qcm-v2"></script>
+<script src="js/questions.js?v=admin-qcm-2-4-options-v1"></script>
+<script src="js/app.js?v=admin-qcm-2-4-options-v1"></script>
 </body>
 </html>

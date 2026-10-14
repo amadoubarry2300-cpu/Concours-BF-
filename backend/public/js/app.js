@@ -516,11 +516,11 @@ function mergeQuestionRows(rows){
     c:r.category,
     level:r.level,
     q:r.question_text,
-    o:[r.option_a,r.option_b,r.option_c,r.option_d],
+    o:[r.option_a,r.option_b,r.option_c,r.option_d].filter(option => String(option || '').trim()),
     a:Number(r.correct_answer),
     e:r.explanation || '',
     premium: Boolean(r.is_premium)
-  })).filter(q=>q.q && q.o.every(Boolean));
+  })).filter(q=>q.q && q.o.length >= 2 && q.o.length <= 4 && q.a >= 0 && q.a < q.o.length);
   const existing = new Set(QUESTIONS.map(q=>q.q));
   mapped.forEach(q=>{ if (!existing.has(q.q)) QUESTIONS.push(q); });
 }
@@ -867,7 +867,7 @@ function startQuiz(opts){
 
 function startQuestionListQuiz(qs, opts = {}){
   const returnTo = opts.returnTo || quizReturnTarget();
-  const clean = (Array.isArray(qs) ? qs : []).filter(q => q?.q && Array.isArray(q.o) && q.o.length === 4);
+  const clean = (Array.isArray(qs) ? qs : []).filter(q => q?.q && Array.isArray(q.o) && q.o.length >= 2 && q.o.length <= 4 && Number(q.a) >= 0 && Number(q.a) < q.o.length);
   if (!clean.length){ toast('Aucun QCM disponible pour ce contenu'); return; }
   const limit = opts.limit ? Math.max(1, Math.min(Number(opts.limit), clean.length)) : clean.length;
   const selected = shuffle(clean).slice(0, limit);
@@ -1380,13 +1380,12 @@ function renderPastedQcmPreview(data){
     <div class="admin-paste-section-head ready"><b>✅ ${questions.length} QCM prêt${questions.length>1?'s':''}</b><span>À relire avant publication</span></div>
     ${questions.map((q, index)=>{
       const answer = ['A','B','C','D'][Number(q.correct_answer)] || '?';
+      const options = [q.option_a,q.option_b,q.option_c,q.option_d].filter(option => String(option || '').trim());
+      const optionsHtml = options.map((option, optionIndex)=>`<p><b>${'ABCD'[optionIndex]}.</b> ${renderMathText(option)}</p>`).join('');
       return `<details class="admin-q-item admin-paste-preview-card" ${index < 2 ? 'open' : ''}>
         <summary><b>QCM ${escapeHtml(q.import_number || index + 1)}</b><span>${renderMathText(q.question_text || '')}</span></summary>
         <div class="admin-paste-preview-body">
-          <p><b>A.</b> ${renderMathText(q.option_a || '')}</p>
-          <p><b>B.</b> ${renderMathText(q.option_b || '')}</p>
-          <p><b>C.</b> ${renderMathText(q.option_c || '')}</p>
-          <p><b>D.</b> ${renderMathText(q.option_d || '')}</p>
+          ${optionsHtml}
           <div class="admin-paste-correction"><b>Bonne réponse : ${answer}</b><span>${renderMathText(q.explanation || '')}</span></div>
         </div>
       </details>`;
@@ -3846,7 +3845,7 @@ function mapPublishedQuestion(row){
     c:row.category,
     level:row.level,
     q:row.question_text,
-    o:[row.option_a,row.option_b,row.option_c,row.option_d],
+    o:[row.option_a,row.option_b,row.option_c,row.option_d].filter(option => String(option || '').trim()),
     a:Number(row.correct_answer),
     e:row.explanation || '',
     premium:Boolean(row.is_premium)
@@ -3912,7 +3911,7 @@ function startPublishedQcm(index){
     openPremium(set.title || 'QCM Premium');
     return;
   }
-  const qs = (set.questions || []).map(mapPublishedQuestion).filter(q => q.q && q.o.every(Boolean));
+  const qs = (set.questions || []).map(mapPublishedQuestion).filter(q => q.q && q.o.length >= 2 && q.o.length <= 4 && q.a >= 0 && q.a < q.o.length);
   const limit = (!hasOpenAccess() && !set.is_premium) ? Math.min(10, qs.length) : qs.length;
   startQuestionListQuiz(qs, { title:set.title || 'Nouveau QCM', limit });
 }
@@ -4092,7 +4091,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'admin-paste-qcm-v2') location.reload();
+    if (data.build && data.build !== 'admin-qcm-2-4-options-v1') location.reload();
   }catch{}
 }
 
@@ -4105,7 +4104,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=admin-paste-qcm-v2')
+    navigator.serviceWorker.register('/sw.js?v=admin-qcm-2-4-options-v1')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

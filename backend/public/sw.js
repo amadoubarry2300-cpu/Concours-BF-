@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'admin-paste-qcm-v2';
+const CACHE_VERSION = 'admin-qcm-2-4-options-v1';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=admin-paste-qcm-v2',
-  '/js/questions.js?v=admin-paste-qcm-v2',
-  '/js/app.js?v=admin-paste-qcm-v2',
+  '/css/styles.css?v=admin-qcm-2-4-options-v1',
+  '/js/questions.js?v=admin-qcm-2-4-options-v1',
+  '/js/app.js?v=admin-qcm-2-4-options-v1',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

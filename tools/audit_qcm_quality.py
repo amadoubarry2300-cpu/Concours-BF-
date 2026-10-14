@@ -57,6 +57,13 @@ def normalize(value: object) -> str:
 
 def normalize_option(value: object) -> str:
     text = unicodedata.normalize("NFKC", str(value or "")).lower()
+    text = re.sub(r"(\d)[,.](\d)", r"\1 decimal \2", text)
+    for pattern, replacement in (
+        (r"[×*]", " fois "), (r"[÷/]", " divisepar "), (r"\+", " plus "),
+        (r"[−-]", " moins "), (r"=", " egal "), (r"≤", " inferieuregal "),
+        (r"≥", " superieuregal "), (r"≠", " different "),
+    ):
+        text = re.sub(pattern, replacement, text)
     return re.sub(r"[^\w'’]+", "", text, flags=re.UNICODE)
 
 
@@ -65,18 +72,20 @@ def question_issue(question: dict) -> str:
     text = str(question.get("question_text") or "").strip()
     explanation = str(question.get("explanation") or "").strip()
     options = [str(question.get(f"option_{letter}") or "").strip() for letter in "abcd"]
+    while options and not options[-1]:
+        options.pop()
 
     if len(text) < 24:
         return "question trop courte"
-    if any(not option for option in options):
-        return "option manquante"
-    if len({normalize_option(option) for option in options}) != 4:
+    if len(options) < 2 or len(options) > 4 or any(not option for option in options):
+        return "nombre d’options invalide"
+    if len({normalize_option(option) for option in options}) != len(options):
         return "options répétées"
     try:
         answer = int(question.get("correct_answer"))
     except (TypeError, ValueError):
         return "bonne réponse invalide"
-    if answer not in range(4):
+    if answer not in range(len(options)):
         return "bonne réponse invalide"
     if len(explanation) < 22:
         return "correction trop courte"

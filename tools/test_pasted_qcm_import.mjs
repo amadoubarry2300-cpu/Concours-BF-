@@ -30,25 +30,38 @@ C - Une seule nuit
 D - Le Lion rouge
 Correction : A. Le Ditanyè est l’hymne national officiel du Burkina Faso.
 
-3) Cette question est volontairement incomplète pour vérifier le blocage automatique ?
+3) Parmi ces réponses, laquelle désigne un pays membre de l’Alliance des États du Sahel ?
+A. Burkina Faso
+B. Ghana
+C. Sénégal
+Réponse : A
+Explication : Le Burkina Faso est membre de l’Alliance des États du Sahel avec le Mali et le Niger.
+
+4. Le Burkina Faso est-il un pays sans accès direct à la mer ?
 A. Oui
 B. Non
-C. Peut-être
 Réponse : A
-Explication : Elle ne contient pas les quatre options obligatoires.
+Explication : Le Burkina Faso est un pays enclavé qui ne possède aucun littoral maritime.
+
+5. Cette question est volontairement incomplète pour vérifier le blocage automatique ?
+A. Oui
+Réponse : A
+Explication : Une seule option ne permet pas de constituer un questionnaire à choix multiple.
 `;
 
 const parsed = parsePastedQcmText(sample, metadata);
-assert(parsed.detected === 3, `questions détectées: ${parsed.detected}`);
-assert(parsed.questions.length === 2, `QCM prêts: ${parsed.questions.length}`);
+assert(parsed.detected === 5, `questions détectées: ${parsed.detected}`);
+assert(parsed.questions.length === 4, `QCM prêts: ${parsed.questions.length}`);
 assert(parsed.rejected.length === 1, `QCM bloqués: ${parsed.rejected.length}`);
 assert(parsed.questions[0].correct_answer === 1, 'lettre B mal convertie');
 assert(parsed.questions[1].correct_answer === 0, 'correction A mal convertie');
+assert(parsed.questions[2].option_d === '', 'QCM à trois choix mal normalisé');
+assert(parsed.questions[3].option_c === '' && parsed.questions[3].option_d === '', 'QCM à deux choix mal normalisé');
 assert(parsed.questions.every(q => q.source === metadata.title), 'titre de publication non appliqué');
-assert(parsed.rejected[0].reason.includes('quatre options'), 'QCM incomplet non expliqué');
+assert(parsed.rejected[0].reason.includes('deux options'), 'QCM à une seule option non expliqué');
 
-const duplicate = parsePastedQcmText(`${sample}\n4. Quelle ville est la capitale politique du Burkina Faso ?\nA. Bobo-Dioulasso\nB. Ouagadougou\nC. Koudougou\nD. Ouahigouya\nRéponse : B\nExplication : Ouagadougou est la capitale politique du Burkina Faso.`, metadata);
-assert(duplicate.questions.length === 2, 'doublon interne accepté');
+const duplicate = parsePastedQcmText(`${sample}\n6. Quelle ville est la capitale politique du Burkina Faso ?\nA. Bobo-Dioulasso\nB. Ouagadougou\nC. Koudougou\nD. Ouahigouya\nRéponse : B\nExplication : Ouagadougou est la capitale politique du Burkina Faso.`, metadata);
+assert(duplicate.questions.length === 4, 'doublon interne accepté');
 assert(duplicate.rejected.some(row => /déjà existante|trop proche/i.test(row.reason)), 'raison du doublon absente');
 
 const fiftyRows = [];
