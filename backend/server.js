@@ -1826,12 +1826,12 @@ function rotatingAvoidSample(texts, offset = 0, limit = 70){
 async function collectExistingQcmRows({ includeDaily = true } = {}){
   const rows = [];
   loadLocalQcmBank().forEach(q => {
-    if (q?.question_text) rows.push({ question_text:q.question_text, category:q.category || '', level:q.level || '' });
+    if (q?.question_text) rows.push({ ...applyQuestionCorrection(q) });
   });
   if (supabaseReady()){
-    const extra = await supabaseRequest('questions?select=question_text,category,level&limit=10000').catch(() => []);
+    const extra = await supabaseRequest('questions?select=id,question_text,category,level,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,is_active,source,created_at&limit=10000').catch(() => []);
     if (Array.isArray(extra)) extra.forEach(q => {
-      if (q?.question_text) rows.push({ question_text:q.question_text, category:q.category || '', level:q.level || '' });
+      if (q?.question_text) rows.push({ ...applyQuestionCorrection(q) });
     });
   }
   if (includeDaily){
@@ -3229,9 +3229,48 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [] } = {}){
 }
 
 async function preparePastedQcmBook(body = {}){
-  // Le PDF brut suit exactement les mêmes règles de validation et de dédoublonnage
-  // que l’aperçu et la publication interactifs.
-  return preparePastedQcmImport(body);
+  const metadata = pastedQcmImportMetadata(body);
+  const existingRows = await collectExistingQcmRows({ includeDaily:false });
+  // Le texte suit le même nettoyage et les mêmes contrôles que le quiz. Les
+  // doublons internes restent bloqués. Une question déjà publiée n’est admise
+  // dans le livre que si sa version canonique complète existe dans l’application.
+  const parsed = parsePastedQcmText(body?.text, metadata, { dedupeIndex:createQuestionDedupeIndex() });
+  const exactExisting = new Map();
+  existingRows.forEach(row => {
+    const hasCanonicalContent = row?.option_a && row?.option_b && Number.isInteger(Number(row?.correct_answer)) && row?.explanation;
+    if (hasCanonicalContent) exactExisting.set(normalizeQuestionKey(row.question_text), row);
+  });
+  const existingIndex = createQuestionDedupeIndex(existingRows.map(row => row.question_text));
+  const questions = [];
+  const rejected = [...parsed.rejected];
+  parsed.questions.forEach(question => {
+    const existing = exactExisting.get(normalizeQuestionKey(question.question_text));
+    if (existing){
+      const canonical = {
+        ...existing,
+        import_number:question.import_number,
+        category:existing.category || metadata.category,
+        level:existing.level || metadata.level,
+      };
+      const issue = publicQuestionQualityIssue(canonical);
+      if (issue){
+        rejected.push({ number:question.import_number, question:question.question_text, reason:issue });
+      }else{
+        questions.push(canonical);
+      }
+      return;
+    }
+    if (isDuplicateQuestionText(question.question_text, existingIndex)){
+      rejected.push({
+        number:question.import_number,
+        question:question.question_text,
+        reason:'Question trop proche d’un QCM existant : utilise la version déjà publiée ou reformule-la clairement.'
+      });
+      return;
+    }
+    questions.push(question);
+  });
+  return { metadata, ...parsed, questions, rejected, existingCount:existingRows.length };
 }
 
 function normalizePastedQcmBookSource(input = {}){
@@ -4444,7 +4483,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'pasted-qcm-choice-before-v2',
+    build: 'pasted-qcm-pdf-direct-v3',
     time: new Date().toISOString()
   });
 });
@@ -5413,7 +5452,11 @@ app.post('/api/admin/questions/import/pdf', requireAdmin, async (req, res, next)
       result = await preparePastedQcmBook(req.body || {});
     }
     if (!result.questions.length){
-      return res.status(400).json({ message:'Aucun QCM propre et complet à placer dans le PDF.', rejected:result.rejected });
+      const firstReason = result.rejected?.[0]?.reason;
+      return res.status(400).json({
+        message:firstReason ? `PDF non créé : ${firstReason}` : 'Aucun QCM propre et complet à placer dans le PDF.',
+        rejected:result.rejected
+      });
     }
     const buffer = await buildPastedQcmBookPdf({ metadata:result.metadata, questions:result.questions });
     const baseName = safeFileName(result.metadata.title || 'Cahier-QCM').replace(/\.pdf$/i, '').slice(0, 90) || 'Cahier-QCM';

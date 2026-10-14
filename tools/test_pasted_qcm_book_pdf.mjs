@@ -55,6 +55,23 @@ const signedSource = normalizePastedQcmBookSource({ metadata:prepared.metadata, 
 const pdfToken = signPastedQcmBookSource(signedSource);
 assert(verifyPastedQcmBookSource(signedSource, pdfToken), 'source PDF validée non reconnue');
 assert(!verifyPastedQcmBookSource({ ...signedSource, questions:[{ ...signedSource.questions[0], question_text:'Question modifiée' }] }, pdfToken), 'source PDF modifiée acceptée');
+const existingPrepared = await preparePastedQcmBook({
+  title:'Réutilisation d’un QCM publié',
+  date:'2026-10-14',
+  category:'Mathématiques',
+  level:'BEPC',
+  text:`1. Quel est le périmètre d’un carré de côté 3 cm ?
+A. 100 cm
+B. 101 cm
+C. 102 cm
+D. 103 cm
+Réponse : A
+Explication : Cette correction volontairement différente doit être remplacée par la version canonique déjà publiée.`
+});
+assert(existingPrepared.questions.length === 1, 'QCM publié exact refusé dans le livre');
+assert(existingPrepared.questions[0].option_a === '6 cm', 'version canonique publiée non réutilisée');
+assert(existingPrepared.questions[0].correct_answer === 2, 'bonne réponse canonique publiée non réutilisée');
+
 const pdf = await buildPastedQcmBookPdf(signedSource);
 assert(Buffer.isBuffer(pdf), 'résultat PDF non binaire');
 assert(pdf.subarray(0, 4).toString() === '%PDF', 'signature PDF absente');

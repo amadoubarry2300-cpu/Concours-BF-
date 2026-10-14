@@ -1451,20 +1451,17 @@ async function downloadPastedQcmBookPdf(){
   const result = $('#pastedQcmResult');
   setButtonLoading(btn, true, 'Vérification des QCM...');
   try{
-    let ready = Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0);
-    if (!ready || pastedQcmPreviewSignature !== JSON.stringify(pastedQcmPayload())){
-      const preview = await analyzePastedQcm();
-      ready = Number(preview?.ready || preview?.questions?.length || 0);
-      if (!ready) throw new Error('Aucun QCM valide à placer dans le PDF.');
-    }
-    setButtonLoading(btn, true, 'Création du livre PDF...');
     const formPayload = pastedQcmPayload();
-    const payload = {
+    const previewCurrent = pastedQcmPreviewSignature === JSON.stringify(formPayload)
+      && Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0) > 0;
+    const ready = previewCurrent ? Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0) : 0;
+    const payload = previewCurrent ? {
       ...formPayload,
       metadata:pastedQcmPreviewCache.metadata,
       questions:pastedQcmPreviewCache.questions,
       pdfToken:pastedQcmPreviewCache.pdfToken
-    };
+    } : formPayload;
+    setButtonLoading(btn, true, 'Création du livre PDF...');
     const res = await fetchWithTimeout('/api/admin/questions/import/pdf', {
       method:'POST',
       headers:authHeaders({ 'Content-Type':'application/json' }),
@@ -4158,7 +4155,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'pasted-qcm-choice-before-v2') location.reload();
+    if (data.build && data.build !== 'pasted-qcm-pdf-direct-v3') location.reload();
   }catch{}
 }
 
@@ -4171,7 +4168,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=pasted-qcm-choice-before-v2')
+    navigator.serviceWorker.register('/sw.js?v=pasted-qcm-pdf-direct-v3')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
