@@ -4444,7 +4444,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'pasted-qcm-book-pdf-v1',
+    build: 'pasted-qcm-choice-before-v2',
     time: new Date().toISOString()
   });
 });

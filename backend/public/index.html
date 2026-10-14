@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=pasted-qcm-book-pdf-v1">
+<link rel="manifest" href="/manifest.webmanifest?v=pasted-qcm-choice-before-v2">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=pasted-qcm-book-pdf-v1">
+<link rel="stylesheet" href="css/styles.css?v=pasted-qcm-choice-before-v2">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -708,12 +708,12 @@
             <span>Question numérotée · 2 à 4 options consécutives (A-B, A-C ou A-D) · Réponse : A/B/C/D · Explication ou Correction</span>
           </div>
           <div class="admin-paste-format book">
-            <b>PDF livre Réussite Concours BF</b>
-            <span>Aspect papier imprimé · questions ultra-gras en grand format · correction sous chaque QCM · identité originale sans mention technique.</span>
+            <b>Choisis le résultat avant de lancer</b>
+            <span>Quiz interactif à prévisualiser ou PDF livre corrigé à télécharger directement.</span>
           </div>
 
-          <button class="btn btn-green btn-block" id="pastedQcmAnalyzeBtn" onclick="analyzePastedQcm()">Transformer et prévisualiser</button>
-          <button class="btn btn-ghost btn-block" id="pastedQcmPdfBtn" onclick="downloadPastedQcmBookPdf()" style="display:none;margin-top:10px">📕 Créer le PDF livre corrigé</button>
+          <button class="btn btn-green btn-block" id="pastedQcmAnalyzeBtn" onclick="analyzePastedQcm()">🧩 Transformer et prévisualiser le quiz</button>
+          <button class="btn btn-ghost btn-block" id="pastedQcmPdfBtn" onclick="downloadPastedQcmBookPdf()" style="margin-top:10px">📕 Créer directement le PDF livre corrigé</button>
           <button class="btn btn-green btn-block" id="pastedQcmPublishBtn" onclick="publishPastedQcm()" style="display:none;margin-top:10px">Publier les QCM prêts</button>
           <div class="payment-result" id="pastedQcmResult"></div>
           <div id="pastedQcmPreview" class="admin-list"></div>
@@ -1277,7 +1277,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=pasted-qcm-book-pdf-v1"></script>
-<script src="js/app.js?v=pasted-qcm-book-pdf-v1"></script>
+<script src="js/questions.js?v=pasted-qcm-choice-before-v2"></script>
+<script src="js/app.js?v=pasted-qcm-choice-before-v2"></script>
 </body>
 </html>

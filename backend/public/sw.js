@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'pasted-qcm-book-pdf-v1';
+const CACHE_VERSION = 'pasted-qcm-choice-before-v2';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=pasted-qcm-book-pdf-v1',
-  '/js/questions.js?v=pasted-qcm-book-pdf-v1',
-  '/js/app.js?v=pasted-qcm-book-pdf-v1',
+  '/css/styles.css?v=pasted-qcm-choice-before-v2',
+  '/js/questions.js?v=pasted-qcm-choice-before-v2',
+  '/js/app.js?v=pasted-qcm-choice-before-v2',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

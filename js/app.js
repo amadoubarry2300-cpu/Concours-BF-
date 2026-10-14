@@ -1376,7 +1376,7 @@ function renderPastedQcmPreview(data){
   const questions = Array.isArray(data?.questions) ? data.questions : [];
   const rejected = Array.isArray(data?.rejected) ? data.rejected : [];
   publishBtn.style.display = questions.length ? 'block' : 'none';
-  pdfBtn.style.display = questions.length ? 'block' : 'none';
+  pdfBtn.style.display = 'block';
   publishBtn.textContent = `Publier les ${questions.length} QCM prêt${questions.length>1?'s':''}`;
   const readyHtml = questions.length ? `
     <div class="admin-paste-section-head ready"><b>✅ ${questions.length} QCM prêt${questions.length>1?'s':''}</b><span>À relire avant publication</span></div>
@@ -1412,7 +1412,7 @@ async function analyzePastedQcm(){
   pastedQcmPreviewCache = null;
   pastedQcmPreviewSignature = '';
   if (publishBtn) publishBtn.style.display = 'none';
-  if (pdfBtn) pdfBtn.style.display = 'none';
+  if (pdfBtn) pdfBtn.style.display = 'block';
   if (preview) preview.innerHTML = '<div class="empty">Lecture et mise au propre des QCM...</div>';
   if (result) result.innerHTML = '<div class="pay-note">Aucune publication pendant cette étape : tu pourras relire le résultat avant de valider.</div>';
   try{
@@ -1426,9 +1426,11 @@ async function analyzePastedQcm(){
       result.innerHTML = `<div class="pay-note ${ready ? 'success' : 'error'}"><b>${ready} QCM prêt${ready>1?'s':''}</b>${blocked ? ` · ${blocked} bloqué${blocked>1?'s':''}` : ' · aucun problème détecté'}<br>Titre : <b>${escapeHtml(data.metadata?.title || '')}</b> · Date : <b>${escapeHtml(formatDate(data.metadata?.date))}</b> · Module : <b>${escapeHtml(data.metadata?.category || '')}</b></div>`;
     }
     renderPastedQcmPreview(data);
+    return data;
   }catch(err){
     if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
     if (preview) preview.innerHTML = '';
+    return null;
   }finally{
     setButtonLoading(btn, false);
   }
@@ -1445,13 +1447,17 @@ function pastedQcmPdfFileName(title, date){
 }
 
 async function downloadPastedQcmBookPdf(){
-  const ready = Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0);
-  if (!ready) return toast('Transforme et prévisualise d’abord les QCM.');
-  if (pastedQcmPreviewSignature !== JSON.stringify(pastedQcmPayload())) return toast('Le contenu a changé : relance la prévisualisation avant de créer le PDF.');
   const btn = $('#pastedQcmPdfBtn');
   const result = $('#pastedQcmResult');
-  setButtonLoading(btn, true, 'Création du livre PDF...');
+  setButtonLoading(btn, true, 'Vérification des QCM...');
   try{
+    let ready = Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0);
+    if (!ready || pastedQcmPreviewSignature !== JSON.stringify(pastedQcmPayload())){
+      const preview = await analyzePastedQcm();
+      ready = Number(preview?.ready || preview?.questions?.length || 0);
+      if (!ready) throw new Error('Aucun QCM valide à placer dans le PDF.');
+    }
+    setButtonLoading(btn, true, 'Création du livre PDF...');
     const formPayload = pastedQcmPayload();
     const payload = {
       ...formPayload,
@@ -4152,7 +4158,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'pasted-qcm-book-pdf-v1') location.reload();
+    if (data.build && data.build !== 'pasted-qcm-choice-before-v2') location.reload();
   }catch{}
 }
 
@@ -4165,7 +4171,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=pasted-qcm-book-pdf-v1')
+    navigator.serviceWorker.register('/sw.js?v=pasted-qcm-choice-before-v2')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
