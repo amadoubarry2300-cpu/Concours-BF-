@@ -247,9 +247,14 @@ function refreshAiCategoryOptions(preferred){
   return setDailyCategoryOptions($('#aiCategory'), $('#aiLevel')?.value || 'Concours', (preferred ?? $('#aiCategory')?.value ?? ''), false);
 }
 
+function refreshPastedQcmCategoryOptions(preferred){
+  return setDailyCategoryOptions($('#pastedQcmCategory'), $('#pastedQcmLevel')?.value || 'Concours', (preferred ?? $('#pastedQcmCategory')?.value ?? ''), false);
+}
+
 function refreshAllAiCategoryOptions(){
   refreshDailyCategoryOptions();
   refreshAiCategoryOptions();
+  refreshPastedQcmCategoryOptions();
 }
 
 function avatarDataForUser(user = state.user){
@@ -1167,6 +1172,8 @@ let dailyQuestionEditorDraft = [];
 let dailyQuestionEditorOpen = false;
 let dailyQuestionEditorDirty = false;
 let aiNewsDraftCache = [];
+let pastedQcmPreviewCache = null;
+let pastedQcmPreviewSignature = '';
 let resourceCache = [];
 let newsCache = [];
 let publishedQcmCache = [];
@@ -1195,17 +1202,20 @@ async function adminFetch(path, options = {}){
 function setAdminTab(tab){
   adminTab = tab || 'create';
   $('#adminCreatePane') && ($('#adminCreatePane').style.display = adminTab === 'create' ? 'block' : 'none');
+  $('#adminPastePane') && ($('#adminPastePane').style.display = adminTab === 'paste' ? 'block' : 'none');
   $('#adminListPane') && ($('#adminListPane').style.display = adminTab === 'list' ? 'block' : 'none');
   $('#adminResourcesPane') && ($('#adminResourcesPane').style.display = adminTab === 'resources' ? 'block' : 'none');
   $('#adminNewsPane') && ($('#adminNewsPane').style.display = adminTab === 'news' ? 'block' : 'none');
   $('#adminAiPane') && ($('#adminAiPane').style.display = adminTab === 'ai' ? 'block' : 'none');
   $('#adminNotificationsPane') && ($('#adminNotificationsPane').style.display = adminTab === 'notifications' ? 'block' : 'none');
   $('#adminTabCreate')?.classList.toggle('on', adminTab === 'create');
+  $('#adminTabPaste')?.classList.toggle('on', adminTab === 'paste');
   $('#adminTabList')?.classList.toggle('on', adminTab === 'list');
   $('#adminTabResources')?.classList.toggle('on', adminTab === 'resources');
   $('#adminTabNews')?.classList.toggle('on', adminTab === 'news');
   $('#adminTabAi')?.classList.toggle('on', adminTab === 'ai');
   $('#adminTabNotifications')?.classList.toggle('on', adminTab === 'notifications');
+  if (adminTab === 'paste') initializePastedQcmTool();
   if (adminTab === 'list') loadAdminQuestions();
   if (adminTab === 'resources') loadAdminResources();
   if (adminTab === 'news') loadAdminNews();
@@ -1338,6 +1348,117 @@ function resetAdminForm(clearMessage = true){
   const saveBtn = $('#adminSaveBtn');
   if (saveBtn){ saveBtn.textContent='Publier le QCM'; delete saveBtn.dataset.label; }
   if (clearMessage && $('#adminResult')) $('#adminResult').innerHTML='';
+}
+
+
+function initializePastedQcmTool(){
+  const dateInput = $('#pastedQcmDate');
+  if (dateInput && !dateInput.value) dateInput.value = today();
+  refreshPastedQcmCategoryOptions();
+}
+
+function pastedQcmPayload(){
+  return {
+    title:($('#pastedQcmTitle')?.value || '').trim(),
+    date:$('#pastedQcmDate')?.value || today(),
+    category:$('#pastedQcmCategory')?.value || 'Culture générale',
+    level:$('#pastedQcmLevel')?.value || 'Concours',
+    is_premium:Boolean($('#pastedQcmPremium')?.checked),
+    text:$('#pastedQcmText')?.value || ''
+  };
+}
+
+function renderPastedQcmPreview(data){
+  const wrap = $('#pastedQcmPreview');
+  const publishBtn = $('#pastedQcmPublishBtn');
+  if (!wrap || !publishBtn) return;
+  const questions = Array.isArray(data?.questions) ? data.questions : [];
+  const rejected = Array.isArray(data?.rejected) ? data.rejected : [];
+  publishBtn.style.display = questions.length ? 'block' : 'none';
+  publishBtn.textContent = `Publier les ${questions.length} QCM prêt${questions.length>1?'s':''}`;
+  const readyHtml = questions.length ? `
+    <div class="admin-paste-section-head ready"><b>✅ ${questions.length} QCM prêt${questions.length>1?'s':''}</b><span>À relire avant publication</span></div>
+    ${questions.map((q, index)=>{
+      const answer = ['A','B','C','D'][Number(q.correct_answer)] || '?';
+      return `<details class="admin-q-item admin-paste-preview-card" ${index < 2 ? 'open' : ''}>
+        <summary><b>QCM ${escapeHtml(q.import_number || index + 1)}</b><span>${renderMathText(q.question_text || '')}</span></summary>
+        <div class="admin-paste-preview-body">
+          <p><b>A.</b> ${renderMathText(q.option_a || '')}</p>
+          <p><b>B.</b> ${renderMathText(q.option_b || '')}</p>
+          <p><b>C.</b> ${renderMathText(q.option_c || '')}</p>
+          <p><b>D.</b> ${renderMathText(q.option_d || '')}</p>
+          <div class="admin-paste-correction"><b>Bonne réponse : ${answer}</b><span>${renderMathText(q.explanation || '')}</span></div>
+        </div>
+      </details>`;
+    }).join('')}` : '';
+  const rejectedHtml = rejected.length ? `
+    <div class="admin-paste-section-head blocked"><b>⚠️ ${rejected.length} QCM bloqué${rejected.length>1?'s':''}</b><span>Corrige le texte puis relance l’analyse</span></div>
+    ${rejected.map(row=>`<div class="admin-q-item admin-paste-rejected">
+      <div class="admin-q-meta"><span>QCM ${escapeHtml(row.number || '?')}</span><span>Non publié</span></div>
+      <h4>${renderMathText(row.question || 'Question non reconnue')}</h4>
+      <p>${escapeHtml(row.reason || 'Format incomplet')}</p>
+    </div>`).join('')}` : '';
+  wrap.innerHTML = readyHtml + rejectedHtml || '<div class="empty">Aucun QCM détecté.</div>';
+}
+
+async function analyzePastedQcm(){
+  const btn = $('#pastedQcmAnalyzeBtn');
+  const result = $('#pastedQcmResult');
+  const preview = $('#pastedQcmPreview');
+  const publishBtn = $('#pastedQcmPublishBtn');
+  setButtonLoading(btn, true, 'Transformation...');
+  pastedQcmPreviewCache = null;
+  pastedQcmPreviewSignature = '';
+  if (publishBtn) publishBtn.style.display = 'none';
+  if (preview) preview.innerHTML = '<div class="empty">Lecture et mise au propre des QCM...</div>';
+  if (result) result.innerHTML = '<div class="pay-note">Aucune publication pendant cette étape : tu pourras relire le résultat avant de valider.</div>';
+  try{
+    refreshPastedQcmCategoryOptions();
+    const data = await adminFetch('/api/admin/questions/import/preview', { method:'POST', body:JSON.stringify(pastedQcmPayload()) });
+    pastedQcmPreviewCache = data;
+    pastedQcmPreviewSignature = JSON.stringify(pastedQcmPayload());
+    const blocked = Number(data.rejected?.length || 0);
+    const ready = Number(data.ready || data.questions?.length || 0);
+    if (result){
+      result.innerHTML = `<div class="pay-note ${ready ? 'success' : 'error'}"><b>${ready} QCM prêt${ready>1?'s':''}</b>${blocked ? ` · ${blocked} bloqué${blocked>1?'s':''}` : ' · aucun problème détecté'}<br>Titre : <b>${escapeHtml(data.metadata?.title || '')}</b> · Date : <b>${escapeHtml(formatDate(data.metadata?.date))}</b> · Module : <b>${escapeHtml(data.metadata?.category || '')}</b></div>`;
+    }
+    renderPastedQcmPreview(data);
+  }catch(err){
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
+    if (preview) preview.innerHTML = '';
+  }finally{
+    setButtonLoading(btn, false);
+  }
+}
+
+async function publishPastedQcm(){
+  const ready = Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0);
+  if (!ready) return toast('Transforme et prévisualise d’abord les QCM.');
+  if (pastedQcmPreviewSignature !== JSON.stringify(pastedQcmPayload())) return toast('Le contenu a changé : relance la prévisualisation avant de publier.');
+  if (!confirm(`Publier maintenant ${ready} QCM dans l’application ?`)) return;
+  const btn = $('#pastedQcmPublishBtn');
+  const result = $('#pastedQcmResult');
+  setButtonLoading(btn, true, 'Publication...');
+  try{
+    const data = await adminFetch('/api/admin/questions/import/publish', { method:'POST', body:JSON.stringify(pastedQcmPayload()) });
+    const destination = data.metadata?.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
+    const blocked = Number(data.rejected?.length || 0);
+    if (result){
+      result.innerHTML = `<div class="pay-note success"><b>${data.published || 0} QCM publiés dans ${destination} ✅</b><br>Ils sont regroupés sous « ${escapeHtml(data.metadata?.title || 'Nouveau QCM')} », avec la date et le module choisis.${blocked ? `<br>${blocked} QCM incomplet${blocked>1?'s':''} n’a pas été publié.` : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${data.metadata?.is_premium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir le quiz dans l’application</button></div>`;
+    }
+    pastedQcmPreviewCache = null;
+    pastedQcmPreviewSignature = '';
+    $('#pastedQcmText') && ($('#pastedQcmText').value='');
+    $('#pastedQcmPreview') && ($('#pastedQcmPreview').innerHTML='');
+    if (btn) btn.style.display = 'none';
+    await Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions(), loadPublishedQcm(data.metadata?.is_premium ? 'premium' : 'free')]);
+    renderFormations(currentFormFilter);
+    toast(`${data.published || 0} QCM publiés ✅`);
+  }catch(err){
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
+  }finally{
+    setButtonLoading(btn, false);
+  }
 }
 
 function qcmDestinationText(q){
@@ -3738,7 +3859,7 @@ async function loadPublishedQcm(filter){
   if (!wrap) return;
   wrap.innerHTML = '<div class="empty">Chargement des nouveaux QCM...</div>';
   try{
-    const res = await fetchWithTimeout('/api/qcm-publications', { headers:authHeaders({}) });
+    const res = await fetchWithTimeout('/api/qcm-publications', { headers:authHeaders({ 'Cache-Control':'no-cache' }), cache:'no-store' });
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Nouveaux QCM indisponibles');
     publishedQcmCache = data.publications || [];
@@ -3971,7 +4092,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'news-direct-pro-only-v2') location.reload();
+    if (data.build && data.build !== 'admin-paste-qcm-v1') location.reload();
   }catch{}
 }
 
@@ -3984,7 +4105,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=news-direct-pro-only-v2')
+    navigator.serviceWorker.register('/sw.js?v=admin-paste-qcm-v1')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

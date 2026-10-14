@@ -1462,6 +1462,181 @@ function normalizeAiQuestionList(aiText, defaults, count, options = {}){
   return normalizeAiQuestionRows(rows, defaults, count, options);
 }
 
+
+function pastedQcmImportMetadata(body = {}){
+  const title = cleanText(body?.title || '', 180).replace(/\s+/g, ' ').trim();
+  if (title.length < 3) throw Object.assign(new Error('Ajoute un titre pour ce nouveau QCM.'), { status:400 });
+  const level = normalizedLevelName(body?.level || 'Concours');
+  if (!AI_LEVEL_CATEGORY_RULES[level]) throw Object.assign(new Error('Niveau non reconnu.'), { status:400 });
+  const category = cleanText(body?.category || '', 80);
+  if (!categoryAllowedForLevel(category, level)) throw Object.assign(new Error('Choisis un module compatible avec le niveau.'), { status:400 });
+  const date = cleanText(body?.date || todayId(), 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw Object.assign(new Error('Date de publication invalide.'), { status:400 });
+  const parsedDate = new Date(`${date}T12:00:00.000Z`);
+  if (Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date){
+    throw Object.assign(new Error('Date de publication invalide.'), { status:400 });
+  }
+  return {
+    title,
+    date,
+    created_at:parsedDate.toISOString(),
+    category,
+    level,
+    is_premium:Boolean(body?.is_premium)
+  };
+}
+
+function cleanPastedQcmLine(value){
+  return stripHtml(String(value || '')
+    .replace(/([0-9])\uFE0F?\u20E3/g, '$1.')
+    .replace(/^\s{0,3}#{1,6}\s*/, '')
+    .replace(/\*\*|__|`/g, ''))
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function pastedQcmAnswerIndex(block){
+  const label = String(block?.answerLabel || '').trim().toUpperCase();
+  if (/^[A-D]$/.test(label)) return label.charCodeAt(0) - 65;
+  const answer = normalizeQcmOptionKey(String(block?.answerText || '').replace(/^option\s+/i, ''));
+  if (!answer) return -1;
+  return (block.options || []).findIndex(option => normalizeQcmOptionKey(option) === answer);
+}
+
+function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
+  const raw = String(rawText || '');
+  if (!raw.trim()) throw Object.assign(new Error('Colle d’abord les QCM numérotés dans la grande case.'), { status:400 });
+  if (raw.length > 200000) throw Object.assign(new Error('Le texte collé est trop long. Limite : 50 QCM.'), { status:413 });
+  const lines = raw.replace(/\r\n?/g, '\n').replace(/```(?:json|text|markdown)?/gi, '').split('\n');
+  const blocks = [];
+  let current = null;
+  let ignoredLines = 0;
+  const finish = () => {
+    if (!current) return;
+    current.question = cleanPastedQcmLine(current.question);
+    current.options = current.options.map(cleanPastedQcmLine);
+    current.explanation = cleanPastedQcmLine(current.explanation);
+    blocks.push(current);
+    current = null;
+  };
+  for (const rawLine of lines){
+    const line = cleanPastedQcmLine(rawLine);
+    if (!line) continue;
+    const questionMatch = line.match(/^\s*(?:[-•]\s*)?(?:(?:question|qcm|q)\s*)?(?:n(?:[°ºo])?\s*)?(\d{1,3})(?:\s*[.)]|\s*[:\-–—])\s*(.+)$/i);
+    if (questionMatch){
+      finish();
+      current = {
+        number:Number(questionMatch[1]),
+        question:questionMatch[2],
+        options:['','','',''],
+        answerLabel:'',
+        answerText:'',
+        explanation:'',
+        answerTrailing:'',
+        duplicateOption:false,
+        part:'question',
+        optionIndex:-1
+      };
+      continue;
+    }
+    if (!current){ ignoredLines += 1; continue; }
+    const optionMatch = line.match(/^\s*(?:[-•]\s*)?([A-D])\s*(?:[.)]|[:\-–—])\s*(.+)$/i);
+    if (optionMatch){
+      const optionIndex = optionMatch[1].toUpperCase().charCodeAt(0) - 65;
+      if (current.options[optionIndex]) current.duplicateOption = true;
+      current.options[optionIndex] = optionMatch[2];
+      current.optionIndex = optionIndex;
+      current.part = 'option';
+      continue;
+    }
+    const answerMatch = line.match(/^\s*(?:(?:bonne\s+)?r[ée]ponse(?:\s+correcte)?|correct\s+answer)\s*(?:est\s*)?(?:[:\-–—]\s*)?(.+)$/i);
+    if (answerMatch){
+      const answerBody = answerMatch[1].trim();
+      const labelMatch = answerBody.match(/^(?:l['’]?option\s+|option\s+)?([A-D])(?:\s*[.)]|\s*[:\-–—])?\s*(.*)$/i);
+      if (labelMatch){
+        current.answerLabel = labelMatch[1].toUpperCase();
+        current.answerTrailing = cleanPastedQcmLine(labelMatch[2]);
+      }else{
+        current.answerText = answerBody;
+      }
+      current.part = 'answer';
+      current.optionIndex = -1;
+      continue;
+    }
+    const explanationMatch = line.match(/^\s*(?:explication|correction|justification|raison)\s*[:\-–—]\s*(.*)$/i);
+    if (explanationMatch){
+      const explanationBody = explanationMatch[1].trim();
+      const leadingLabel = explanationBody.match(/^(?:l['’]?option\s+|option\s+)?([A-D])(?:\s*[.)]|\s*[:\-–—])\s*(.*)$/i);
+      const embeddedLabel = explanationBody.match(/\b(?:bonne\s+r[ée]ponse|r[ée]ponse\s+correcte)\s+(?:est\s+)?(?:l['’]?option\s+|option\s+)?([A-D])\b/i);
+      if (!current.answerLabel && leadingLabel) current.answerLabel = leadingLabel[1].toUpperCase();
+      if (!current.answerLabel && embeddedLabel) current.answerLabel = embeddedLabel[1].toUpperCase();
+      current.explanation = `${current.explanation} ${explanationBody}`.trim();
+      current.part = 'explanation';
+      current.optionIndex = -1;
+      continue;
+    }
+    if (current.part === 'option' && current.optionIndex >= 0){
+      current.options[current.optionIndex] = `${current.options[current.optionIndex]} ${line}`.trim();
+    }else if (current.part === 'explanation' || current.part === 'answer'){
+      current.explanation = `${current.explanation} ${line}`.trim();
+      current.part = 'explanation';
+    }else{
+      current.question = `${current.question} ${line}`.trim();
+    }
+  }
+  finish();
+
+  const index = dedupeIndex || createQuestionDedupeIndex();
+  const questions = [];
+  const rejected = [];
+  for (const block of blocks){
+    if (questions.length >= 50){
+      rejected.push({ number:block.number, question:block.question, reason:'Limite de 50 QCM par import.' });
+      continue;
+    }
+    try{
+      if (block.duplicateOption) throw new Error('Une lettre de réponse est répétée dans les options.');
+      if (block.options.some(option => !option)) throw new Error('Les quatre options A, B, C et D sont obligatoires.');
+      const correctAnswer = pastedQcmAnswerIndex(block);
+      if (correctAnswer < 0) throw new Error('Bonne réponse introuvable. Utilise « Réponse : A, B, C ou D ».' );
+      let explanation = block.explanation;
+      if (!explanation && block.answerTrailing){
+        const correctOption = normalizeQcmOptionKey(block.options[correctAnswer]);
+        if (normalizeQcmOptionKey(block.answerTrailing) !== correctOption) explanation = block.answerTrailing;
+      }
+      const question = adminQuestionPayload({
+        category:defaults.category || 'Culture générale',
+        level:defaults.level || 'Concours',
+        question_text:block.question,
+        options:block.options,
+        correct_answer:correctAnswer,
+        explanation,
+        source:defaults.title || defaults.source || 'Import administrateur',
+        is_premium:Boolean(defaults.is_premium),
+        is_active:true
+      });
+      const issue = aiQuestionQualityIssue(question, index) || publicQuestionQualityIssue(question);
+      if (issue) throw new Error(issue);
+      questions.push({ ...question, import_number:block.number });
+      addQuestionToDedupeIndex(question.question_text, index);
+    }catch(err){
+      rejected.push({ number:block.number, question:block.question || `QCM ${block.number}`, reason:err.message || 'Format non reconnu.' });
+    }
+  }
+  if (!blocks.length){
+    rejected.push({ number:0, question:'Texte collé', reason:'Aucun QCM numéroté détecté. Commence chaque question par 1., 2., 3., etc.' });
+  }
+  return { questions, rejected, detected:blocks.length, ignoredLines };
+}
+
+async function preparePastedQcmImport(body = {}){
+  const metadata = pastedQcmImportMetadata(body);
+  const existingTexts = await collectExistingQcmTexts({ includeDaily:false });
+  const parsed = parsePastedQcmText(body?.text, metadata, { dedupeIndex:createQuestionDedupeIndex(existingTexts) });
+  return { metadata, ...parsed, existingCount:existingTexts.length };
+}
+
 function promptAvoidBlock(avoidQuestions = [], existingCount = 0){
   const rows = (avoidQuestions || [])
     .map(q => strictCleanAiQcmText(q, 220))
@@ -4032,7 +4207,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'news-direct-pro-only-v2',
+    build: 'admin-paste-qcm-v1',
     time: new Date().toISOString()
   });
 });
@@ -4971,6 +5146,57 @@ app.get('/api/admin/questions', requireAdmin, async (req, res, next) => {
   }catch(err){ next(err); }
 });
 
+app.post('/api/admin/questions/import/preview', requireAdmin, async (req, res, next) => {
+  try{
+    const result = await preparePastedQcmImport(req.body || {});
+    res.json({
+      ok:true,
+      metadata:result.metadata,
+      detected:result.detected,
+      ready:result.questions.length,
+      rejected:result.rejected,
+      ignoredLines:result.ignoredLines,
+      questions:result.questions
+    });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/questions/import/publish', requireAdmin, async (req, res, next) => {
+  try{
+    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    const result = await preparePastedQcmImport(req.body || {});
+    if (!result.questions.length){
+      return res.status(400).json({ message:'Aucun QCM propre et complet à publier.', rejected:result.rejected });
+    }
+    const payload = result.questions.map(question => ({
+      ...adminQuestionPayload(question),
+      source:result.metadata.title,
+      is_premium:result.metadata.is_premium,
+      created_at:result.metadata.created_at
+    }));
+    const rows = await supabaseRequest('questions?select=*', {
+      method:'POST',
+      prefer:'return=representation',
+      body:payload
+    });
+    const published = Array.isArray(rows) ? rows.length : payload.length;
+    res.json({
+      ok:true,
+      published,
+      rejected:result.rejected,
+      metadata:result.metadata,
+      publication:{
+        title:result.metadata.title,
+        date:result.metadata.date,
+        category:result.metadata.category,
+        level:result.metadata.level,
+        is_premium:result.metadata.is_premium,
+        questionCount:published
+      }
+    });
+  }catch(err){ next(err); }
+});
+
 app.post('/api/admin/questions', requireAdmin, async (req, res, next) => {
   try{
     if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
@@ -5676,6 +5902,8 @@ export {
   certifyGeminiSinglePassQuestion,
   dailyDraftGenerationIssue,
   recoverDailyAiDraft,
+  parsePastedQcmText,
+  pastedQcmImportMetadata,
   isDirectProfessionalCompetitionNews,
   extractOfficialCandidates,
   normalizeOfficialNewsDraft,
