@@ -2935,6 +2935,10 @@ const PDF_THEME_KEYS = [
   'tinos-examen'
 ];
 
+// Chaque nouveau livre reçoit une seule harmonie dominante. Sur une instance
+// active, la génération suivante choisit obligatoirement une autre harmonie.
+let lastPastedQcmBookToneIndex = -1;
+
 function setupPdfFonts(doc, requestedTheme = ''){
   const bundledFonts = path.join(PUBLIC_DIR, 'fonts');
   const fontFiles = {
@@ -3244,21 +3248,28 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
       'canva-modern':{ background:'#eef3fb', wash:'#dce6f5', answer:'#e4f2ed', explanation:'#f5f8fc', ink:'#17213a' },
       'canva-serif':{ background:'#f8f1f3', wash:'#efe0e4', answer:'#e7f2ed', explanation:'#fcf8f5', ink:'#20191b' }
     }[fonts.variant] || { background:'#f2f5f3', wash:'#e2ece7', answer:'#e4f5ec', explanation:'#f8faf9', ink:palette.ink };
-    // Les pages alternent automatiquement entre huit harmonies imprimables.
-    // L’ordre est déterministe pour qu’un même livre reste stable, mais il est
-    // décalé selon son titre et son design afin d’éviter un cahier monochrome.
+    // Un PDF reste entièrement dans une seule famille de couleur. À chaque
+    // nouvelle génération, une autre harmonie est choisie automatiquement.
     const pageTones = [
-      { primary:'#087a55', secondary:'#dc4b3e', accent:'#f2b705', background:'#edf8f3', wash:'#d8eee5', answer:'#ddf4e8', explanation:'#f5fbf8', answerInk:'#08714f' },
-      { primary:'#0b7f91', secondary:'#e45f42', accent:'#15a77c', background:'#edf8fa', wash:'#d7edf1', answer:'#def3ef', explanation:'#f4fafb', answerInk:'#08705e' },
-      { primary:'#224f91', secondary:'#d64550', accent:'#f0b429', background:'#eef3fb', wash:'#dae4f4', answer:'#e1f1ea', explanation:'#f5f8fc', answerInk:'#116844' },
-      { primary:'#781f3a', secondary:'#b9862f', accent:'#24705f', background:'#f8f0f3', wash:'#ecdde2', answer:'#e3f1eb', explanation:'#fcf7f4', answerInk:'#176247' },
-      { primary:'#6540a4', secondary:'#d94f79', accent:'#f29f3d', background:'#f4f0fb', wash:'#e5dcf3', answer:'#e3f3ed', explanation:'#faf7fd', answerInk:'#17684d' },
-      { primary:'#31449a', secondary:'#d67b22', accent:'#e84d71', background:'#f0f2fb', wash:'#dde2f4', answer:'#e1f2ec', explanation:'#f8f8fd', answerInk:'#146a4b' },
-      { primary:'#a3491f', secondary:'#205f66', accent:'#e2ad27', background:'#faf2ed', wash:'#f0dfd5', answer:'#e0f1e9', explanation:'#fdf8f4', answerInk:'#17694b' },
-      { primary:'#1769aa', secondary:'#78459b', accent:'#e9ad21', background:'#edf5fb', wash:'#d8e8f4', answer:'#def1e9', explanation:'#f5f9fc', answerInk:'#126849' }
+      { primary:'#087a55', secondary:'#075d43', accent:'#39a77d', background:'#edf8f3', wash:'#d8eee5', answer:'#ddf4e8', explanation:'#f5fbf8', answerInk:'#08714f' },
+      { primary:'#0b7f91', secondary:'#096271', accent:'#38a9b8', background:'#edf8fa', wash:'#d7edf1', answer:'#def1f3', explanation:'#f4fafb', answerInk:'#096b79' },
+      { primary:'#224f91', secondary:'#183d73', accent:'#5078b4', background:'#eef3fb', wash:'#dae4f4', answer:'#e2ebf7', explanation:'#f5f8fc', answerInk:'#1d467f' },
+      { primary:'#781f3a', secondary:'#5f172d', accent:'#a04c66', background:'#f8f0f3', wash:'#ecdde2', answer:'#f1e2e7', explanation:'#fcf7f9', answerInk:'#6b1b34' },
+      { primary:'#6540a4', secondary:'#4d307f', accent:'#8a68bd', background:'#f4f0fb', wash:'#e5dcf3', answer:'#ebe3f6', explanation:'#faf7fd', answerInk:'#58378f' },
+      { primary:'#31449a', secondary:'#263578', accent:'#6171b8', background:'#f0f2fb', wash:'#dde2f4', answer:'#e4e8f7', explanation:'#f8f8fd', answerInk:'#2b3c89' },
+      { primary:'#a3491f', secondary:'#7d3718', accent:'#c46e45', background:'#faf2ed', wash:'#f0dfd5', answer:'#f5e6dd', explanation:'#fdf8f4', answerInk:'#8d3e1b' },
+      { primary:'#1769aa', secondary:'#105184', accent:'#4c8fc3', background:'#edf5fb', wash:'#d8e8f4', answer:'#e0edf7', explanation:'#f5f9fc', answerInk:'#145d96' }
     ];
-    const toneSeed = [...`${cleanTitle}|${fonts.theme}|${metadata.date || ''}`].reduce((sum, char) => (sum + char.codePointAt(0)) % pageTones.length, 0);
-    const pageTone = index => pageTones[(toneSeed + Math.max(0, index) * 3) % pageTones.length];
+    let bookToneIndex;
+    if (lastPastedQcmBookToneIndex < 0){
+      bookToneIndex = crypto.randomInt(pageTones.length);
+    }else{
+      const candidate = crypto.randomInt(pageTones.length - 1);
+      bookToneIndex = candidate >= lastPastedQcmBookToneIndex ? candidate + 1 : candidate;
+    }
+    lastPastedQcmBookToneIndex = bookToneIndex;
+    const bookTone = pageTones[bookToneIndex];
+    const pageTone = () => bookTone;
 
     const font = (kind='regular', size=10, color=visual.ink) => {
       doc.font(fonts[kind] || fonts.regular).fontSize(size).fillColor(color);
@@ -3287,32 +3298,32 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
     };
 
     function drawCover(){
-      paper(visual.background);
-      doc.rect(0, 0, pageW, 285).fill(palette.primary);
-      doc.rect(0, 0, 18, pageH).fill(palette.secondary);
-      doc.rect(18, 0, 7, pageH).fill(palette.accent);
+      paper(bookTone.background);
+      doc.rect(0, 0, pageW, 285).fill(bookTone.primary);
+      doc.rect(0, 0, 18, pageH).fill(bookTone.secondary);
+      doc.rect(18, 0, 7, pageH).fill(bookTone.accent);
       doc.save().opacity(0.12).fillColor('#ffffff');
       doc.circle(pageW - 25, 45, 150).fill();
       doc.circle(pageW - 80, 240, 72).fill();
       doc.restore();
-      doc.save().opacity(0.18).fillColor(palette.secondary);
+      doc.save().opacity(0.18).fillColor(bookTone.secondary);
       doc.moveTo(24, pageH).lineTo(310, pageH).lineTo(24, pageH - 286).closePath().fill();
       doc.restore();
 
       shadowCard(58, 72, pageW - 100, 650, 22);
-      doc.roundedRect(81, 96, 78, 78, 39).fill(visual.background);
+      doc.roundedRect(81, 96, 78, 78, 39).fill(bookTone.background);
       logo(89, 104, 62);
       font('bold', 22, visual.ink).text('RÉUSSITE', 178, 103, { width:300 });
-      font('bold', 24, palette.primary).text('CONCOURS BF', 178, 134, { width:310 });
+      font('bold', 24, bookTone.primary).text('CONCOURS BF', 178, 134, { width:310 });
       font('regular', 9.5, palette.muted).text('PRÉPARATION AUX EXAMENS ET CONCOURS', 179, 168, { width:310, characterSpacing:0.55 });
-      doc.moveTo(82, 196).lineTo(pageW - 72, 196).lineWidth(1.2).stroke(visual.wash);
+      doc.moveTo(82, 196).lineTo(pageW - 72, 196).lineWidth(1.2).stroke(bookTone.wash);
 
-      font('bold', 12, palette.secondary).text('LIVRE NUMÉRIQUE • ÉDITION CORRIGÉE', 84, 226, { width:pageW - 148, align:'center', characterSpacing:0.45 });
+      font('bold', 12, bookTone.secondary).text('LIVRE NUMÉRIQUE • ÉDITION CORRIGÉE', 84, 226, { width:pageW - 148, align:'center', characterSpacing:0.45 });
       const titleSize = fitSize(cleanTitle.toUpperCase(), pageW - 154, 145, 'bold', 38, 23, { lineGap:2, align:'center' });
       font('bold', titleSize, visual.ink).text(cleanTitle.toUpperCase(), 86, 270, { width:pageW - 158, align:'center', lineGap:2 });
 
-      doc.roundedRect(100, 414, pageW - 182, 79, 14).fill(palette.primary);
-      doc.roundedRect(100, 414, 12, 79, 6).fill(palette.accent);
+      doc.roundedRect(100, 414, pageW - 182, 79, 14).fill(bookTone.primary);
+      doc.roundedRect(100, 414, 12, 79, 6).fill(bookTone.accent);
       font('bold', 27, '#ffffff').text(`${rows.length} QCM`, 124, 428, { width:pageW - 230, align:'center' });
       font('regular', 11, '#ffffff').text('UN QCM PAR PAGE • RÉPONSES EXPLIQUÉES', 124, 462, { width:pageW - 230, align:'center', characterSpacing:0.25 });
 
@@ -3321,12 +3332,12 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
         const y = 535 + index * 43;
         font('bold', 10, palette.muted).text(row[0], metaX, y, { width:90 });
         font('bold', index === 2 ? 11.5 : 14, visual.ink).text(row[1], metaX + 96, y - 3, { width:metaW - 96, align:'right', ellipsis:true });
-        doc.moveTo(metaX, y + 24).lineTo(metaX + metaW, y + 24).lineWidth(0.7).stroke(visual.wash);
+        doc.moveTo(metaX, y + 24).lineTo(metaX + metaW, y + 24).lineWidth(0.7).stroke(bookTone.wash);
       });
 
-      font('italic', 11.2, palette.primary).text('Une préparation sérieuse aujourd’hui, votre réussite demain.', 84, 675, { width:pageW - 150, align:'center' });
-      font('bold', 9.2, palette.secondary).text('BURKINA FASO • +226 74 01 37 04', 84, 697, { width:pageW - 150, align:'center', characterSpacing:0.45 });
-      font('bold', 9, palette.primary).text('RÉUSSITE CONCOURS BF', 52, 770, { width:230 });
+      font('italic', 11.2, bookTone.primary).text('Une préparation sérieuse aujourd’hui, votre réussite demain.', 84, 675, { width:pageW - 150, align:'center' });
+      font('bold', 9.2, bookTone.secondary).text('BURKINA FASO • +226 74 01 37 04', 84, 697, { width:pageW - 150, align:'center', characterSpacing:0.45 });
+      font('bold', 9, bookTone.primary).text('RÉUSSITE CONCOURS BF', 52, 770, { width:230 });
       font('regular', 8.5, palette.muted).text('Livre conçu pour l’écran et l’impression', pageW - 300, 770, { width:248, align:'right' });
     }
 
@@ -4697,7 +4708,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'multicolor-multi-answer-v12',
+    build: 'single-color-cycle-v13',
     time: new Date().toISOString()
   });
 });

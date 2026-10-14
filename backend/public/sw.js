@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'multicolor-multi-answer-v12';
+const CACHE_VERSION = 'single-color-cycle-v13';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=multicolor-multi-answer-v12',
-  '/js/questions.js?v=multicolor-multi-answer-v12',
-  '/js/app.js?v=multicolor-multi-answer-v12',
+  '/css/styles.css?v=single-color-cycle-v13',
+  '/js/questions.js?v=single-color-cycle-v13',
+  '/js/app.js?v=single-color-cycle-v13',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

@@ -4483,7 +4483,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'multicolor-multi-answer-v12') location.reload();
+    if (data.build && data.build !== 'single-color-cycle-v13') location.reload();
   }catch{}
 }
 
@@ -4496,7 +4496,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=multicolor-multi-answer-v12')
+    navigator.serviceWorker.register('/sw.js?v=single-color-cycle-v13')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
