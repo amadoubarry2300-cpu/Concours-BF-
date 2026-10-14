@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'navigation-modules-v7';
+const CACHE_VERSION = 'payment-network-validation-v8';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=navigation-modules-v7',
-  '/js/questions.js?v=navigation-modules-v7',
-  '/js/app.js?v=navigation-modules-v7',
+  '/css/styles.css?v=payment-network-validation-v8',
+  '/js/questions.js?v=payment-network-validation-v8',
+  '/js/app.js?v=payment-network-validation-v8',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

@@ -28,6 +28,13 @@ const SASPAY_NETWORKS = {
   ORANGE_MONEY: process.env.SASPAY_NETWORK_ORANGE || 'orange_bf',
   MOOV_MONEY: process.env.SASPAY_NETWORK_MOOV || 'moov_bf'
 };
+// Préfixes mobiles publiés pour le Burkina Faso. Le contrôle empêche d'envoyer
+// une demande Orange Money vers un numéro Moov (ou inversement).
+const BF_MOBILE_OPERATOR_PREFIXES = Object.freeze({
+  ORANGE_MONEY: Object.freeze(['04','05','06','07','44','45','46','54','55','56','57','64','65','66','67','74','75','76','77']),
+  MOOV_MONEY: Object.freeze(['01','02','03','50','51','52','53','60','61','62','63','70','71','72','73']),
+  TELECEL: Object.freeze(['58','68','69','78','79'])
+});
 const ADMIN_PHONES = String(process.env.ADMIN_PHONES || '')
   .split(',')
   .map(normalizePhone)
@@ -582,6 +589,46 @@ function normalizePhone(phone){
 
 function publicPhone(phone){
   return String(phone || '').replace(/^\+226/, '');
+}
+
+function burkinaMobileOperator(phone){
+  const local = publicPhone(normalizePhone(phone));
+  if (!/^\d{8}$/.test(local)) return 'INVALID';
+  const prefix = local.slice(0, 2);
+  if (BF_MOBILE_OPERATOR_PREFIXES.ORANGE_MONEY.includes(prefix)) return 'ORANGE_MONEY';
+  if (BF_MOBILE_OPERATOR_PREFIXES.MOOV_MONEY.includes(prefix)) return 'MOOV_MONEY';
+  if (BF_MOBILE_OPERATOR_PREFIXES.TELECEL.includes(prefix)) return 'TELECEL';
+  return 'UNKNOWN';
+}
+
+function paymentProviderLabel(provider){
+  if (provider === 'ORANGE_MONEY') return 'Orange Money';
+  if (provider === 'MOOV_MONEY') return 'Moov Money (Telmob)';
+  return 'Mobile Money';
+}
+
+function validatePaymentPhoneForProvider(phone, provider){
+  const selectedProvider = String(provider || '').toUpperCase();
+  if (!['ORANGE_MONEY','MOOV_MONEY'].includes(selectedProvider)){
+    throw Object.assign(new Error('Choisis Orange Money ou Moov Money.'), { status:400 });
+  }
+  const normalized = normalizePhone(phone);
+  const local = publicPhone(normalized);
+  if (!/^\d{8}$/.test(local)){
+    throw Object.assign(new Error('Entre un numéro burkinabè valide de 8 chiffres.'), { status:400 });
+  }
+  const operator = burkinaMobileOperator(normalized);
+  if (operator === 'TELECEL'){
+    throw Object.assign(new Error('Ce numéro appartient à Telecel. Seuls Orange Money et Moov Money sont disponibles pour le moment.'), { status:400 });
+  }
+  if (operator === 'UNKNOWN' || operator === 'INVALID'){
+    throw Object.assign(new Error('Ce préfixe mobile n’est pas reconnu pour Orange ou Moov au Burkina Faso.'), { status:400 });
+  }
+  if (operator !== selectedProvider){
+    const detected = paymentProviderLabel(operator);
+    throw Object.assign(new Error(`Ce numéro est un numéro ${detected}. Sélectionne ${detected} pour continuer.`), { status:400 });
+  }
+  return { phone:normalized, local, provider:selectedProvider, operator };
 }
 
 function customerEmailForPhone(phone){
@@ -4510,7 +4557,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'navigation-modules-v7',
+    build: 'payment-network-validation-v8',
     time: new Date().toISOString()
   });
 });
@@ -4754,19 +4801,31 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
   try{
     requireSasPayConfig();
     const { amount, currency, transactionId, provider, customer, returnUrl, plan:planId } = req.body || {};
-    const phone = normalizePhone(customer?.phone || req.phone);
-    const selectedProvider = provider || 'ORANGE_MONEY';
+    const accountPhone = req.phone;
+    const selectedProvider = String(provider || 'ORANGE_MONEY').toUpperCase();
+    const paymentPhoneCheck = validatePaymentPhoneForProvider(customer?.phone, selectedProvider);
+    const paymentPhone = paymentPhoneCheck.phone;
     const network = saspayNetwork(selectedProvider);
     const plan = subscriptionPlan(planId);
 
     if (Number(amount) !== Number(plan.amount)) return res.status(400).json({ message:'Montant invalide' });
     if ((currency || SASPAY_CURRENCY) !== 'XOF') return res.status(400).json({ message:'Devise invalide' });
-    if (!phone || phone !== req.phone) return res.status(400).json({ message:'Numéro client invalide' });
+    if (!accountPhone) return res.status(400).json({ message:'Compte candidat invalide' });
 
     const tx = String(transactionId || `RCBF-${Date.now()}`);
-    const profile = req.profile || await getProfile(phone);
-    const customerEmail = normalizeEmail(customer?.email || profile?.email) || customerEmailForPhone(phone);
-    await createPaymentRecord({ tx, phone, provider:'SASPAY', status:'INITIATED', plan:plan.id, amount:plan.amount, raw:{ local_tx_ref:tx, selected_provider:selectedProvider, network, customer_email:customerEmail, plan:plan.id } });
+    const profile = req.profile || await getProfile(accountPhone);
+    const customerEmail = normalizeEmail(customer?.email || profile?.email) || customerEmailForPhone(accountPhone);
+    const paymentContext = {
+      local_tx_ref:tx,
+      account_phone:accountPhone,
+      payment_phone:paymentPhone,
+      selected_provider:selectedProvider,
+      detected_operator:paymentPhoneCheck.operator,
+      network,
+      customer_email:customerEmail,
+      plan:plan.id
+    };
+    await createPaymentRecord({ tx, phone:accountPhone, provider:'SASPAY', status:'INITIATED', plan:plan.id, amount:plan.amount, raw:paymentContext });
 
     const firstName = profile?.first_name || profile?.display_name?.split(' ')?.[0] || 'Client';
     const lastName = profile?.last_name || 'Réussite Concours BF';
@@ -4780,17 +4839,16 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
         email: customerEmail,
         first_name: firstName,
         last_name: lastName,
-        phone: publicPhone(phone)
+        phone: publicPhone(paymentPhone)
       },
       network,
-      metadata: { tx_ref: tx, phone, plan: plan.id, provider: selectedProvider }
+      metadata: { tx_ref: tx, account_phone:accountPhone, payment_phone:paymentPhone, plan: plan.id, provider: selectedProvider }
     };
 
     try{
       const data = await saspayRequest('/payments/softpay/', { method:'POST', body:payload, idempotencyKey:tx });
-      const payment = saspayPayload(data);
       const paymentUrl = saspayCheckoutUrl(data);
-      const raw = paymentRawWithSasPay({ local_tx_ref:tx, selected_provider:selectedProvider, network, customer_email:customerEmail, plan:plan.id, amount:plan.amount }, data);
+      const raw = paymentRawWithSasPay({ ...paymentContext, amount:plan.amount }, data);
       await updatePaymentRecord(tx, { status:saspayStatus(data), raw });
       return res.json({
         ok:true,
@@ -4799,7 +4857,7 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
         paymentId: saspayId(data) || null,
         status: saspayStatus(data),
         paymentUrl,
-        message: paymentUrl ? 'Redirection vers la page SasPay pour finaliser le paiement.' : (payment?.message || 'Demande Mobile Money envoyée. Valide sur ton téléphone.')
+        message: paymentUrl ? 'Redirection vers la page de paiement.' : `Demande ${paymentProviderLabel(selectedProvider)} envoyée. Valide-la sur le téléphone à débiter.`
       });
     }catch(err){
       // Si le push direct échoue côté opérateur ou format, on bascule sur le checkout hébergé SasPay.
@@ -4812,19 +4870,15 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
         country: SASPAY_COUNTRY,
         customer_email: customerEmail,
         customer_name: `${firstName} ${lastName}`.trim(),
-        customer_phone: publicPhone(phone),
+        customer_phone: publicPhone(paymentPhone),
         return_url: returnTo,
-        metadata: { tx_ref: tx, phone, plan: plan.id, provider: selectedProvider, softpay_error: err.message }
+        metadata: { tx_ref: tx, account_phone:accountPhone, payment_phone:paymentPhone, plan: plan.id, provider: selectedProvider, softpay_error: err.message }
       };
       const sessionResponse = await saspayRequest('/checkout-sessions/', { method:'POST', body:sessionPayload });
       const session = saspayPayload(sessionResponse);
       const paymentUrl = saspayCheckoutUrl(sessionResponse);
       const raw = {
-        local_tx_ref:tx,
-        selected_provider:selectedProvider,
-        network,
-        customer_email:customerEmail,
-        plan:plan.id,
+        ...paymentContext,
         amount:plan.amount,
         saspay_session_id:saspayId(sessionResponse),
         saspay_session:session,
@@ -4833,7 +4887,7 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
       };
       await updatePaymentRecord(tx, { status:saspayStatus(sessionResponse), raw });
       if (!paymentUrl){
-        return res.status(502).json({ message:'SasPay a créé une session sans lien de paiement. Réessaie ou contacte le support SasPay.', mode:'checkout', transactionId:tx, sessionId:saspayId(sessionResponse) || null });
+        return res.status(502).json({ message:'La page de paiement n’a pas pu être ouverte. Réessaie dans quelques instants.', mode:'checkout', transactionId:tx, sessionId:saspayId(sessionResponse) || null });
       }
       return res.json({
         ok:true,
@@ -6254,5 +6308,7 @@ export {
   aiProviderStatus,
   callAiGenerateParts,
   openRouterMessageContent,
-  groundingSourcesFromOpenRouter
+  groundingSourcesFromOpenRouter,
+  burkinaMobileOperator,
+  validatePaymentPhoneForProvider
 };

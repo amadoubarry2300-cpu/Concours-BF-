@@ -3434,10 +3434,67 @@ async function sendAdminNotificationTest(){
 }
 
 /* ---------- abonnement & paiements ---------- */
-function selectProvider(provider){
+const BF_PAYMENT_PREFIXES = Object.freeze({
+  ORANGE_MONEY:['04','05','06','07','44','45','46','54','55','56','57','64','65','66','67','74','75','76','77'],
+  MOOV_MONEY:['01','02','03','50','51','52','53','60','61','62','63','70','71','72','73'],
+  TELECEL:['58','68','69','78','79']
+});
+
+function burkinaPaymentOperator(phone){
+  const local = normalizePhone(phone);
+  if (!/^\d{8}$/.test(local)) return local ? 'INVALID' : '';
+  const prefix = local.slice(0, 2);
+  if (BF_PAYMENT_PREFIXES.ORANGE_MONEY.includes(prefix)) return 'ORANGE_MONEY';
+  if (BF_PAYMENT_PREFIXES.MOOV_MONEY.includes(prefix)) return 'MOOV_MONEY';
+  if (BF_PAYMENT_PREFIXES.TELECEL.includes(prefix)) return 'TELECEL';
+  return 'UNKNOWN';
+}
+
+function paymentProviderLabel(provider){
+  return provider === 'MOOV_MONEY' ? 'Moov Money (Telmob)' : provider === 'ORANGE_MONEY' ? 'Orange Money' : 'Mobile Money';
+}
+
+function paymentPhoneValidation(phone, provider=state.selectedProvider){
+  const local = normalizePhone(phone);
+  if (!local) return { valid:false, complete:false, tone:'', message:'Le numéro à débiter peut être différent du numéro de connexion.' };
+  if (local.length !== 8) return { valid:false, complete:false, tone:'', message:'Entre les 8 chiffres du numéro Mobile Money.' };
+  const operator = burkinaPaymentOperator(local);
+  if (operator === 'TELECEL') return { valid:false, complete:true, tone:'error', message:'Numéro Telecel détecté. Le paiement est disponible uniquement avec Orange Money ou Moov Money.' };
+  if (operator === 'UNKNOWN' || operator === 'INVALID') return { valid:false, complete:true, tone:'error', message:'Ce préfixe mobile n’est pas reconnu pour Orange ou Moov au Burkina Faso.' };
+  if (operator !== provider){
+    const detected = paymentProviderLabel(operator);
+    return { valid:false, complete:true, tone:'error', operator, message:`Numéro ${detected} détecté. Sélectionne ${detected} pour continuer.` };
+  }
+  const label = paymentProviderLabel(operator);
+  return { valid:true, complete:true, tone:'success', operator, message:`✓ Numéro ${label} reconnu.` };
+}
+
+function updatePaymentPhoneNetworkHint(){
+  const input = $('#subPhone');
+  const hint = $('#paymentNetworkHint');
+  const button = $('#payBtn');
+  if (!input || !hint) return;
+  const validation = paymentPhoneValidation(input.value, state.selectedProvider);
+  hint.className = `payment-network-hint ${validation.tone || ''}`.trim();
+  hint.textContent = validation.message;
+  input.classList.toggle('input-error', validation.complete && !validation.valid);
+  input.classList.toggle('input-success', validation.valid);
+  input.setAttribute('aria-invalid', validation.complete && !validation.valid ? 'true' : 'false');
+  if (button) button.disabled = !validation.valid || isAdmin();
+}
+
+function handlePaymentPhoneInput(input){
+  if (input) input.value = input.value.replace(/[^0-9 +]/g, '').slice(0, 15);
+  runtimePaymentMessage = '';
+  updatePaymentPhoneNetworkHint();
+}
+
+function selectProvider(provider, clearMessage=false){
   state.selectedProvider = provider;
+  if (clearMessage) runtimePaymentMessage = '';
   save();
   $$('#providerGrid .provider-option').forEach(btn=>btn.classList.toggle('on', btn.dataset.provider === provider));
+  updatePaymentPhoneNetworkHint();
 }
 
 function selectPlan(planId){
@@ -3486,6 +3543,7 @@ function renderSubscription(){
 
   const subPhone = $('#subPhone');
   if (subPhone && !subPhone.value && state.user?.phone) subPhone.value = prettyPhone(state.user.phone);
+  updatePaymentPhoneNetworkHint();
 
   const status = $('#subStatus');
   if (status){
@@ -3540,10 +3598,14 @@ async function startSubscriptionPayment(){
     return;
   }
 
-  const phone = normalizePhone($('#subPhone')?.value || state.user.phone);
-  if (phone.length !== 8){ toast('Numéro Mobile Money invalide'); return; }
-  state.user.phone = phone;
-  state.phoneSaved = true;
+  const phone = normalizePhone($('#subPhone')?.value || '');
+  const phoneValidation = paymentPhoneValidation(phone, state.selectedProvider);
+  if (!phoneValidation.valid){
+    runtimePaymentMessage = `<div class="pay-note error">${escapeHtml(phoneValidation.message)}</div>`;
+    renderSubscription();
+    toast(phoneValidation.message);
+    return;
+  }
 
   const plan = selectedSubscriptionPlan();
   const txRef = makeTxRef();
@@ -3589,13 +3651,18 @@ async function startSubscriptionPayment(){
     }
     runtimePaymentMessage = data.mode === 'checkout'
       ? `<div class="pay-note warn">La page de paiement n’a pas pu s’ouvrir. Réessaie le paiement dans quelques instants. Réf. <b>${state.pendingPayment.ref}</b></div>`
-      : `<div class="pay-note success">${data.message || 'Paiement lancé.'}<br>Abonnement : <b>${plan.label}</b> (${money(plan.amount)}). Valide sur ton téléphone puis clique sur “Vérifier mon paiement”. Réf. <b>${state.pendingPayment.ref}</b></div>`;
+      : `<div class="pay-note success"><b>Demande ${paymentProviderLabel(state.selectedProvider)} envoyée.</b><br>Numéro à débiter : <b>${escapeHtml(prettyPhone(phone))}</b>.<br>Abonnement : <b>${plan.label}</b> (${money(plan.amount)}). Valide sur le téléphone puis clique sur “Vérifier mon paiement”. Réf. <b>${state.pendingPayment.ref}</b></div>`;
     renderSubscription();
   }catch(err){
-    runtimePaymentMessage = '<div class="pay-note error">Paiement indisponible pour le moment. Vérifie le numéro puis réessaie.</div>'; 
+    const detail = String(err?.message || '');
+    const safeDetail = /^(Ce numéro|Ce préfixe|Entre un numéro|Choisis Orange|Numéro (Orange|Moov|Telecel)|Seuls Orange)/i.test(detail)
+      ? detail
+      : 'Paiement indisponible pour le moment. Vérifie le numéro puis réessaie.';
+    runtimePaymentMessage = `<div class="pay-note error">${escapeHtml(safeDetail)}</div>`;
     renderSubscription();
   }finally{
     setButtonLoading(btn, false);
+    updatePaymentPhoneNetworkHint();
   }
 }
 
@@ -4395,7 +4462,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'navigation-modules-v7') location.reload();
+    if (data.build && data.build !== 'payment-network-validation-v8') location.reload();
   }catch{}
 }
 
@@ -4408,7 +4475,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=navigation-modules-v7')
+    navigator.serviceWorker.register('/sw.js?v=payment-network-validation-v8')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
