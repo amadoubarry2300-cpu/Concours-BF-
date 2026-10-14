@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=pasted-qcm-math-unicode-v4">
+<link rel="manifest" href="/manifest.webmanifest?v=pasted-qcm-publish-fonts-v5">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=pasted-qcm-math-unicode-v4">
+<link rel="stylesheet" href="css/styles.css?v=pasted-qcm-publish-fonts-v5">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -697,8 +697,12 @@
             <option>Burkina Faso</option><option>Culture générale</option><option>Histoire-Géo</option><option>Mathématiques</option><option>Physique-Chimie</option><option>Psychotechnique</option><option>Français</option><option>SVT</option><option>Greffier / Droit</option>
           </select>
 
-          <div class="admin-switch-row">
-            <label><input type="checkbox" id="pastedQcmPremium"> Publier dans Premium <small>(sinon Gratuit)</small></label>
+          <div class="admin-paste-destination">
+            <b>Destination après validation</b>
+            <div class="admin-paste-destination-grid">
+              <label class="free"><input type="radio" name="pastedQcmDestination" value="free" checked><span>✅ Gratuit<small>Visible par tous les candidats</small></span></label>
+              <label class="premium"><input type="radio" name="pastedQcmDestination" value="premium"><span>⭐ Premium payant<small>Réservé aux abonnés</small></span></label>
+            </div>
           </div>
 
           <label class="field-label" for="pastedQcmText">QCM à transformer</label>
@@ -709,7 +713,7 @@
           </div>
           <div class="admin-paste-format book">
             <b>Choisis le résultat avant de lancer</b>
-            <span>Quiz interactif à prévisualiser ou PDF livre corrigé à télécharger directement.</span>
+            <span>Quiz interactif à publier en Gratuit ou Premium · PDF livre corrigé avec typographie professionnelle choisie automatiquement.</span>
           </div>
 
           <button class="btn btn-green btn-block" id="pastedQcmAnalyzeBtn" onclick="analyzePastedQcm()">🧩 Transformer et prévisualiser le quiz</button>
@@ -1277,7 +1281,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=pasted-qcm-math-unicode-v4"></script>
-<script src="js/app.js?v=pasted-qcm-math-unicode-v4"></script>
+<script src="js/questions.js?v=pasted-qcm-publish-fonts-v5"></script>
+<script src="js/app.js?v=pasted-qcm-publish-fonts-v5"></script>
 </body>
 </html>

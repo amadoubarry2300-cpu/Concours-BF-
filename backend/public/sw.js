@@ -1,13 +1,13 @@
-const CACHE_VERSION = 'pasted-qcm-math-unicode-v4';
+const CACHE_VERSION = 'pasted-qcm-publish-fonts-v5';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=pasted-qcm-math-unicode-v4',
-  '/js/questions.js?v=pasted-qcm-math-unicode-v4',
-  '/js/app.js?v=pasted-qcm-math-unicode-v4',
+  '/css/styles.css?v=pasted-qcm-publish-fonts-v5',
+  '/js/questions.js?v=pasted-qcm-publish-fonts-v5',
+  '/js/app.js?v=pasted-qcm-publish-fonts-v5',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

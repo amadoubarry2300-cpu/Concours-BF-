@@ -9,10 +9,15 @@ const {
   buildPastedQcmBookPdf
 } = await import('../backend/server.js');
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
-const regularFont = new URL('../backend/public/fonts/DejaVuSans.ttf', import.meta.url);
-const boldFont = new URL('../backend/public/fonts/DejaVuSans-Bold.ttf', import.meta.url);
-assert(fs.statSync(regularFont).size > 500000, 'police Unicode régulière absente');
-assert(fs.statSync(boldFont).size > 500000, 'police Unicode grasse absente');
+const fontAssets = [
+  '../backend/public/fonts/DejaVuSans.ttf',
+  '../backend/public/fonts/DejaVuSans-Bold.ttf',
+  '../backend/public/fonts/DejaVuSerif.ttf',
+  '../backend/public/fonts/DejaVuSerif-Bold.ttf',
+  '../backend/public/fonts/Lato-Regular.ttf',
+  '../backend/public/fonts/Lato-Heavy.ttf'
+];
+fontAssets.forEach(file => assert(fs.statSync(new URL(file, import.meta.url)).size > 300000, `police professionnelle absente : ${file}`));
 
 const body = {
   title:'Physique-Chimie 3e — Préparation concours directs et professionnels',
@@ -76,7 +81,7 @@ assert(existingPrepared.questions.length === 1, 'QCM publié exact refusé dans 
 assert(existingPrepared.questions[0].option_a === '6 cm', 'version canonique publiée non réutilisée');
 assert(existingPrepared.questions[0].correct_answer === 2, 'bonne réponse canonique publiée non réutilisée');
 
-const unicodePdf = await buildPastedQcmBookPdf({
+const unicodeSource = {
   metadata:{ title:'Contrôle des signes mathématiques', date:'2026-10-14', category:'Mathématiques', level:'BEPC' },
   questions:[{
     question_text:'Si x² − 9 ≤ 0, quel encadrement correct obtient-on pour x ?',
@@ -87,9 +92,14 @@ const unicodePdf = await buildPastedQcmBookPdf({
     correct_answer:0,
     explanation:'Comme √9 = 3, les solutions sont comprises entre −3 et 3. Les signes √, −, ≤, ≥, ×, ÷, π, ², ³ et 10⁻⁴ doivent rester lisibles.'
   }]
-});
-assert(unicodePdf.subarray(0, 4).toString() === '%PDF', 'PDF Unicode mathématique invalide');
-assert(unicodePdf.length > 20000, 'police mathématique non incorporée au PDF');
+};
+for (const theme of ['lato-premium', 'dejavu-serif-edition', 'dejavu-sans-classique']){
+  process.env.PDF_FONT_THEME = theme;
+  const unicodePdf = await buildPastedQcmBookPdf(unicodeSource);
+  assert(unicodePdf.subarray(0, 4).toString() === '%PDF', `PDF mathématique invalide : ${theme}`);
+  assert(unicodePdf.length > 20000, `police mathématique non incorporée : ${theme}`);
+}
+delete process.env.PDF_FONT_THEME;
 
 const pdf = await buildPastedQcmBookPdf(signedSource);
 assert(Buffer.isBuffer(pdf), 'résultat PDF non binaire');

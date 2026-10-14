@@ -2845,20 +2845,41 @@ function subjectNumber(date){
 
 function setupPdfFonts(doc){
   const bundledFonts = path.join(PUBLIC_DIR, 'fonts');
-  const candidates = [
-    [path.join(bundledFonts, 'DejaVuSans.ttf'), path.join(bundledFonts, 'DejaVuSans-Bold.ttf'), path.join(bundledFonts, 'DejaVuSans.ttf')],
-    ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf'],
-    ['/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf', '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf', '/usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf']
-  ];
-  for (const [regular, bold, italic] of candidates){
-    if (fs.existsSync(regular) && fs.existsSync(bold)){
-      doc.registerFont('RCBF-Regular', regular);
-      doc.registerFont('RCBF-Bold', bold);
-      if (fs.existsSync(italic)) doc.registerFont('RCBF-Italic', italic);
-      return { regular:'RCBF-Regular', bold:'RCBF-Bold', italic:fs.existsSync(italic) ? 'RCBF-Italic' : 'RCBF-Regular' };
+  const families = [
+    {
+      key:'lato-premium',
+      regular:path.join(bundledFonts, 'Lato-Regular.ttf'),
+      bold:path.join(bundledFonts, 'Lato-Heavy.ttf'),
+      italic:path.join(bundledFonts, 'Lato-Italic.ttf')
+    },
+    {
+      key:'dejavu-serif-edition',
+      regular:path.join(bundledFonts, 'DejaVuSerif.ttf'),
+      bold:path.join(bundledFonts, 'DejaVuSerif-Bold.ttf'),
+      italic:path.join(bundledFonts, 'DejaVuSerif.ttf')
+    },
+    {
+      key:'dejavu-sans-classique',
+      regular:path.join(bundledFonts, 'DejaVuSans.ttf'),
+      bold:path.join(bundledFonts, 'DejaVuSans-Bold.ttf'),
+      italic:path.join(bundledFonts, 'DejaVuSans.ttf')
     }
+  ].filter(family => fs.existsSync(family.regular) && fs.existsSync(family.bold));
+  if (!families.length){
+    throw Object.assign(new Error('Police mathématique Unicode indisponible pour le PDF.'), { status:500 });
   }
-  throw Object.assign(new Error('Police mathématique Unicode indisponible pour le PDF.'), { status:500 });
+  const requested = cleanText(process.env.PDF_FONT_THEME, 80).toLowerCase();
+  const selected = families.find(family => family.key === requested)
+    || families[crypto.randomInt(0, families.length)];
+  doc.registerFont('RCBF-Regular', selected.regular);
+  doc.registerFont('RCBF-Bold', selected.bold);
+  if (fs.existsSync(selected.italic)) doc.registerFont('RCBF-Italic', selected.italic);
+  return {
+    regular:'RCBF-Regular',
+    bold:'RCBF-Bold',
+    italic:fs.existsSync(selected.italic) ? 'RCBF-Italic' : 'RCBF-Regular',
+    theme:selected.key
+  };
 }
 
 async function buildQcmDraftPdf({ title, date, category, level, questions }){
@@ -3185,7 +3206,7 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [] } = {}){
       const questionW = cardW - 78;
       const optionW = cardW - 111;
       const correctionW = cardW - 78;
-      const explanationW = correctionW - 114;
+      const explanationW = correctionW - 130;
       const questionH = height(qText, questionW, 'bold', 17.8, { lineGap:2 });
       const optionHeights = opts.map(opt => Math.max(21, height(opt, optionW, 'regular', 13.2, { lineGap:1 }) + 5));
       const explanationH = height(explanation, explanationW, 'regular', 10.5, { lineGap:1.2 });
@@ -3221,8 +3242,8 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [] } = {}){
       doc.roundedRect(questionX, correctionY, correctionW, metrics.correctionH, 5).fill('#f0f6ef').strokeColor('#8eaa91').lineWidth(0.55).stroke();
       const answer = answerLabel(q.correct_answer);
       font('bold', 11.5, '#075b36').text(`BONNE RÉPONSE : ${answer}`, questionX + 12, correctionY + 9, { width:correctionW - 24 });
-      font('bold', 10.8, '#111111').text('EXPLICATION :', questionX + 12, correctionY + 29, { width:88, lineBreak:false });
-      font('regular', 10.5, '#222222').text(metrics.explanation, questionX + 102, correctionY + 28, { width:correctionW - 114, lineGap:1.2 });
+      font('bold', 10.8, '#111111').text('EXPLICATION :', questionX + 12, correctionY + 29, { width:100, lineBreak:false });
+      font('regular', 10.5, '#222222').text(metrics.explanation, questionX + 118, correctionY + 28, { width:correctionW - 130, lineGap:1.2 });
       doc.y = y + metrics.blockH + 9;
     }
 
@@ -4489,7 +4510,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'pasted-qcm-math-unicode-v4',
+    build: 'pasted-qcm-publish-fonts-v5',
     time: new Date().toISOString()
   });
 });

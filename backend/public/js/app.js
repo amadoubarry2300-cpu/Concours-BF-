@@ -1363,7 +1363,7 @@ function pastedQcmPayload(){
     date:$('#pastedQcmDate')?.value || today(),
     category:$('#pastedQcmCategory')?.value || 'Culture générale',
     level:$('#pastedQcmLevel')?.value || 'Concours',
-    is_premium:Boolean($('#pastedQcmPremium')?.checked),
+    is_premium:$('input[name="pastedQcmDestination"]:checked')?.value === 'premium',
     text:$('#pastedQcmText')?.value || ''
   };
 }
@@ -1377,7 +1377,8 @@ function renderPastedQcmPreview(data){
   const rejected = Array.isArray(data?.rejected) ? data.rejected : [];
   publishBtn.style.display = questions.length ? 'block' : 'none';
   pdfBtn.style.display = 'block';
-  publishBtn.textContent = `Publier les ${questions.length} QCM prêt${questions.length>1?'s':''}`;
+  const destination = data?.metadata?.is_premium ? 'Premium payant' : 'Gratuit';
+  publishBtn.textContent = `Publier les ${questions.length} QCM dans ${destination}`;
   const readyHtml = questions.length ? `
     <div class="admin-paste-section-head ready"><b>✅ ${questions.length} QCM prêt${questions.length>1?'s':''}</b><span>À relire avant publication</span></div>
     ${questions.map((q, index)=>{
@@ -1485,10 +1486,36 @@ async function downloadPastedQcmBookPdf(){
     setTimeout(()=>URL.revokeObjectURL(url), 3000);
     const count = Number(res.headers.get('X-QCM-Count') || ready);
     const rejected = Number(res.headers.get('X-QCM-Rejected') || 0);
-    if (result){
-      result.innerHTML = `<div class="pay-note success"><b>PDF livre créé avec ${count} QCM ✅</b><br>Questions ultra-gras, grand format, aspect papier imprimé et correction sous chaque question.${rejected ? `<br>${rejected} QCM incomplet${rejected>1?'s':''} n’a pas été ajouté au PDF.` : ''}</div>`;
+    let publishReady = ready;
+    let publishBlocked = Number(pastedQcmPreviewCache?.rejected?.length || 0);
+    let publicationIssue = '';
+    if (!previewCurrent){
+      setButtonLoading(btn, true, 'Préparation de la publication...');
+      const previewWrap = $('#pastedQcmPreview');
+      if (previewWrap) previewWrap.innerHTML = '<div class="empty">Préparation des QCM pour la publication...</div>';
+      try{
+        const previewPayload = pastedQcmPayload();
+        const previewData = await adminFetch('/api/admin/questions/import/preview', { method:'POST', body:JSON.stringify(previewPayload) });
+        pastedQcmPreviewCache = previewData;
+        pastedQcmPreviewSignature = JSON.stringify(previewPayload);
+        publishReady = Number(previewData.ready || previewData.questions?.length || 0);
+        publishBlocked = Number(previewData.rejected?.length || 0);
+        renderPastedQcmPreview(previewData);
+      }catch(previewError){
+        publicationIssue = previewError.message || 'Préparation de la publication impossible.';
+        if (previewWrap) previewWrap.innerHTML = '';
+      }
     }
-    toast('PDF livre téléchargé ✅');
+    const destination = pastedQcmPayload().is_premium ? 'Premium payant' : 'Gratuit';
+    const publicationNote = publishReady
+      ? `<br><b>${publishReady} QCM prêts à publier dans ${destination}.</b> Utilise le bouton de publication affiché ci-dessus.${publishBlocked ? ` ${publishBlocked} QCM reste${publishBlocked>1?'nt':''} bloqué${publishBlocked>1?'s':''}.` : ''}`
+      : publicationIssue
+        ? `<br>Le PDF est créé, mais la publication n’est pas encore prête : ${escapeHtml(publicationIssue)}`
+        : '<br>Le PDF est créé. Aucun nouveau QCM à publier : ces questions peuvent déjà exister dans l’application.';
+    if (result){
+      result.innerHTML = `<div class="pay-note success"><b>PDF livre créé avec ${count} QCM ✅</b><br>Questions ultra-gras, grand format, aspect papier imprimé et correction sous chaque question.${rejected ? `<br>${rejected} QCM incomplet${rejected>1?'s':''} n’a pas été ajouté au PDF.` : ''}${publicationNote}</div>`;
+    }
+    toast(publishReady ? 'PDF téléchargé · publication prête ✅' : 'PDF livre téléchargé ✅');
   }catch(err){
     if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
   }finally{
@@ -1499,8 +1526,9 @@ async function downloadPastedQcmBookPdf(){
 async function publishPastedQcm(){
   const ready = Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0);
   if (!ready) return toast('Transforme et prévisualise d’abord les QCM.');
-  if (pastedQcmPreviewSignature !== JSON.stringify(pastedQcmPayload())) return toast('Le contenu a changé : relance la prévisualisation avant de publier.');
-  if (!confirm(`Publier maintenant ${ready} QCM dans l’application ?`)) return;
+  if (pastedQcmPreviewSignature !== JSON.stringify(pastedQcmPayload())) return toast('Le contenu ou la destination a changé : relance la prévisualisation avant de publier.');
+  const chosenDestination = pastedQcmPayload().is_premium ? 'Premium payant' : 'Gratuit';
+  if (!confirm(`Publier maintenant ${ready} QCM dans ${chosenDestination} ?`)) return;
   const btn = $('#pastedQcmPublishBtn');
   const result = $('#pastedQcmResult');
   setButtonLoading(btn, true, 'Publication...');
@@ -4155,7 +4183,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'pasted-qcm-math-unicode-v4') location.reload();
+    if (data.build && data.build !== 'pasted-qcm-publish-fonts-v5') location.reload();
   }catch{}
 }
 
@@ -4168,7 +4196,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=pasted-qcm-math-unicode-v4')
+    navigator.serviceWorker.register('/sw.js?v=pasted-qcm-publish-fonts-v5')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
