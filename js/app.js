@@ -175,8 +175,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=continuous-pdf-scroll-v16').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=continuous-pdf-scroll-v16';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=menu-color-motion-performance-v17').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=menu-color-motion-performance-v17';
       return pdfjs;
     });
   }
@@ -886,13 +886,21 @@ function setAppMenuOpen(open){
   const toggle = $('#appMenuToggle');
   if (!menu || !backdrop) return;
   const active = Boolean(open);
+  const current = currentScreenId || document.querySelector('.screen.active')?.id || 'home';
+  menu.querySelectorAll('[data-menu-target]').forEach(card => {
+    const selected = card.dataset.menuTarget === current;
+    card.classList.toggle('is-current', selected);
+    if (selected) card.setAttribute('aria-current', 'page');
+    else card.removeAttribute('aria-current');
+  });
+  menu.toggleAttribute('inert', !active);
   menu.classList.toggle('open', active);
   backdrop.classList.toggle('open', active);
   menu.setAttribute('aria-hidden', active ? 'false' : 'true');
   backdrop.setAttribute('aria-hidden', active ? 'false' : 'true');
   toggle?.setAttribute('aria-expanded', active ? 'true' : 'false');
   document.body.classList.toggle('menu-open', active);
-  if (active) setTimeout(()=>menu.querySelector('button')?.focus(), 60);
+  if (active) setTimeout(()=>menu.querySelector('.app-menu-close')?.focus(), 60);
 }
 
 function toggleAppMenu(){
@@ -4766,7 +4774,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'continuous-pdf-scroll-v16') location.reload();
+    if (data.build && data.build !== 'menu-color-motion-performance-v17') location.reload();
   }catch{}
 }
 
@@ -4779,7 +4787,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=continuous-pdf-scroll-v16')
+    navigator.serviceWorker.register('/sw.js?v=menu-color-motion-performance-v17')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

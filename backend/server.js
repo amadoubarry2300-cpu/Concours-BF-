@@ -4724,7 +4724,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'continuous-pdf-scroll-v16',
+    build: 'menu-color-motion-performance-v17',
     time: new Date().toISOString()
   });
 });

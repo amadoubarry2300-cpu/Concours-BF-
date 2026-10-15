@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=continuous-pdf-scroll-v16">
+<link rel="manifest" href="/manifest.webmanifest?v=menu-color-motion-performance-v17">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=continuous-pdf-scroll-v16">
+<link rel="stylesheet" href="css/styles.css?v=menu-color-motion-performance-v17">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -35,24 +35,24 @@
 
   <!-- ===== menu principal ===== -->
   <div class="app-menu-backdrop" id="appMenuBackdrop" onclick="closeAppMenu()" aria-hidden="true"></div>
-  <aside class="app-menu" id="appMenu" aria-hidden="true" aria-label="Menu principal">
+  <aside class="app-menu" id="appMenu" aria-hidden="true" aria-label="Menu principal" inert>
     <div class="app-menu-head">
       <div class="app-menu-brand"><img src="img/logo.png" alt=""><span><b>Réussite Concours BF</b><small>Choisis une rubrique</small></span></div>
       <button class="app-menu-close" type="button" onclick="closeAppMenu()" aria-label="Fermer le menu">×</button>
     </div>
     <nav class="app-menu-nav" aria-label="Toutes les fonctionnalités">
-      <button onclick="menuNavigate('home')"><span>🏠</span><b>Accueil</b><small>Mon espace</small></button>
-      <button onclick="menuNavigate('formations')"><span>🗂️</span><b>Formations</b><small>Tous les modules</small></button>
-      <button onclick="menuNavigate('publishedqcm')"><span>📌</span><b>Nouveaux QCM</b><small>Publications récentes</small></button>
-      <button onclick="menuNavigate('resources')"><span>📚</span><b>Documents</b><small>PDF et fichiers</small></button>
-      <button onclick="menuNavigate('revision')"><span>📘</span><b>Fiches courtes</b><small>Révision rapide</small></button>
-      <button onclick="menuNavigate('news')"><span>📰</span><b>Actualités</b><small>Concours officiels</small></button>
-      <button onclick="menuNavigate('passport')"><span>🛂</span><b>Passeport</b><small>Parcours candidat</small></button>
-      <button onclick="menuNavigate('stats')"><span>📊</span><b>Progression</b><small>Scores et résultats</small></button>
-      <button onclick="menuNavigate('subscription')"><span>⭐</span><b>Accès Premium</b><small>Abonnement</small></button>
-      <button onclick="openAccountFromMenu()"><span>👤</span><b>Mon compte</b><small>Profil et accès</small></button>
-      <button onclick="menuNavigate('contact')"><span>💬</span><b>Assistance</b><small>Nous contacter</small></button>
-      <button id="appMenuAdminBtn" onclick="menuNavigate('admin')" style="display:none"><span>🛠️</span><b>Administration</b><small>Gérer les contenus</small></button>
+      <button class="menu-card tone-home" data-menu-target="home" onclick="menuNavigate('home')"><span>🏠</span><b>Accueil</b><small>Mon espace</small></button>
+      <button class="menu-card tone-training" data-menu-target="formations" onclick="menuNavigate('formations')"><span>🗂️</span><b>Formations</b><small>Tous les modules</small></button>
+      <button class="menu-card tone-qcm" data-menu-target="publishedqcm" onclick="menuNavigate('publishedqcm')"><span>📌</span><b>Nouveaux QCM</b><small>Publications récentes</small></button>
+      <button class="menu-card tone-documents" data-menu-target="resources" onclick="menuNavigate('resources')"><span>📚</span><b>Documents</b><small>PDF et fichiers</small></button>
+      <button class="menu-card tone-revision" data-menu-target="revision" onclick="menuNavigate('revision')"><span>📘</span><b>Fiches courtes</b><small>Révision rapide</small></button>
+      <button class="menu-card tone-news" data-menu-target="news" onclick="menuNavigate('news')"><span>📰</span><b>Actualités</b><small>Concours officiels</small></button>
+      <button class="menu-card tone-passport" data-menu-target="passport" onclick="menuNavigate('passport')"><span>🛂</span><b>Passeport</b><small>Parcours candidat</small></button>
+      <button class="menu-card tone-progress" data-menu-target="stats" onclick="menuNavigate('stats')"><span>📊</span><b>Progression</b><small>Scores et résultats</small></button>
+      <button class="menu-card tone-premium" data-menu-target="subscription" onclick="menuNavigate('subscription')"><span>⭐</span><b>Accès Premium</b><small>Abonnement</small></button>
+      <button class="menu-card tone-account" data-menu-target="account" onclick="openAccountFromMenu()"><span>👤</span><b>Mon compte</b><small>Profil et accès</small></button>
+      <button class="menu-card tone-help" data-menu-target="contact" onclick="menuNavigate('contact')"><span>💬</span><b>Assistance</b><small>Nous contacter</small></button>
+      <button class="menu-card tone-admin" data-menu-target="admin" id="appMenuAdminBtn" onclick="menuNavigate('admin')" style="display:none"><span>🛠️</span><b>Administration</b><small>Gérer les contenus</small></button>
     </nav>
     <button class="app-menu-install" id="installAppBtn" onclick="installAndroidApp()" style="display:none">📲 Installer l’application</button>
     <div class="app-menu-foot"><span>🔥 Série de révision</span><b><span id="streakVal">0</span> jour(s)</b></div>
@@ -1362,7 +1362,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=continuous-pdf-scroll-v16"></script>
-<script src="js/app.js?v=continuous-pdf-scroll-v16"></script>
+<script src="js/questions.js?v=menu-color-motion-performance-v17"></script>
+<script src="js/app.js?v=menu-color-motion-performance-v17"></script>
 </body>
 </html>

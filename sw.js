@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'continuous-pdf-scroll-v16';
+const CACHE_VERSION = 'menu-color-motion-performance-v17';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=continuous-pdf-scroll-v16',
-  '/js/questions.js?v=continuous-pdf-scroll-v16',
-  '/js/app.js?v=continuous-pdf-scroll-v16',
-  '/js/vendor/pdf.mjs?v=continuous-pdf-scroll-v16',
-  '/js/vendor/pdf.worker.mjs?v=continuous-pdf-scroll-v16',
+  '/css/styles.css?v=menu-color-motion-performance-v17',
+  '/js/questions.js?v=menu-color-motion-performance-v17',
+  '/js/app.js?v=menu-color-motion-performance-v17',
+  '/js/vendor/pdf.mjs?v=menu-color-motion-performance-v17',
+  '/js/vendor/pdf.worker.mjs?v=menu-color-motion-performance-v17',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',
