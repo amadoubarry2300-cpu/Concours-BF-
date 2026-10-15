@@ -4624,11 +4624,11 @@ async function getPaymentRecord(tx){
 
 async function findPaymentBySasPayId(paymentId){
   for (const item of payments.values()){
-    if (item?.raw?.saspay_id === paymentId || item?.raw?.saspay?.id === paymentId || item?.raw?.saspay_session?.transaction?.id === paymentId) return item;
+    if (item?.raw?.saspay_id === paymentId || item?.raw?.saspay?.id === paymentId || item?.raw?.saspay_session?.transaction?.id === paymentId || item?.raw?.saspay_session_status?.transaction_id === paymentId) return item;
   }
   if (!supabaseReady()) return null;
   const rows = await supabaseRequest('payments?provider=eq.SASPAY&select=*&order=created_at.desc&limit=200');
-  return Array.isArray(rows) ? rows.find(r => r?.raw?.saspay_id === paymentId || r?.raw?.saspay?.id === paymentId || r?.raw?.saspay_session?.transaction?.id === paymentId) || null : null;
+  return Array.isArray(rows) ? rows.find(r => r?.raw?.saspay_id === paymentId || r?.raw?.saspay?.id === paymentId || r?.raw?.saspay_session?.transaction?.id === paymentId || r?.raw?.saspay_session_status?.transaction_id === paymentId) || null : null;
 }
 
 function paymentIsSuccessful(data, planOrId){
@@ -4640,13 +4640,14 @@ function paymentIsSuccessful(data, planOrId){
   return ['SUCCESS', 'PAID'].includes(status) && amount === Number(plan.amount) && currency === 'XOF';
 }
 
-function checkoutSessionPaid(session, planOrId){
-  const plan = subscriptionPlan(planOrId?.id || planOrId);
-  const payload = saspayPayload(session);
-  const status = String(payload?.status || '').toUpperCase();
-  const amount = Number(payload?.amount || 0);
-  const currency = String(payload?.currency || '').toUpperCase();
-  return (status === 'PAID' || Boolean(payload?.paid_at)) && amount === Number(plan.amount) && currency === 'XOF';
+function checkoutStatusTransactionId(value){
+  const payload = saspayPayload(value);
+  return String(payload?.transaction_id || payload?.transaction?.id || '').trim();
+}
+
+function checkoutStatusLabel(value){
+  const payload = saspayPayload(value);
+  return String(payload?.transaction_status || payload?.status || 'PENDING').toUpperCase();
 }
 
 function isMissingAvatarColumnError(err){
@@ -4728,7 +4729,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'moov-saspay-redirect-v18',
+    build: 'saspay-checkout-confirmation-v19',
     time: new Date().toISOString()
   });
 });
@@ -5111,17 +5112,40 @@ app.get('/api/payments/saspay/status', requireSession, async (req, res, next) =>
     }
 
     if (sessionId){
-      const sessionResponse = await saspayRequest(`/checkout-sessions/${encodeURIComponent(sessionId)}/`);
-      const session = saspayPayload(sessionResponse);
-      const raw = { ...(record.raw || {}), saspay_session_id:sessionId, saspay_session:session, saspay_session_response:sessionResponse };
-      const transaction = session?.transaction;
-      if (checkoutSessionPaid(session, plan) || paymentIsSuccessful(transaction, plan)){
-        await updatePaymentRecord(tx, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
-        const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY', email:record?.raw?.customer_email || req.profile?.email, plan:plan.id, days:plan.days });
-        return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY', plan:plan.id });
+      let sessionStatusResponse;
+      try{
+        sessionStatusResponse = await saspayRequest(`/checkout-sessions/${encodeURIComponent(sessionId)}/status/`);
+      }catch(err){
+        if (err.status !== 404) throw err;
+        sessionStatusResponse = await saspayRequest(`/checkout-sessions/${encodeURIComponent(sessionId)}/`);
       }
-      await updatePaymentRecord(tx, { status:saspayStatus(session), raw, verified_at:new Date().toISOString() });
-      return res.json({ ok:true, active:false, paymentStatus:saspayStatus(session), message:'Paiement non confirmé pour le moment.' });
+      const sessionStatus = saspayPayload(sessionStatusResponse);
+      const transactionId = checkoutStatusTransactionId(sessionStatus);
+      let raw = {
+        ...(record.raw || {}),
+        saspay_session_id:sessionId,
+        saspay_session_status:sessionStatus,
+        saspay_session_status_response:sessionStatusResponse
+      };
+
+      // Une session PAID n’est jamais suffisante seule : on vérifie la transaction
+      // associée pour contrôler réellement le montant, la devise et le statut.
+      if (transactionId){
+        const verified = await saspayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`);
+        raw = paymentRawWithSasPay(raw, verified);
+        if (paymentIsSuccessful(verified, plan)){
+          await updatePaymentRecord(tx, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
+          const sub = await activateSubscription({ phone:req.phone, txRef:tx, provider:'SASPAY', email:record?.raw?.customer_email || req.profile?.email, plan:plan.id, days:plan.days });
+          return res.json({ ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY', plan:plan.id });
+        }
+        const verifiedStatus = saspayStatus(verified);
+        await updatePaymentRecord(tx, { status:verifiedStatus, raw, verified_at:new Date().toISOString() });
+        return res.json({ ok:true, active:false, paymentStatus:verifiedStatus, message:'Paiement en cours de confirmation par le réseau.' });
+      }
+
+      const pendingStatus = checkoutStatusLabel(sessionStatus);
+      await updatePaymentRecord(tx, { status:pendingStatus, raw, verified_at:new Date().toISOString() });
+      return res.json({ ok:true, active:false, paymentStatus:pendingStatus, message:'Paiement en cours de confirmation par le réseau.' });
     }
 
     return res.status(400).json({ message:'Identifiant SasPay manquant' });
@@ -5133,9 +5157,10 @@ app.post('/api/payments/saspay/webhook', async (req, res, next) => {
     if (!saspaySignatureValid(req)) return res.status(401).send('invalid signature');
     const event = req.body?.event || req.get('X-Webhook-Event');
     const data = req.body?.data || {};
-    const paymentId = data?.id;
+    const paymentId = String(data?.id || data?.transaction_id || '').trim();
     if (!paymentId) return res.status(400).send('payment id missing');
-    const record = await findPaymentBySasPayId(paymentId);
+    const localTx = String(data?.metadata?.tx_ref || data?.transaction?.metadata?.tx_ref || '').trim();
+    const record = localTx ? await getPaymentRecord(localTx) : await findPaymentBySasPayId(paymentId);
     if (!record) return res.status(202).send('unknown payment');
 
     if (event === 'transaction.success' || String(data.status).toUpperCase() === 'SUCCESS'){
@@ -6510,5 +6535,7 @@ export {
   groundingSourcesFromOpenRouter,
   burkinaMobileOperator,
   validatePaymentPhoneForProvider,
-  saspayUsesHostedCheckout
+  saspayUsesHostedCheckout,
+  checkoutStatusTransactionId,
+  checkoutStatusLabel
 };

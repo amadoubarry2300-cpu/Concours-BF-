@@ -175,8 +175,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=moov-saspay-redirect-v18').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=moov-saspay-redirect-v18';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=saspay-checkout-confirmation-v19').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=saspay-checkout-confirmation-v19';
       return pdfjs;
     });
   }
@@ -4005,7 +4005,7 @@ async function checkPaymentStatus(){
       renderFormations(currentFormFilter);
       confetti();
     } else {
-      runtimePaymentMessage = '<div class="pay-note warn">Paiement non confirmé pour le moment. Réessaie après validation Mobile Money.</div>';
+      runtimePaymentMessage = `<div class="pay-note warn">${escapeHtml(data.message || 'Paiement en cours de confirmation par le réseau. Clique de nouveau sur “Vérifier mon paiement” dans quelques instants.')}</div>`;
     }
     renderSubscription();
   }catch(err){
@@ -4774,7 +4774,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'moov-saspay-redirect-v18') location.reload();
+    if (data.build && data.build !== 'saspay-checkout-confirmation-v19') location.reload();
   }catch{}
 }
 
@@ -4787,7 +4787,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=moov-saspay-redirect-v18')
+    navigator.serviceWorker.register('/sw.js?v=saspay-checkout-confirmation-v19')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
