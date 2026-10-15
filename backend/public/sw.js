@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'integrated-pdf-reader-v15';
+const CACHE_VERSION = 'continuous-pdf-scroll-v16';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=integrated-pdf-reader-v15',
-  '/js/questions.js?v=integrated-pdf-reader-v15',
-  '/js/app.js?v=integrated-pdf-reader-v15',
-  '/js/vendor/pdf.mjs?v=integrated-pdf-reader-v15',
-  '/js/vendor/pdf.worker.mjs?v=integrated-pdf-reader-v15',
+  '/css/styles.css?v=continuous-pdf-scroll-v16',
+  '/js/questions.js?v=continuous-pdf-scroll-v16',
+  '/js/app.js?v=continuous-pdf-scroll-v16',
+  '/js/vendor/pdf.mjs?v=continuous-pdf-scroll-v16',
+  '/js/vendor/pdf.worker.mjs?v=continuous-pdf-scroll-v16',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

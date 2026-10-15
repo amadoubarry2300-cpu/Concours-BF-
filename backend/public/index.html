@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=integrated-pdf-reader-v15">
+<link rel="manifest" href="/manifest.webmanifest?v=continuous-pdf-scroll-v16">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=integrated-pdf-reader-v15">
+<link rel="stylesheet" href="css/styles.css?v=continuous-pdf-scroll-v16">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -1348,15 +1348,8 @@
     </header>
     <main class="pdf-reader-stage" id="pdfReaderStage">
       <div class="pdf-reader-loading" id="pdfReaderLoading">Ouverture du document…</div>
-      <canvas id="pdfReaderCanvas" aria-label="Page du document"></canvas>
+      <div class="pdf-reader-pages" id="pdfReaderPages" role="document" aria-label="Pages du document"></div>
     </main>
-    <footer class="pdf-reader-controls">
-      <button type="button" onclick="previousPdfPage()" id="pdfReaderPrev" aria-label="Page précédente">‹</button>
-      <button type="button" onclick="zoomPdfOut()" aria-label="Réduire">−</button>
-      <strong id="pdfReaderPage">1 / 1</strong>
-      <button type="button" onclick="zoomPdfIn()" aria-label="Agrandir">+</button>
-      <button type="button" onclick="nextPdfPage()" id="pdfReaderNext" aria-label="Page suivante">›</button>
-    </footer>
   </section>
 
   <a class="whatsapp-float" href="https://wa.me/22674013704?text=Bonjour%20R%C3%A9ussite%20Concours%20BF%2C%20j%27ai%20besoin%20d%27aide." target="_blank" rel="noopener" aria-label="Contacter Réussite Concours BF sur WhatsApp">
@@ -1369,7 +1362,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=integrated-pdf-reader-v15"></script>
-<script src="js/app.js?v=integrated-pdf-reader-v15"></script>
+<script src="js/questions.js?v=continuous-pdf-scroll-v16"></script>
+<script src="js/app.js?v=continuous-pdf-scroll-v16"></script>
 </body>
 </html>

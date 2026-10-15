@@ -17,9 +17,10 @@ const css = fs.readFileSync(new URL('../backend/public/css/styles.css', import.m
 const workerUrl = new URL('../backend/public/js/vendor/pdf.worker.mjs', import.meta.url);
 const pdfModuleUrl = new URL('../backend/public/js/vendor/pdf.mjs', import.meta.url);
 
-['pdfReader','pdfReaderCanvas','pdfReaderPrev','pdfReaderNext','pdfReaderDownload'].forEach(id => assert(html.includes(`id="${id}"`), `élément du lecteur absent : ${id}`));
-['openPdfReader','openPreparedPastedQcmPdf','openCurrentDailyPdfFull','openResource','openNewsPdf'].forEach(name => assert(appSource.includes(`function ${name}`) || appSource.includes(`async function ${name}`), `fonction du lecteur absente : ${name}`));
-assert(css.includes('.pdf-reader.open'), 'styles du lecteur PDF absents');
+['pdfReader','pdfReaderPages','pdfReaderDownload'].forEach(id => assert(html.includes(`id="${id}"`), `élément du lecteur absent : ${id}`));
+['openPdfReader','renderContinuousPdfPage','buildContinuousPdfPages','openPreparedPastedQcmPdf','openCurrentDailyPdfFull','openResource','openNewsPdf'].forEach(name => assert(appSource.includes(`function ${name}`) || appSource.includes(`async function ${name}`), `fonction du lecteur absente : ${name}`));
+assert(!html.includes('id="pdfReaderNext"') && !html.includes('id="pdfReaderPrev"'), 'les boutons page suivante/précédente doivent être retirés');
+assert(css.includes('.pdf-reader.open') && css.includes('.pdf-reader-pages'), 'styles du lecteur PDF continu absents');
 assert(fs.statSync(workerUrl).size > 1_000_000, 'moteur PDF incomplet');
 assert(fs.statSync(pdfModuleUrl).size > 500_000, 'bibliothèque PDF incomplète');
 
@@ -40,4 +41,4 @@ const firstPage = await loaded.getPage(1);
 const viewport = firstPage.getViewport({ scale:1 });
 assert(viewport.width > 500 && viewport.height > 800, 'dimensions A4 non reconnues');
 await loaded.destroy();
-console.log('LECTEUR PDF INTÉGRÉ OK — 2 pages');
+console.log('LECTEUR PDF CONTINU OK — 2 pages');
