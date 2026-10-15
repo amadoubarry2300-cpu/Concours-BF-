@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 process.env.NODE_ENV = 'test';
-const { burkinaMobileOperator, validatePaymentPhoneForProvider } = await import('../backend/server.js');
+const { burkinaMobileOperator, validatePaymentPhoneForProvider, saspayUsesHostedCheckout } = await import('../backend/server.js');
 
 const operatorCases = [
   ['67266720', 'ORANGE_MONEY'],
@@ -17,6 +17,9 @@ for (const [phone, expected] of operatorCases){
 
 assert.equal(validatePaymentPhoneForProvider('67266720', 'ORANGE_MONEY').phone, '+22667266720');
 assert.equal(validatePaymentPhoneForProvider('+226 70 12 34 56', 'MOOV_MONEY').phone, '+22670123456');
+assert.equal(validatePaymentPhoneForProvider('61509131', 'MOOV_MONEY').phone, '+22661509131');
+assert.equal(saspayUsesHostedCheckout('MOOV_MONEY'), true, 'Moov/Telmob doit ouvrir la page SasPay');
+assert.equal(saspayUsesHostedCheckout('ORANGE_MONEY'), false, 'Orange conserve son parcours direct');
 assert.throws(
   () => validatePaymentPhoneForProvider('66662160', 'MOOV_MONEY'),
   /numéro Orange Money/i

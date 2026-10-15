@@ -175,8 +175,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=menu-color-motion-performance-v17').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=menu-color-motion-performance-v17';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=moov-saspay-redirect-v18').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=moov-saspay-redirect-v18';
       return pdfjs;
     });
   }
@@ -4774,7 +4774,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'menu-color-motion-performance-v17') location.reload();
+    if (data.build && data.build !== 'moov-saspay-redirect-v18') location.reload();
   }catch{}
 }
 
@@ -4787,7 +4787,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=menu-color-motion-performance-v17')
+    navigator.serviceWorker.register('/sw.js?v=moov-saspay-redirect-v18')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

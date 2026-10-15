@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'menu-color-motion-performance-v17';
+const CACHE_VERSION = 'moov-saspay-redirect-v18';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=menu-color-motion-performance-v17',
-  '/js/questions.js?v=menu-color-motion-performance-v17',
-  '/js/app.js?v=menu-color-motion-performance-v17',
-  '/js/vendor/pdf.mjs?v=menu-color-motion-performance-v17',
-  '/js/vendor/pdf.worker.mjs?v=menu-color-motion-performance-v17',
+  '/css/styles.css?v=moov-saspay-redirect-v18',
+  '/js/questions.js?v=moov-saspay-redirect-v18',
+  '/js/app.js?v=moov-saspay-redirect-v18',
+  '/js/vendor/pdf.mjs?v=moov-saspay-redirect-v18',
+  '/js/vendor/pdf.worker.mjs?v=moov-saspay-redirect-v18',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

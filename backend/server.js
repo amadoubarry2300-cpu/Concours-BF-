@@ -4336,6 +4336,10 @@ function saspayNetwork(provider){
   return SASPAY_NETWORKS[key] || SASPAY_NETWORKS.ORANGE_MONEY;
 }
 
+function saspayUsesHostedCheckout(provider){
+  return String(provider || '').toUpperCase() === 'MOOV_MONEY';
+}
+
 async function saspayRequest(pathname, { method='GET', body, idempotencyKey } = {}){
   requireSasPayConfig();
   const headers = { Authorization: `Bearer ${SASPAY_API_KEY}`, 'Content-Type': 'application/json' };
@@ -4724,7 +4728,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'menu-color-motion-performance-v17',
+    build: 'moov-saspay-redirect-v18',
     time: new Date().toISOString()
   });
 });
@@ -5012,6 +5016,54 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
       metadata: { tx_ref: tx, account_phone:accountPhone, payment_phone:paymentPhone, plan: plan.id, provider: selectedProvider }
     };
 
+    const createHostedCheckout = async (reason='hosted_checkout') => {
+      const sessionPayload = {
+        amount: `${plan.amount}.00`,
+        currency: 'XOF',
+        description: paymentDescription(plan),
+        country: SASPAY_COUNTRY,
+        customer_email: customerEmail,
+        customer_name: `${firstName} ${lastName}`.trim(),
+        customer_phone: publicPhone(paymentPhone),
+        return_url: returnTo,
+        metadata: { tx_ref: tx, account_phone:accountPhone, payment_phone:paymentPhone, plan: plan.id, provider: selectedProvider, checkout_reason:reason }
+      };
+      const sessionResponse = await saspayRequest('/checkout-sessions/', { method:'POST', body:sessionPayload });
+      const session = saspayPayload(sessionResponse);
+      const paymentUrl = saspayCheckoutUrl(sessionResponse);
+      const raw = {
+        ...paymentContext,
+        amount:plan.amount,
+        saspay_session_id:saspayId(sessionResponse),
+        saspay_session:session,
+        saspay_session_response:sessionResponse,
+        checkout_reason:reason
+      };
+      await updatePaymentRecord(tx, { status:saspayStatus(sessionResponse), raw });
+      if (!paymentUrl){
+        return { error:true, status:502, body:{ message:'La page de paiement n’a pas pu être ouverte. Réessaie dans quelques instants.', mode:'checkout', transactionId:tx, sessionId:saspayId(sessionResponse) || null } };
+      }
+      return {
+        error:false,
+        body:{
+          ok:true,
+          mode:'checkout',
+          transactionId:tx,
+          sessionId:saspayId(sessionResponse) || null,
+          status:saspayStatus(sessionResponse),
+          paymentUrl,
+          message:'Redirection vers la page SasPay pour finaliser le paiement.'
+        }
+      };
+    };
+
+    // Moov/Telmob passe par la page SasPay : le client voit immédiatement
+    // l’étape de paiement au lieu d’attendre un push opérateur parfois invisible.
+    if (saspayUsesHostedCheckout(selectedProvider)){
+      const checkout = await createHostedCheckout('moov_hosted_redirect');
+      return checkout.error ? res.status(checkout.status).json(checkout.body) : res.json(checkout.body);
+    }
+
     try{
       const data = await saspayRequest('/payments/softpay/', { method:'POST', body:payload, idempotencyKey:tx });
       const paymentUrl = saspayCheckoutUrl(data);
@@ -5027,44 +5079,10 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
         message: paymentUrl ? 'Redirection vers la page de paiement.' : `Demande ${paymentProviderLabel(selectedProvider)} envoyée. Valide-la sur le téléphone à débiter.`
       });
     }catch(err){
-      // Si le push direct échoue côté opérateur ou format, on bascule sur le checkout hébergé SasPay.
-      // Le client choisit alors lui-même son réseau et saisit son numéro sur une page SasPay.
+      // Si le push direct échoue côté opérateur ou format, on bascule sur la page SasPay.
       if (err.status !== 422) throw err;
-      const sessionPayload = {
-        amount: `${plan.amount}.00`,
-        currency: 'XOF',
-        description: paymentDescription(plan),
-        country: SASPAY_COUNTRY,
-        customer_email: customerEmail,
-        customer_name: `${firstName} ${lastName}`.trim(),
-        customer_phone: publicPhone(paymentPhone),
-        return_url: returnTo,
-        metadata: { tx_ref: tx, account_phone:accountPhone, payment_phone:paymentPhone, plan: plan.id, provider: selectedProvider, softpay_error: err.message }
-      };
-      const sessionResponse = await saspayRequest('/checkout-sessions/', { method:'POST', body:sessionPayload });
-      const session = saspayPayload(sessionResponse);
-      const paymentUrl = saspayCheckoutUrl(sessionResponse);
-      const raw = {
-        ...paymentContext,
-        amount:plan.amount,
-        saspay_session_id:saspayId(sessionResponse),
-        saspay_session:session,
-        saspay_session_response:sessionResponse,
-        softpay_error:err.message
-      };
-      await updatePaymentRecord(tx, { status:saspayStatus(sessionResponse), raw });
-      if (!paymentUrl){
-        return res.status(502).json({ message:'La page de paiement n’a pas pu être ouverte. Réessaie dans quelques instants.', mode:'checkout', transactionId:tx, sessionId:saspayId(sessionResponse) || null });
-      }
-      return res.json({
-        ok:true,
-        mode:'checkout',
-        transactionId: tx,
-        sessionId: saspayId(sessionResponse) || null,
-        status: saspayStatus(sessionResponse),
-        paymentUrl,
-        message: 'Redirection vers la page SasPay pour finaliser le paiement.'
-      });
+      const checkout = await createHostedCheckout('softpay_unavailable');
+      return checkout.error ? res.status(checkout.status).json(checkout.body) : res.json(checkout.body);
     }
   }catch(err){ next(err); }
 });
@@ -6491,5 +6509,6 @@ export {
   openRouterMessageContent,
   groundingSourcesFromOpenRouter,
   burkinaMobileOperator,
-  validatePaymentPhoneForProvider
+  validatePaymentPhoneForProvider,
+  saspayUsesHostedCheckout
 };
