@@ -176,8 +176,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=publication-categories-v21').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=publication-categories-v21';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=qcm-pdf-complete-v23').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=qcm-pdf-complete-v23';
       return pdfjs;
     });
   }
@@ -1991,15 +1991,11 @@ async function downloadPastedQcmBookPdf(){
   try{
     const formPayload = pastedQcmPayload();
     const contentSignature = pastedQcmContentSignature(formPayload);
-    const previewCurrent = pastedQcmPreviewSignature === contentSignature
-      && Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0) > 0;
-    const ready = previewCurrent ? Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0) : 0;
-    const payload = previewCurrent ? {
-      ...formPayload,
-      metadata:pastedQcmPreviewCache.metadata,
-      questions:pastedQcmPreviewCache.questions,
-      pdfToken:pastedQcmPreviewCache.pdfToken
-    } : formPayload;
+    // Le PDF repart toujours du texte complet. La prévisualisation du quiz peut
+    // écarter les réponses multiples ou « aucune des propositions », alors que
+    // le livre doit conserver chaque QCM collé par l’administrateur.
+    const ready = Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0);
+    const payload = formPayload;
     const res = await fetchWithTimeout('/api/admin/questions/import/pdf', {
       method:'POST',
       headers:authHeaders({ 'Content-Type':'application/json' }),
@@ -5058,7 +5054,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'publication-categories-v21') location.reload();
+    if (data.build && data.build !== 'qcm-pdf-complete-v23') location.reload();
   }catch{}
 }
 
@@ -5071,7 +5067,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=publication-categories-v21')
+    navigator.serviceWorker.register('/sw.js?v=qcm-pdf-complete-v23')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

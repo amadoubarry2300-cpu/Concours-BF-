@@ -140,11 +140,11 @@ B. 101 cm
 C. 102 cm
 D. 103 cm
 Réponse : A
-Explication : Cette correction volontairement différente doit être remplacée par la version canonique déjà publiée.`
+Explication : Cette version collée doit rester inchangée dans le livre.`
 });
 assert(existingPrepared.questions.length === 1, 'QCM publié exact refusé dans le livre');
-assert(existingPrepared.questions[0].option_a === '6 cm', 'version canonique publiée non réutilisée');
-assert(existingPrepared.questions[0].correct_answer === 2, 'bonne réponse canonique publiée non réutilisée');
+assert(existingPrepared.questions[0].option_a === '100 cm', 'le livre a remplacé le texte collé');
+assert(existingPrepared.questions[0].correct_answer === 0, 'le livre a remplacé la réponse collée');
 const multiplePrepared = await preparePastedQcmBook({
   title:'SVT — Réponses multiples',
   date:'2026-10-14',
@@ -160,6 +160,33 @@ Explication : Les chromosomes se condensent et l’enveloppe nucléaire dispara�
 });
 assert(multiplePrepared.questions.length === 1, `livre à réponses multiples refusé : ${JSON.stringify(multiplePrepared.rejected)}`);
 assert(JSON.stringify(multiplePrepared.questions[0].correct_answers) === '[0,2]', 'réponses multiples altérées pendant la préparation du livre');
+
+const noAnswerPrepared = await preparePastedQcmBook({
+  title:'QCM avec pièges de concours',
+  date:'2026-10-16',
+  category:'Histoire-Géo',
+  level:'Concours',
+  text:`1. La conférence de San Francisco se déroule le :
+A. 25-26 juin 1943
+B. 25-26 juin 1944
+C. 25-26 juin 1945
+D. 25-26 juin 1946
+Réponse : aucune des propositions.
+
+2. Quels dirigeants étaient présents à Téhéran ?
+A. Roosevelt
+B. Staline
+C. Truman
+D. Churchill
+Réponses : A, B et D
+Explication : Roosevelt, Staline et Churchill ont participé à la conférence de Téhéran.`
+});
+assert(noAnswerPrepared.questions.length === 2, `QCM sans bonne option rejeté : ${JSON.stringify(noAnswerPrepared.rejected)}`);
+assert(noAnswerPrepared.rejected.length === 0, 'un QCM de concours a disparu du livre');
+assert(noAnswerPrepared.questions[0].no_correct_option === true, 'mention « aucune des propositions » perdue');
+assert(questionAnswerLabels(noAnswerPrepared.questions[0]) === 'Aucune des propositions', 'libellé sans bonne option incorrect');
+const noAnswerPdf = await buildPastedQcmBookPdf({ ...noAnswerPrepared, theme:'montserrat-concours' });
+assert((noAnswerPdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length === 3, 'le PDF n’inclut pas tous les QCM de concours');
 
 const unicodeSource = {
   metadata:{ title:'Contrôle des signes mathématiques', date:'2026-10-14', category:'Mathématiques', level:'BEPC' },

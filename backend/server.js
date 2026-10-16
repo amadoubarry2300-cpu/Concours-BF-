@@ -1932,9 +1932,14 @@ function cleanPastedQcmLine(value){
 function pastedQcmAnswerLabels(value){
   const raw = String(value || '').trim();
   if (!raw) return [];
-  const prefix = raw.match(/^((?:(?:l['’]?option|option)\s*)?[A-D](?:\s*(?:,|;|\/|\+|&|et)\s*(?:(?:l['’]?option|option)\s*)?[A-D]){0,3})(?=\s*(?:$|[.):-]))/i)?.[1] || '';
+  const prefix = raw.match(/^((?:(?:l['’]?option|option)\s*)?[A-D](?:\s*(?:,|;|\/|\+|&|et|ou)\s*(?:(?:l['’]?option|option)\s*)?[A-D]){0,3})(?=\s*(?:$|[.,):-]))/i)?.[1] || '';
   if (!prefix) return [];
   return [...new Set((prefix.match(/\b[A-D]\b/gi) || []).map(label => label.toUpperCase()))];
+}
+
+function pastedQcmHasNoCorrectOption(value){
+  const text = cleanPastedQcmLine(value).replace(/[.!?;:]+$/g, '').trim();
+  return /^(?:aucune\s+(?:des\s+)?(?:propositions?|options?|r[ée]ponses?|choix)|aucune\s+bonne\s+r[ée]ponse(?:\s+parmi\s+(?:les\s+)?(?:choix|propositions?|options?))?|aucune\s+r[ée]ponse\s+correcte|aucun\s+(?:des\s+)?choix|aucun\s+choix\s+correct|pas\s+de\s+bonne\s+r[ée]ponse)$/i.test(text);
 }
 
 function pastedQcmAnswerIndexes(block){
@@ -1968,7 +1973,7 @@ function pastedQcmQualityIssue(question, dedupeIndex){
   return '';
 }
 
-function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
+function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex, forBook = false } = {}){
   const raw = String(rawText || '');
   if (!raw.trim()) throw Object.assign(new Error('Colle d’abord les QCM numérotés dans la grande case.'), { status:400 });
   if (raw.length > 200000) throw Object.assign(new Error('Le texte collé est trop long. Limite : 50 QCM.'), { status:413 });
@@ -2015,14 +2020,14 @@ function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
       current.part = 'option';
       continue;
     }
-    const answerMatch = line.match(/^\s*(?:(?:bonne(?:s)?\s+)?r[ée]ponse(?:s)?(?:\s+correcte(?:s)?)?|correct\s+answer(?:s)?)\s*(?:est|sont)?\s*(?:[:\-–—]\s*)?(.+)$/i);
+    const answerMatch = line.match(/^\s*(?:(?:bonne(?:s)?\s+)?r[ée]ponse(?:s)?(?:\s+(?:correcte(?:s)?|possible(?:s)?))?|correct\s+answer(?:s)?)\s*(?:est|sont)?\s*(?:[:\-–—]\s*)?(.+)$/i);
     if (answerMatch){
       const answerBody = answerMatch[1].trim();
       const answerLabels = pastedQcmAnswerLabels(answerBody);
       if (answerLabels.length){
         current.answerLabels = answerLabels;
         current.answerLabel = answerLabels[0];
-        const prefix = answerBody.match(/^((?:(?:l['’]?option|option)\s*)?[A-D](?:\s*(?:,|;|\/|\+|&|et)\s*(?:(?:l['’]?option|option)\s*)?[A-D]){0,3})(?:\s*[.):-]\s*)?(.*)$/i);
+        const prefix = answerBody.match(/^((?:(?:l['’]?option|option)\s*)?[A-D](?:\s*(?:,|;|\/|\+|&|et|ou)\s*(?:(?:l['’]?option|option)\s*)?[A-D]){0,3})(?:\s*[.,):-]\s*)?(.*)$/i);
         current.answerTrailing = cleanPastedQcmLine(prefix?.[2] || '');
       }else{
         current.answerText = answerBody;
@@ -2066,30 +2071,59 @@ function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex } = {}){
       if (block.duplicateOption) throw new Error('Une lettre de réponse est répétée dans les options.');
       if (!block.options[0] || !block.options[1]) throw new Error('Ajoute au moins les deux options A et B.');
       if (block.options[3] && !block.options[2]) throw new Error('Ajoute l’option C avant l’option D.');
+      const noCorrectOption = forBook && pastedQcmHasNoCorrectOption(block.answerText);
       const correctAnswers = pastedQcmAnswerIndexes(block);
-      if (!correctAnswers.length) throw new Error('Bonne réponse introuvable. Utilise « Réponse : A » ou « Réponses : A et C ».' );
+      if (!correctAnswers.length && !noCorrectOption){
+        throw new Error('Bonne réponse introuvable. Utilise « Réponse : A », « Réponses : A et C » ou « Réponse : aucune des propositions ».' );
+      }
       if (correctAnswers.some(answer => !block.options[answer])) throw new Error('Une bonne réponse désigne une option absente.');
-      const correctAnswer = correctAnswers[0];
+      const correctAnswer = noCorrectOption ? -1 : correctAnswers[0];
       let explanation = block.explanation;
-      if (!explanation && block.answerTrailing){
+      if (!explanation && block.answerTrailing && correctAnswer >= 0){
         const correctOption = normalizeQcmOptionKey(block.options[correctAnswer]);
         if (normalizeQcmOptionKey(block.answerTrailing) !== correctOption) explanation = block.answerTrailing;
       }
-      const question = adminQuestionPayload({
-        category:defaults.category || 'Culture générale',
-        level:defaults.level || 'Concours',
-        question_text:block.question,
-        options:block.options,
-        correct_answer:correctAnswer,
-        explanation,
-        source:defaults.title || defaults.source || 'Import administrateur',
-        is_premium:Boolean(defaults.is_premium),
-        is_active:true
-      });
-      const issue = pastedQcmQualityIssue(question, index);
-      if (issue) throw new Error(issue);
+      let question;
+      if (forBook){
+        const options = block.options.map(value => cleanEducationalText(value, 500));
+        const providedOptions = options.filter(Boolean);
+        const questionText = cleanEducationalText(block.question, 1200);
+        if (questionText.length < 8) throw new Error('Question trop courte.');
+        if (new Set(providedOptions.map(normalizeQcmOptionKey)).size !== providedOptions.length){
+          throw new Error('Les options doivent être différentes.');
+        }
+        question = {
+          category:cleanText(defaults.category || 'Culture générale', 80),
+          level:cleanText(defaults.level || 'Concours', 40),
+          question_text:questionText,
+          option_a:options[0],
+          option_b:options[1],
+          option_c:options[2],
+          option_d:options[3],
+          correct_answer:correctAnswer,
+          explanation:cleanEducationalText(explanation, 3000),
+          source:cleanText(defaults.title || defaults.source || 'Import administrateur', 500),
+          is_premium:Boolean(defaults.is_premium),
+          is_active:true,
+          no_correct_option:noCorrectOption
+        };
+      }else{
+        question = adminQuestionPayload({
+          category:defaults.category || 'Culture générale',
+          level:defaults.level || 'Concours',
+          question_text:block.question,
+          options:block.options,
+          correct_answer:correctAnswer,
+          explanation,
+          source:defaults.title || defaults.source || 'Import administrateur',
+          is_premium:Boolean(defaults.is_premium),
+          is_active:true
+        });
+        const issue = pastedQcmQualityIssue(question, index);
+        if (issue) throw new Error(issue);
+      }
       questions.push({ ...question, correct_answers:correctAnswers, import_number:block.number });
-      addQuestionToDedupeIndex(question.question_text, index);
+      if (!forBook) addQuestionToDedupeIndex(question.question_text, index);
     }catch(err){
       rejected.push({ number:block.number, question:block.question || `QCM ${block.number}`, reason:err.message || 'Format non reconnu.' });
     }
@@ -3293,8 +3327,9 @@ function questionAnswerIndexes(question = {}){
 }
 
 function questionAnswerLabels(question = {}){
+  if (question?.no_correct_option) return 'Aucune des propositions';
   const labels = questionAnswerIndexes(question).map(answerLabel);
-  if (!labels.length) return answerLabel(question?.correct_answer);
+  if (!labels.length) return '';
   if (labels.length === 1) return labels[0];
   if (labels.length === 2) return `${labels[0]} et ${labels[1]}`;
   return `${labels.slice(0, -1).join(', ')} et ${labels.at(-1)}`;
@@ -3681,46 +3716,76 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
 
     function drawCover(){
       paper(bookTone.background);
-      doc.rect(0, 0, pageW, 285).fill(bookTone.primary);
-      doc.rect(0, 0, 18, pageH).fill(bookTone.secondary);
-      doc.rect(18, 0, 7, pageH).fill(bookTone.accent);
-      doc.save().opacity(0.12).fillColor('#ffffff');
-      doc.circle(pageW - 25, 45, 150).fill();
-      doc.circle(pageW - 80, 240, 72).fill();
-      doc.restore();
-      doc.save().opacity(0.18).fillColor(bookTone.secondary);
-      doc.moveTo(24, pageH).lineTo(310, pageH).lineTo(24, pageH - 286).closePath().fill();
+      doc.rect(0, 0, pageW, 18).fill(bookTone.primary);
+      doc.rect(0, pageH - 14, pageW, 14).fill(bookTone.primary);
+
+      // Décor léger et équilibré : aucun élément ne pousse la page vers un côté.
+      doc.save().opacity(0.10).fillColor(bookTone.primary);
+      doc.circle(38, 116, 92).fill();
+      doc.circle(pageW - 38, pageH - 120, 92).fill();
       doc.restore();
 
-      shadowCard(58, 72, pageW - 100, 650, 22);
-      doc.roundedRect(81, 96, 78, 78, 39).fill(bookTone.background);
-      logo(89, 104, 62);
-      font('bold', 22, visual.ink).text('RÉUSSITE', 178, 103, { width:300 });
-      font('bold', 24, bookTone.primary).text('CONCOURS BF', 178, 134, { width:310 });
-      font('regular', 9.5, palette.muted).text('PRÉPARATION AUX EXAMENS ET CONCOURS', 179, 168, { width:310, characterSpacing:0.55 });
-      doc.moveTo(82, 196).lineTo(pageW - 72, 196).lineWidth(1.2).stroke(bookTone.wash);
+      const cardX = 46;
+      const cardW = pageW - cardX * 2;
+      shadowCard(cardX, 52, cardW, pageH - 104, 22);
 
-      font('bold', 12, bookTone.secondary).text('LIVRE NUMÉRIQUE • ÉDITION CORRIGÉE', 84, 226, { width:pageW - 148, align:'center', characterSpacing:0.45 });
-      const titleSize = fitSize(cleanTitle.toUpperCase(), pageW - 154, 145, 'bold', 38, 23, { lineGap:2, align:'center' });
-      font('bold', titleSize, visual.ink).text(cleanTitle.toUpperCase(), 86, 270, { width:pageW - 158, align:'center', lineGap:2 });
+      const logoSize = 68;
+      logo((pageW - logoSize) / 2, 86, logoSize);
+      font('bold', 21, visual.ink).text('RÉUSSITE CONCOURS BF', cardX + 28, 166, {
+        width:cardW - 56,
+        align:'center'
+      });
+      font('regular', 9.5, palette.muted).text('PRÉPARATION AUX EXAMENS ET CONCOURS', cardX + 28, 197, {
+        width:cardW - 56,
+        align:'center',
+        characterSpacing:0.35
+      });
+      doc.moveTo(cardX + 38, 226).lineTo(cardX + cardW - 38, 226).lineWidth(1).stroke(bookTone.wash);
 
-      doc.roundedRect(100, 414, pageW - 182, 79, 14).fill(bookTone.primary);
-      doc.roundedRect(100, 414, 12, 79, 6).fill(bookTone.accent);
-      font('bold', 27, '#ffffff').text(`${rows.length} QCM`, 124, 428, { width:pageW - 230, align:'center' });
-      font('regular', 11, '#ffffff').text('UN QCM PAR PAGE • RÉPONSES EXPLIQUÉES', 124, 462, { width:pageW - 230, align:'center', characterSpacing:0.25 });
-
-      const metaX = 93, metaW = pageW - 166;
-      [["MODULE",moduleName.toUpperCase()],["NIVEAU",levelName.toUpperCase()],["ÉDITION",formattedDate.toUpperCase()]].forEach((row,index) => {
-        const y = 535 + index * 43;
-        font('bold', 10, palette.muted).text(row[0], metaX, y, { width:90 });
-        font('bold', index === 2 ? 11.5 : 14, visual.ink).text(row[1], metaX + 96, y - 3, { width:metaW - 96, align:'right', ellipsis:true });
-        doc.moveTo(metaX, y + 24).lineTo(metaX + metaW, y + 24).lineWidth(0.7).stroke(bookTone.wash);
+      const titleWidth = cardW - 76;
+      const titleSize = fitSize(cleanTitle.toUpperCase(), titleWidth, 176, 'bold', 38, 23, { lineGap:3, align:'center' });
+      font('bold', titleSize, bookTone.primary).text(cleanTitle.toUpperCase(), cardX + 38, 270, {
+        width:titleWidth,
+        align:'center',
+        lineGap:3
       });
 
-      font('italic', 11.2, bookTone.primary).text('Une préparation sérieuse aujourd’hui, votre réussite demain.', 84, 675, { width:pageW - 150, align:'center' });
-      font('bold', 9.2, bookTone.secondary).text('BURKINA FASO • +226 74 01 37 04', 84, 697, { width:pageW - 150, align:'center', characterSpacing:0.45 });
-      font('bold', 9, bookTone.primary).text('RÉUSSITE CONCOURS BF', 52, 770, { width:230 });
-      font('regular', 8.5, palette.muted).text('Livre conçu pour l’écran et l’impression', pageW - 300, 770, { width:248, align:'right' });
+      const titleHeight = height(cleanTitle.toUpperCase(), titleWidth, 'bold', titleSize, { lineGap:3, align:'center' });
+      const titleAlreadyShowsCount = /\b\d+\s*QCM\b/i.test(cleanTitle);
+      const countY = Math.max(408, 270 + titleHeight + 34);
+      if (!titleAlreadyShowsCount){
+        doc.roundedRect(cardX + 76, countY, cardW - 152, 58, 14).fill(bookTone.primary);
+        font('bold', 21, '#ffffff').text(`${rows.length} QCM CORRIGÉS`, cardX + 92, countY + 17, {
+          width:cardW - 184,
+          align:'center',
+          lineBreak:false
+        });
+      }
+
+      const infoX = cardX + 60;
+      const infoW = cardW - 120;
+      const infoStartY = titleAlreadyShowsCount ? countY + 28 : countY + 105;
+      const infoRows = [
+        ['MODULE', moduleName.toUpperCase()],
+        ['NIVEAU', levelName.toUpperCase()],
+        ['DATE', formattedDate.toUpperCase()]
+      ];
+      infoRows.forEach((row, index) => {
+        const y = infoStartY + index * 50;
+        font('bold', 9.5, palette.muted).text(row[0], infoX, y, { width:76 });
+        font('bold', index === 2 ? 11.5 : 13.5, visual.ink).text(row[1], infoX + 80, y - 2, {
+          width:infoW - 80,
+          align:'right',
+          ellipsis:true
+        });
+        doc.moveTo(infoX, y + 27).lineTo(infoX + infoW, y + 27).lineWidth(0.7).stroke(bookTone.wash);
+      });
+
+      font('bold', 10, bookTone.primary).text('BURKINA FASO', cardX + 30, pageH - 78, {
+        width:cardW - 60,
+        align:'center',
+        characterSpacing:0.6
+      });
     }
 
     function normalizedOptions(q){
@@ -3730,7 +3795,7 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
     function pageLayout(q){
       const qText = pdfCleanText(q.question_text || 'Question');
       const opts = normalizedOptions(q);
-      const explanation = pdfCleanText(q.explanation || 'La réponse indiquée est la bonne réponse.');
+      const explanation = pdfCleanText(q.explanation || '');
       // Ces largeurs sont exactement celles utilisées au dessin afin que la
       // question, les choix et l’explication ne puissent jamais se chevaucher.
       const questionW = 419;
@@ -3742,13 +3807,14 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
         : [26,25,24,23,22,21,20,19,18,17,16];
       for (const questionSize of starts){
         const optionSize = Math.max(13.5, Math.min(18, questionSize - 7));
-        const answerSize = Math.max(16.5, optionSize + 0.5);
+        const answerSize = Math.max(15, optionSize + 0.5);
         const explanationSize = Math.max(11.5, optionSize - 2.2);
         const qH = height(qText, questionW, 'bold', questionSize, { lineGap:2.4 });
         const optionHs = opts.map(value => Math.max(45, height(value, optionW, 'regular', optionSize, { lineGap:1.7 }) + 18));
-        const explanationH = height(explanation, explanationW, 'regular', explanationSize, { lineGap:2.1 });
-        const totalH = qH + 18 + optionHs.reduce((sum,value) => sum + value, 0) + 18 + 55 + 12 + Math.max(82, explanationH + 48);
-        chosen = { qText, opts, explanation, questionSize, optionSize, answerSize, explanationSize, qH, optionHs, explanationH, totalH };
+        const explanationH = explanation ? height(explanation, explanationW, 'regular', explanationSize, { lineGap:2.1 }) : 0;
+        const explanationBoxH = explanation ? Math.max(82, explanationH + 48) : 0;
+        const totalH = qH + 18 + optionHs.reduce((sum,value) => sum + value, 0) + 18 + 55 + (explanation ? 12 + explanationBoxH : 0);
+        chosen = { qText, opts, explanation, questionSize, optionSize, answerSize, explanationSize, qH, optionHs, explanationH, explanationBoxH, totalH };
         if (totalH <= 553) break;
       }
       return chosen;
@@ -3766,16 +3832,15 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
 
       doc.roundedRect(38, 25, 51, 51, 25.5).fill('#ffffff');
       logo(44, 31, 39);
-      font('bold', 14, '#ffffff').text('RÉUSSITE CONCOURS BF', 102, 34, { width:270 });
-      font('regular', 8.8, '#ffffff').text(fonts.label.toUpperCase(), 103, 55, { width:250, characterSpacing:0.45 });
-      font('bold', 9.5, '#ffffff').text(`${moduleName.toUpperCase()} • ${levelName.toUpperCase()}`, pageW - 242, 37, { width:190, align:'right', ellipsis:true, lineBreak:false });
-      font('regular', 8.3, '#ffffff').text(formattedDate, pageW - 242, 56, { width:190, align:'right', lineBreak:false });
+      font('bold', 14, '#ffffff').text('RÉUSSITE CONCOURS BF', 102, 36, { width:270 });
+      font('regular', 9, '#ffffff').text(`${moduleName} • ${levelName}`, 103, 57, { width:320, ellipsis:true, lineBreak:false });
+      font('regular', 8.6, '#ffffff').text(formattedDate, pageW - 205, 47, { width:160, align:'right', lineBreak:false });
 
       shadowCard(31, 99, pageW - 62, 656, 20);
-      doc.roundedRect(54, 119, 154, 34, 17).fill(tone.primary);
-      font('bold', 11.3, '#ffffff').text(`QUESTION ${index + 1} / ${rows.length}`, 64, 130, { width:134, align:'center', lineBreak:false, characterSpacing:0.35 });
-      doc.roundedRect(pageW - 141, 119, 86, 34, 17).fill(tone.wash);
-      font('bold', 10.2, tone.primary).text('QCM CORRIGÉ', pageW - 134, 130, { width:72, align:'center', lineBreak:false });
+      const questionPillW = 190;
+      const questionPillX = (pageW - questionPillW) / 2;
+      doc.roundedRect(questionPillX, 119, questionPillW, 34, 17).fill(tone.primary);
+      font('bold', 11.3, '#ffffff').text(`QUESTION ${index + 1} SUR ${rows.length}`, questionPillX + 12, 130, { width:questionPillW - 24, align:'center', lineBreak:false, characterSpacing:0.25 });
 
       const layout = pageLayout(q);
       const contentX = 65;
@@ -3802,20 +3867,25 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
       const multiple = answerIndexes.length > 1;
       y += 10;
       doc.roundedRect(contentX + 32, y, contentW - 32, 55, 12).fill(tone.answer);
-      doc.roundedRect(contentX + 32, y, 11, 55, 5).fill(tone.answerInk);
-      font('bold', 10.5, tone.answerInk).text(multiple ? 'BONNES RÉPONSES' : 'BONNE RÉPONSE', contentX + 58, y + 9, { width:190, characterSpacing:0.55 });
-      font('bold', layout.answerSize, visual.ink).text(`${multiple ? 'RÉPONSES' : 'RÉPONSE'} : ${answer}`, contentX + 58, y + 25, { width:contentW - 75, lineBreak:false });
+      doc.roundedRect(contentX + 32, y, 8, 55, 4).fill(tone.answerInk);
+      const answerPrefix = multiple ? 'RÉPONSES' : 'RÉPONSE';
+      font('bold', layout.answerSize, visual.ink).text(`${answerPrefix} : ${answer}`, contentX + 54, y + 17, {
+        width:contentW - 70,
+        align:'left',
+        lineBreak:false,
+        ellipsis:true
+      });
       y += 67;
 
-      const explanationBoxH = Math.max(82, layout.explanationH + 48);
-      doc.roundedRect(contentX + 32, y, contentW - 32, explanationBoxH, 12).fill(tone.explanation);
-      doc.rect(contentX + 32, y, 5, explanationBoxH).fill(tone.secondary);
-      font('bold', 10.5, tone.secondary).text('EXPLICATION SIMPLE', contentX + 52, y + 13, { width:220, characterSpacing:0.45 });
-      font('regular', layout.explanationSize, visual.ink).text(layout.explanation, contentX + 52, y + 33, { width:contentW - 72, lineGap:2.1 });
+      if (layout.explanation){
+        doc.roundedRect(contentX + 32, y, contentW - 32, layout.explanationBoxH, 12).fill(tone.explanation);
+        doc.rect(contentX + 32, y, 5, layout.explanationBoxH).fill(tone.secondary);
+        font('bold', 10.5, tone.secondary).text('EXPLICATION', contentX + 52, y + 13, { width:220, characterSpacing:0.45 });
+        font('regular', layout.explanationSize, visual.ink).text(layout.explanation, contentX + 52, y + 33, { width:contentW - 72, lineGap:2.1 });
+      }
 
-      font('bold', 8.8, tone.primary).text('RÉUSSITE CONCOURS BF', 42, 776, { width:210, lineBreak:false });
-      font('regular', 8.2, palette.muted).text('Votre réussite, notre mission.', 205, 776, { width:180, align:'center', lineBreak:false });
-      font('bold', 8.8, tone.primary).text(`PAGE ${index + 1}`, pageW - 112, 776, { width:70, align:'right', lineBreak:false });
+      font('bold', 8.8, tone.primary).text('RÉUSSITE CONCOURS BF', 42, 776, { width:230, lineBreak:false });
+      font('bold', 8.8, tone.primary).text(`${index + 1} / ${rows.length}`, pageW - 112, 776, { width:70, align:'right', lineBreak:false });
     }
 
     drawCover();
@@ -3828,55 +3898,11 @@ async function buildPastedQcmBookPdf({ metadata = {}, questions = [], theme = ''
 }
 async function preparePastedQcmBook(body = {}){
   const metadata = pastedQcmImportMetadata(body);
-  const existingRows = await collectExistingQcmRows({ includeDaily:false });
-  // Le texte suit le même nettoyage et les mêmes contrôles que le quiz. Les
-  // doublons internes restent bloqués. Une question déjà publiée n’est admise
-  // dans le livre que si sa version canonique complète existe dans l’application.
-  const parsed = parsePastedQcmText(body?.text, metadata, { dedupeIndex:createQuestionDedupeIndex() });
-  const exactExisting = new Map();
-  existingRows.forEach(row => {
-    const hasCanonicalContent = row?.option_a && row?.option_b && Number.isInteger(Number(row?.correct_answer)) && row?.explanation;
-    if (hasCanonicalContent) exactExisting.set(normalizeQuestionKey(row.question_text), row);
-  });
-  const existingIndex = createQuestionDedupeIndex(existingRows.map(row => row.question_text));
-  const questions = [];
-  const rejected = [...parsed.rejected];
-  parsed.questions.forEach(question => {
-    const existing = exactExisting.get(normalizeQuestionKey(question.question_text));
-    if (existing){
-      // Un livre à réponses multiples doit conserver exactement les réponses
-      // collées par l’administrateur au lieu d’être ramené à l’ancienne réponse
-      // unique éventuellement déjà publiée dans le quiz interactif.
-      if (questionAnswerIndexes(question).length > 1){
-        questions.push(question);
-        return;
-      }
-      const canonical = {
-        ...existing,
-        correct_answers:questionAnswerIndexes(existing),
-        import_number:question.import_number,
-        category:existing.category || metadata.category,
-        level:existing.level || metadata.level,
-      };
-      const issue = publicQuestionQualityIssue(canonical);
-      if (issue){
-        rejected.push({ number:question.import_number, question:question.question_text, reason:issue });
-      }else{
-        questions.push(canonical);
-      }
-      return;
-    }
-    if (isDuplicateQuestionText(question.question_text, existingIndex)){
-      rejected.push({
-        number:question.import_number,
-        question:question.question_text,
-        reason:'Question trop proche d’un QCM existant : utilise la version déjà publiée ou reformule-la clairement.'
-      });
-      return;
-    }
-    questions.push(question);
-  });
-  return { metadata, ...parsed, questions, rejected, existingCount:existingRows.length };
+  // Le livre reprend fidèlement tous les QCM collés. Il accepte les réponses
+  // multiples et la mention « aucune des propositions ». Les contrôles propres
+  // au quiz interactif ne doivent jamais retirer une question du document PDF.
+  const parsed = parsePastedQcmText(body?.text, metadata, { forBook:true });
+  return { metadata, ...parsed, existingCount:0 };
 }
 
 function normalizePastedQcmBookSource(input = {}){
@@ -3890,8 +3916,9 @@ function normalizePastedQcmBookSource(input = {}){
     option_b:cleanEducationalText(question?.option_b, 500),
     option_c:cleanEducationalText(question?.option_c, 500),
     option_d:cleanEducationalText(question?.option_d, 500),
-    correct_answer:Number(question?.correct_answer),
-    correct_answers:questionAnswerIndexes(question),
+    correct_answer:question?.no_correct_option ? -1 : Number(question?.correct_answer),
+    correct_answers:question?.no_correct_option ? [] : questionAnswerIndexes(question),
+    no_correct_option:Boolean(question?.no_correct_option),
     explanation:cleanEducationalText(question?.explanation, 3000),
   }));
   return { metadata, questions };
@@ -5096,7 +5123,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'revision-clean-v22',
+    build: 'qcm-pdf-complete-v23',
     time: new Date().toISOString()
   });
 });
@@ -6266,7 +6293,11 @@ app.post('/api/admin/questions/import/preview', requireAdmin, async (req, res, n
 app.post('/api/admin/questions/import/pdf', requireAdmin, async (req, res, next) => {
   try{
     let result;
-    if (req.body?.pdfToken && Array.isArray(req.body?.questions)){
+    if (String(req.body?.text || '').trim()){
+      // Le texte complet reste la référence du livre : aucun QCM accepté pour
+      // le PDF ne doit disparaître à cause des règles du quiz interactif.
+      result = await preparePastedQcmBook(req.body || {});
+    }else if (req.body?.pdfToken && Array.isArray(req.body?.questions)){
       const bookSource = normalizePastedQcmBookSource(req.body);
       if (!verifyPastedQcmBookSource(bookSource, req.body.pdfToken)){
         return res.status(409).json({ message:'Cet aperçu a changé. Vérifie de nouveau les QCM avant de créer le PDF.' });
@@ -6275,11 +6306,17 @@ app.post('/api/admin/questions/import/pdf', requireAdmin, async (req, res, next)
     }else{
       result = await preparePastedQcmBook(req.body || {});
     }
-    if (!result.questions.length){
-      const firstReason = result.rejected?.[0]?.reason;
+    if (result.rejected?.length){
+      const first = result.rejected[0];
       return res.status(400).json({
-        message:firstReason ? `PDF non créé : ${firstReason}` : 'Aucun QCM propre et complet à placer dans le PDF.',
+        message:`Le PDF n’a pas été créé afin de ne perdre aucun QCM. Vérifie le QCM ${first?.number || '?'} : ${first?.reason || 'contenu incomplet'}`,
         rejected:result.rejected
+      });
+    }
+    if (!result.questions.length){
+      return res.status(400).json({
+        message:'Aucun QCM complet à placer dans le PDF.',
+        rejected:[]
       });
     }
     const buffer = await buildPastedQcmBookPdf({

@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'revision-clean-v22';
+const CACHE_VERSION = 'qcm-pdf-complete-v23';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=revision-clean-v22',
-  '/js/questions.js?v=revision-clean-v22',
-  '/js/app.js?v=revision-clean-v22',
-  '/js/vendor/pdf.mjs?v=revision-clean-v22',
-  '/js/vendor/pdf.worker.mjs?v=revision-clean-v22',
+  '/css/styles.css?v=qcm-pdf-complete-v23',
+  '/js/questions.js?v=qcm-pdf-complete-v23',
+  '/js/app.js?v=qcm-pdf-complete-v23',
+  '/js/vendor/pdf.mjs?v=qcm-pdf-complete-v23',
+  '/js/vendor/pdf.worker.mjs?v=qcm-pdf-complete-v23',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',
