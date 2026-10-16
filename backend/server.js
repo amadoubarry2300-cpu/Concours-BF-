@@ -62,6 +62,7 @@ const LOGIN_LOCK_MINUTES = Number(process.env.LOGIN_LOCK_MINUTES || 15);
 const RESOURCE_BUCKET = process.env.SUPABASE_RESOURCE_BUCKET || 'reussite-concours-resources';
 const RESOURCE_INDEX_PATH = 'resources/index.json';
 const NEWS_INDEX_PATH = 'news/index.json';
+const REVISION_INDEX_PATH = 'revision-fiches/index.json';
 const QCM_ADMIN_ARCHIVE_PATH = 'questions/admin-archive.json';
 const MAX_RESOURCE_FILE_BYTES = Number(process.env.MAX_RESOURCE_FILE_BYTES || 4 * 1024 * 1024);
 const SMTP_HOST = process.env.SMTP_HOST || '';
@@ -386,6 +387,78 @@ async function loadNewsIndex(){
 async function saveNewsIndex(news){
   const body = Buffer.from(JSON.stringify(news || [], null, 2), 'utf8');
   await uploadResourceObject(NEWS_INDEX_PATH, body, 'application/json; charset=utf-8');
+}
+
+async function loadRevisionIndex(){
+  try{
+    const file = await downloadResourceObject(REVISION_INDEX_PATH, { fresh:true });
+    const data = JSON.parse(file.buffer.toString('utf8') || '[]');
+    return Array.isArray(data) ? data : [];
+  }catch(err){
+    if (err.status === 404 || /Fichier introuvable|not found|does not exist|object.*not/i.test(String(err.message || err.details?.message || ''))) return [];
+    throw err;
+  }
+}
+
+async function saveRevisionIndex(rows){
+  const body = Buffer.from(JSON.stringify(rows || [], null, 2), 'utf8');
+  await uploadResourceObject(REVISION_INDEX_PATH, body, 'application/json; charset=utf-8');
+}
+
+function revisionImage(category){
+  const map = {
+    'Burkina Faso':'img/subject-burkina.svg',
+    'Culture générale':'img/subject-culture.svg',
+    'Histoire-Géo':'img/subject-history-geo.svg',
+    'Mathématiques':'img/subject-math.svg',
+    'Physique-Chimie':'img/subject-exam.svg',
+    'Psychotechnique':'img/subject-psychotech.svg',
+    'Français':'img/subject-french.svg',
+    'SVT':'img/subject-svt.svg',
+    'Greffier / Droit':'img/subject-law.svg'
+  };
+  return map[category] || 'img/study.jpg';
+}
+
+function publicRevisionFiche(row){
+  return {
+    id:row.id,
+    cat:row.category || 'Culture générale',
+    category:row.category || 'Culture générale',
+    img:row.image || revisionImage(row.category),
+    title:row.title || 'Fiche de révision',
+    time:row.duration || '3 min',
+    level:row.level || 'Tous niveaux',
+    quizTitle:row.quiz_title || `QCM ${row.category || 'Culture générale'}`,
+    points:Array.isArray(row.points) ? row.points.filter(Boolean).slice(0, 6) : [],
+    remember:row.remember || '',
+    is_premium:Boolean(row.is_premium),
+    is_active:row.is_active !== false,
+    created_at:row.created_at,
+    updated_at:row.updated_at
+  };
+}
+
+function adminRevisionPayload(body){
+  const category = cleanText(body?.category, 80);
+  if (!AI_DAILY_DEFAULT_CATEGORIES.includes(category)) throw Object.assign(new Error('Choisis une catégorie de publication.'), { status:400 });
+  const points = (Array.isArray(body?.points) ? body.points : String(body?.points || '').split(/\n+/))
+    .map(value => cleanText(value, 500)).filter(Boolean).slice(0, 6);
+  const payload = {
+    title:cleanText(body?.title, 180),
+    category,
+    level:cleanText(body?.level || 'Tous niveaux', 60),
+    duration:cleanText(body?.duration || '3 min', 30),
+    quiz_title:cleanText(body?.quizTitle || body?.quiz_title || `QCM ${category}`, 180),
+    points,
+    remember:cleanText(body?.remember, 800),
+    is_premium:Boolean(body?.is_premium),
+    is_active:body?.is_active === undefined ? true : Boolean(body.is_active)
+  };
+  if (payload.title.length < 4) throw Object.assign(new Error('Ajoute un titre clair.'), { status:400 });
+  if (payload.points.length < 2) throw Object.assign(new Error('Ajoute au moins deux points essentiels.'), { status:400 });
+  if (payload.remember.length < 5) throw Object.assign(new Error('Ajoute le point à retenir.'), { status:400 });
+  return payload;
 }
 
 function cleanUrl(value){
@@ -5014,7 +5087,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'email-automation-v20.1',
+    build: 'publication-categories-v21',
     time: new Date().toISOString()
   });
 });
@@ -5669,10 +5742,15 @@ app.get('/api/admin/ai/daily', requireAdmin, async (_req, res, next) => {
 
 app.post('/api/admin/ai/daily/run', requireAdmin, async (req, res, next) => {
   try{
+    const category = cleanText(req.body?.category, 80);
+    const level = normalizedLevelName(req.body?.level);
+    if (!AI_DAILY_DEFAULT_CATEGORIES.includes(category)) return res.status(400).json({ message:'Choisis la catégorie exacte avant de créer le PDF.' });
+    if (!AI_LEVEL_CATEGORY_RULES[level]) return res.status(400).json({ message:'Choisis le niveau avant de créer le PDF.' });
+    if (!categoryAllowedForLevel(category, level)) return res.status(400).json({ message:`La catégorie « ${category} » n’est pas compatible avec le niveau ${level}. Choisis une autre catégorie ou un autre niveau.` });
     const overrides = {
       count:req.body?.count,
-      category:req.body?.category,
-      level:req.body?.level,
+      category,
+      level,
       mode:req.body?.mode,
       theme:req.body?.theme,
       is_premium:req.body?.is_premium
@@ -5874,7 +5952,9 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
     if (!questions.length) return res.status(400).json({ message:'Aucun QCM à publier dans ce brouillon' });
     const publishLevel = cleanText(req.body?.level || draft.level || '', 40) || draft.level;
     const requestedPublishCategory = cleanText(req.body?.category || draft.category || '', 80) || draft.category;
-    const publishCategory = categoryAllowedForLevel(requestedPublishCategory, publishLevel) ? requestedPublishCategory : defaultCategoryForLevel(publishLevel, draft.date || todayId());
+    if (!AI_DAILY_DEFAULT_CATEGORIES.includes(requestedPublishCategory)) return res.status(400).json({ message:'Choisis la catégorie exacte avant de publier.' });
+    if (!categoryAllowedForLevel(requestedPublishCategory, publishLevel)) return res.status(400).json({ message:`La catégorie « ${requestedPublishCategory} » n’est pas compatible avec le niveau ${publishLevel}. Choisis une autre catégorie ou un autre niveau.` });
+    const publishCategory = requestedPublishCategory;
     const publishPremium = req.body?.is_premium === undefined ? Boolean(draft.is_premium) : Boolean(req.body?.is_premium);
     if (draft.status !== 'published'){
       const previousStoragePath = draft.storage_path || '';
@@ -6031,8 +6111,10 @@ app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
   try{
     if (!aiProviderConfigured()) return res.status(503).json({ message:'Service IA indisponible pour le moment. Réessaie plus tard.' });
     const level = cleanText(req.body?.level || 'Concours', 40);
-    const requestedCategory = cleanText(req.body?.category || 'Culture générale', 80);
-    const category = categoryAllowedForLevel(requestedCategory, level) ? requestedCategory : defaultCategoryForLevel(level);
+    const requestedCategory = cleanText(req.body?.category || '', 80);
+    if (!AI_DAILY_DEFAULT_CATEGORIES.includes(requestedCategory)) return res.status(400).json({ message:'Choisis une catégorie avant de générer.' });
+    if (!categoryAllowedForLevel(requestedCategory, level)) return res.status(400).json({ message:`La catégorie « ${requestedCategory} » n’est pas compatible avec le niveau ${level}.` });
+    const category = requestedCategory;
     const theme = cleanText(req.body?.theme || req.body?.publication_name || category, 240);
     const publicationName = cleanText(req.body?.publication_name || '', 180);
     const count = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(req.body?.count || 5)));
@@ -6050,8 +6132,10 @@ app.post('/api/admin/ai/qcm/verify', requireAdmin, async (req, res, next) => {
     const sourceRows = Array.isArray(req.body?.questions) ? req.body.questions.slice(0, AI_QCM_BATCH_SIZE) : [];
     if (!sourceRows.length) return res.status(400).json({ message:'Aucun QCM à vérifier.' });
     const level = cleanText(req.body?.level || sourceRows[0]?.level || 'Concours', 40);
-    const requestedCategory = cleanText(req.body?.category || sourceRows[0]?.category || 'Culture générale', 80);
-    const category = categoryAllowedForLevel(requestedCategory, level) ? requestedCategory : defaultCategoryForLevel(level);
+    const requestedCategory = cleanText(req.body?.category || sourceRows[0]?.category || '', 80);
+    if (!AI_DAILY_DEFAULT_CATEGORIES.includes(requestedCategory)) return res.status(400).json({ message:'Choisis une catégorie avant de vérifier.' });
+    if (!categoryAllowedForLevel(requestedCategory, level)) return res.status(400).json({ message:`La catégorie « ${requestedCategory} » n’est pas compatible avec le niveau ${level}.` });
+    const category = requestedCategory;
     const theme = cleanText(req.body?.theme || sourceRows[0]?.source || category, 240);
     const questions = sourceRows.map(row => normalizeAiQuestion(row, {
       category,
@@ -6075,8 +6159,10 @@ app.post('/api/admin/ai/qcm-pdf', requireAdmin, express.raw({ type:() => true, l
     if (!isPdfFile(fileName, mimeType)) return res.status(400).json({ message:'Seuls les fichiers PDF sont acceptés pour cette option IA.' });
 
     const level = headerText(req, 'x-ai-level', 40) || 'Concours';
-    const requestedCategory = headerText(req, 'x-ai-category', 80) || 'Culture générale';
-    const category = categoryAllowedForLevel(requestedCategory, level) ? requestedCategory : defaultCategoryForLevel(level);
+    const requestedCategory = headerText(req, 'x-ai-category', 80);
+    if (!AI_DAILY_DEFAULT_CATEGORIES.includes(requestedCategory)) return res.status(400).json({ message:'Choisis une catégorie avant de générer.' });
+    if (!categoryAllowedForLevel(requestedCategory, level)) return res.status(400).json({ message:`La catégorie « ${requestedCategory} » n’est pas compatible avec le niveau ${level}.` });
+    const category = requestedCategory;
     const publicationName = headerText(req, 'x-ai-publication-name', 180) || '';
     const theme = headerText(req, 'x-ai-theme', 220) || publicationName || `PDF ${fileName}`;
     const count = Math.min(AI_QCM_MAX_COUNT, Math.max(1, Number(req.headers['x-ai-count'] || 5)));
@@ -6402,6 +6488,55 @@ app.get('/api/admin/resources', requireAdmin, async (_req, res, next) => {
     if (changed) await saveResourceIndex(resources).catch(err => console.warn('Migration archive documents admin:', err.message));
     const dailyResources = await loadPublishedDailyPdfResources();
     res.json({ ok:true, resources:mergePublicResources(visibleResourceRows(resources).map(publicResource), dailyResources) });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/revision-fiches', async (_req, res, next) => {
+  try{
+    const rows = await loadRevisionIndex();
+    res.setHeader('Cache-Control', 'public, max-age=30');
+    res.json({ ok:true, fiches:rows.filter(row => row.is_active !== false).map(publicRevisionFiche) });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/admin/revision-fiches', requireAdmin, async (_req, res, next) => {
+  try{
+    const rows = await loadRevisionIndex();
+    res.json({ ok:true, fiches:rows.map(publicRevisionFiche) });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/revision-fiches', requireAdmin, async (req, res, next) => {
+  try{
+    const payload = adminRevisionPayload(req.body || {});
+    const now = new Date().toISOString();
+    const row = { id:crypto.randomUUID(), ...payload, image:revisionImage(payload.category), author_phone:req.phone, created_at:now, updated_at:now };
+    const rows = await loadRevisionIndex();
+    rows.unshift(row);
+    await saveRevisionIndex(rows);
+    res.json({ ok:true, fiche:publicRevisionFiche(row), destination:{ block:'Fiches de révision', category:row.category, access:row.is_premium ? 'Premium' : 'Gratuit' } });
+  }catch(err){ next(err); }
+});
+
+app.patch('/api/admin/revision-fiches/:id', requireAdmin, async (req, res, next) => {
+  try{
+    const rows = await loadRevisionIndex();
+    const index = rows.findIndex(row => row.id === req.params.id);
+    if (index < 0) return res.status(404).json({ message:'Fiche de révision introuvable.' });
+    const payload = adminRevisionPayload(req.body || {});
+    rows[index] = { ...rows[index], ...payload, image:revisionImage(payload.category), updated_at:new Date().toISOString() };
+    await saveRevisionIndex(rows);
+    res.json({ ok:true, fiche:publicRevisionFiche(rows[index]) });
+  }catch(err){ next(err); }
+});
+
+app.delete('/api/admin/revision-fiches/:id', requireAdmin, async (req, res, next) => {
+  try{
+    const rows = await loadRevisionIndex();
+    const nextRows = rows.filter(row => row.id !== req.params.id);
+    if (nextRows.length === rows.length) return res.status(404).json({ message:'Fiche de révision introuvable.' });
+    await saveRevisionIndex(nextRows);
+    res.json({ ok:true, deleted:true, persisted:true });
   }catch(err){ next(err); }
 });
 
@@ -7037,5 +7172,7 @@ export {
   processExpiryReminderEmails,
   processNextEmailCampaign,
   activateSubscription,
-  absoluteAppUrl
+  absoluteAppUrl,
+  adminRevisionPayload,
+  publicRevisionFiche
 };

@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=email-automation-v20.1">
+<link rel="manifest" href="/manifest.webmanifest?v=publication-categories-v21">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=email-automation-v20.1">
+<link rel="stylesheet" href="css/styles.css?v=publication-categories-v21">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -45,7 +45,7 @@
       <button class="menu-card tone-training" data-menu-target="formations" onclick="menuNavigate('formations')"><span>🗂️</span><b>Formations</b><small>Tous les modules</small></button>
       <button class="menu-card tone-qcm" data-menu-target="publishedqcm" onclick="menuNavigate('publishedqcm')"><span>📌</span><b>Nouveaux QCM</b><small>Publications récentes</small></button>
       <button class="menu-card tone-documents" data-menu-target="resources" onclick="menuNavigate('resources')"><span>📚</span><b>Documents</b><small>PDF et fichiers</small></button>
-      <button class="menu-card tone-revision" data-menu-target="revision" onclick="menuNavigate('revision')"><span>📘</span><b>Fiches courtes</b><small>Révision rapide</small></button>
+      <button class="menu-card tone-revision" data-menu-target="revision" onclick="menuNavigate('revision')"><span>📘</span><b>Fiches de révision</b><small>Révision rapide</small></button>
       <button class="menu-card tone-news" data-menu-target="news" onclick="menuNavigate('news')"><span>📰</span><b>Actualités</b><small>Concours officiels</small></button>
       <button class="menu-card tone-passport" data-menu-target="passport" onclick="menuNavigate('passport')"><span>🛂</span><b>Passeport</b><small>Parcours candidat</small></button>
       <button class="menu-card tone-progress" data-menu-target="stats" onclick="menuNavigate('stats')"><span>📊</span><b>Progression</b><small>Scores et résultats</small></button>
@@ -127,7 +127,7 @@
           <img class="action-photo" src="img/students-group.jpg" alt="Défi du jour"><h3>Défi du jour</h3><p id="dailySub">10 QCM gratuits · chaque jour</p>
         </button>
         <button class="action-card" onclick="show('revision')">
-          <img class="action-photo" src="img/study.jpg" alt="Fiches de révision"><h3>Fiches courtes</h3><p>Résumés rapides avant les QCM</p>
+          <img class="action-photo" src="img/study.jpg" alt="Fiches de révision"><h3>Fiches de révision</h3><p>Résumés clairs avant les QCM</p>
         </button>
         <button class="action-card" onclick="show('quickpick')">
           <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20, 40, 100 ou toute la banque</p>
@@ -364,7 +364,7 @@
         <span><b>Commencer la banque du module</b><small id="moduleBankMeta">QCM corrigés disponibles</small></span>
         <em>›</em>
       </button>
-      <div class="module-publications-head"><div><span>Classés automatiquement</span><h2>Nouveaux QCM du module</h2></div><button class="mini-btn" onclick="loadCurrentModuleQcm(true)">Actualiser</button></div>
+      <div class="module-publications-head"><div><span>Classés selon la catégorie choisie</span><h2>Nouveaux QCM du module</h2></div><button class="mini-btn" onclick="loadCurrentModuleQcm(true)">Actualiser</button></div>
       <div id="modulePublishedQcmList" class="module-publications-list"><div class="empty">Chargement des QCM du module...</div></div>
     </div>
     <div style="height:24px"></div>
@@ -438,7 +438,7 @@
   <section class="screen" id="revision">
     <div class="quiz-top">
       <button class="quiz-close" onclick="show('home')">✕</button>
-      <h2 style="font-size:1.05rem;font-weight:900">📘 Fiches de révision courtes</h2>
+      <h2 style="font-size:1.05rem;font-weight:900">📘 Fiches de révision</h2>
     </div>
     <div class="section" style="padding-top:10px">
       <div class="revision-intro-card">
@@ -446,7 +446,7 @@
         <div>
           <span>Révision rapide</span>
           <h2>L’essentiel avant les QCM</h2>
-          <p>Lis une fiche courte, retiens les points clés, puis lance un QCM lié.</p>
+          <p>Lis une fiche de révision, retiens les points clés, puis lance un QCM lié.</p>
         </div>
       </div>
       <div class="revision-progress-card" id="revisionProgressCard"></div>
@@ -459,6 +459,7 @@
       <button class="chip" data-filter="Culture générale" onclick="filterRevisionFiches(this,'Culture générale')">Culture</button>
       <button class="chip" data-filter="Histoire-Géo" onclick="filterRevisionFiches(this,'Histoire-Géo')">Histoire-Géo</button>
       <button class="chip" data-filter="Mathématiques" onclick="filterRevisionFiches(this,'Mathématiques')">Maths</button>
+      <button class="chip" data-filter="Physique-Chimie" onclick="filterRevisionFiches(this,'Physique-Chimie')">Physique-Chimie</button>
       <button class="chip" data-filter="Français" onclick="filterRevisionFiches(this,'Français')">Français</button>
       <button class="chip" data-filter="SVT" onclick="filterRevisionFiches(this,'SVT')">SVT</button>
       <button class="chip" data-filter="Psychotechnique" onclick="filterRevisionFiches(this,'Psychotechnique')">Psycho</button>
@@ -627,7 +628,7 @@
       <div class="account-actions-panel">
         <button class="account-action" onclick="show('subscription')"><span>⭐</span><div><b>Gérer mon accès</b><small>Premium, paiement et renouvellement</small></div><em>›</em></button>
         <button class="account-action" onclick="show('passport')"><span>🛂</span><div><b>Mon passeport</b><small>Niveaux, badges et progression</small></div><em>›</em></button>
-        <button class="account-action" onclick="show('revision')"><span>📘</span><div><b>Fiches courtes</b><small>Résumés rapides avant les QCM</small></div><em>›</em></button>
+        <button class="account-action" onclick="show('revision')"><span>📘</span><div><b>Fiches de révision</b><small>Résumés clairs avant les QCM</small></div><em>›</em></button>
         <button class="account-action" onclick="show('stats')"><span>📊</span><div><b>Mes statistiques</b><small>Scores et progression par matière</small></div><em>›</em></button>
         <button class="account-action" id="adminPanelBtn" onclick="show('admin')" style="display:none"><span>🛠️</span><div><b>Administration</b><small>Publier et gérer les QCM</small></div><em>›</em></button>
       </div>
@@ -677,10 +678,23 @@
         <div><b>—</b><span>Statut</span></div>
       </div>
 
+      <div class="admin-publication-guide">
+        <h3>Choisir le bloc de publication</h3>
+        <p>Chaque contenu est rangé dans le bloc et la catégorie que tu choisis. Aucun classement au hasard.</p>
+        <div class="admin-publication-blocks">
+          <button onclick="setAdminTab('create')"><b>🧩 QCM</b><span>Formations et nouveaux QCM</span></button>
+          <button onclick="setAdminTab('revision')"><b>📘 Fiches de révision</b><span>Résumés par catégorie</span></button>
+          <button onclick="setAdminTab('resources')"><b>📁 Documents</b><span>Documents & fichiers</span></button>
+          <button onclick="setAdminTab('news')"><b>📢 Actualités</b><span>Actualités concours</span></button>
+        </div>
+        <small>Catégories disponibles : Burkina Faso · Culture générale · Histoire-Géo · Mathématiques · Physique-Chimie · Psychotechnique · Français · SVT · Greffier / Droit.</small>
+      </div>
+
       <div class="admin-tabs">
         <button class="chip on" id="adminTabCreate" onclick="setAdminTab('create')">Créer un QCM</button>
         <button class="chip" id="adminTabPaste" onclick="setAdminTab('paste')">📋 Coller 1–50 QCM</button>
         <button class="chip" id="adminTabList" onclick="setAdminTab('list')">Mes QCM</button>
+        <button class="chip" id="adminTabRevision" onclick="setAdminTab('revision')">Fiches de révision</button>
         <button class="chip" id="adminTabResources" onclick="setAdminTab('resources')">Documents</button>
         <button class="chip" id="adminTabNews" onclick="setAdminTab('news')">Actualités</button>
         <button class="chip" id="adminTabAi" onclick="setAdminTab('ai')">🤖 IA QCM</button>
@@ -694,7 +708,7 @@
           <input type="hidden" id="adminQuestionId">
 
           <label class="field-label" for="adminCategory">Catégorie</label>
-          <select class="input" id="adminCategory">
+          <select class="input" id="adminCategory" onchange="updateAdminPublicationPreviews()">
             <option>Burkina Faso</option>
             <option>Culture générale</option>
             <option>Histoire-Géo</option>
@@ -705,6 +719,7 @@
             <option>SVT</option>
             <option>Greffier / Droit</option>
           </select>
+          <div class="publication-target" id="adminQcmDestinationPreview"></div>
 
           <label class="field-label" for="adminLevel">Niveau</label>
           <select class="input" id="adminLevel">
@@ -741,7 +756,7 @@
           <input class="input" id="adminSource" placeholder="Ex : Culture Burkina 2026, manuel, arrêté, source officielle...">
 
           <div class="admin-switch-row">
-            <label><input type="checkbox" id="adminPremium"> Publier dans Premium <small>(sinon Gratuit)</small></label>
+            <label><input type="checkbox" id="adminPremium" onchange="updateAdminPublicationPreviews()"> Publier dans Premium <small>(sinon Gratuit)</small></label>
           </div>
 
           <button class="btn btn-green btn-block" id="adminSaveBtn" onclick="saveAdminQuestion()">Publier le QCM</button>
@@ -778,9 +793,10 @@
           </div>
 
           <label class="field-label" for="pastedQcmCategory">Module</label>
-          <select class="input" id="pastedQcmCategory">
+          <select class="input" id="pastedQcmCategory" onchange="updateAdminPublicationPreviews()">
             <option>Burkina Faso</option><option>Culture générale</option><option>Histoire-Géo</option><option>Mathématiques</option><option>Physique-Chimie</option><option>Psychotechnique</option><option>Français</option><option>SVT</option><option>Greffier / Droit</option>
           </select>
+          <div class="publication-target" id="pastedQcmDestinationPreview"></div>
 
           <label class="field-label" for="pastedQcmPdfTheme">Design du livre PDF</label>
           <select class="input" id="pastedQcmPdfTheme" onchange="clearPastedQcmPdfPreview()">
@@ -845,6 +861,55 @@
         </div>
       </div>
 
+      <div id="adminRevisionPane" class="admin-pane" style="display:none">
+        <div class="legal-card admin-card">
+          <h3 id="adminRevisionFormTitle">Publier une fiche de révision</h3>
+          <p class="admin-help">Choisis d’abord la catégorie. La fiche apparaîtra exactement dans <b>Fiches de révision</b>, sous la catégorie sélectionnée.</p>
+          <input type="hidden" id="adminRevisionId">
+
+          <label class="field-label" for="adminRevisionCategory">Catégorie de publication</label>
+          <select class="input" id="adminRevisionCategory" onchange="updateAdminPublicationPreviews()">
+            <option>Burkina Faso</option><option>Culture générale</option><option>Histoire-Géo</option><option>Mathématiques</option><option>Physique-Chimie</option><option>Psychotechnique</option><option>Français</option><option>SVT</option><option>Greffier / Droit</option>
+          </select>
+          <div class="publication-target" id="adminRevisionDestinationPreview"></div>
+
+          <div class="admin-options-grid">
+            <div>
+              <label class="field-label" for="adminRevisionLevel">Niveau</label>
+              <select class="input" id="adminRevisionLevel"><option>Tous niveaux</option><option>Concours</option><option>CEP</option><option>BEPC</option><option>BAC</option><option>Licence</option></select>
+            </div>
+            <div>
+              <label class="field-label" for="adminRevisionDuration">Durée de lecture</label>
+              <select class="input" id="adminRevisionDuration"><option>2 min</option><option selected>3 min</option><option>5 min</option><option>10 min</option></select>
+            </div>
+          </div>
+
+          <label class="field-label" for="adminRevisionTitle">Titre de la fiche</label>
+          <input class="input" id="adminRevisionTitle" maxlength="180" placeholder="Ex : Les institutions du Burkina Faso">
+
+          <label class="field-label" for="adminRevisionPoints">Points essentiels <span>(un point par ligne)</span></label>
+          <textarea class="input admin-textarea" id="adminRevisionPoints" rows="6" placeholder="Premier point essentiel&#10;Deuxième point essentiel&#10;Troisième point essentiel"></textarea>
+
+          <label class="field-label" for="adminRevisionRemember">À retenir</label>
+          <textarea class="input admin-textarea" id="adminRevisionRemember" placeholder="La règle ou l’idée principale à mémoriser"></textarea>
+
+          <label class="field-label" for="adminRevisionQuizTitle">Titre du QCM lié</label>
+          <input class="input" id="adminRevisionQuizTitle" maxlength="180" placeholder="Ex : QCM institutions du Burkina Faso">
+
+          <div class="admin-switch-row">
+            <label><input type="checkbox" id="adminRevisionPremium" onchange="updateAdminPublicationPreviews()"> Fiche Premium <small>(sinon Gratuit)</small></label>
+          </div>
+
+          <button class="btn btn-green btn-block" id="adminRevisionSaveBtn" onclick="saveAdminRevisionFiche()">Publier la fiche de révision</button>
+          <button class="btn btn-ghost btn-block" onclick="resetAdminRevisionForm()" style="margin-top:10px">Vider le formulaire</button>
+          <div class="payment-result" id="adminRevisionResult"></div>
+
+          <hr class="soft-separator">
+          <h3>Fiches publiées</h3>
+          <div id="adminRevisionList" class="admin-list"><div class="admin-empty">Aucune fiche publiée depuis le panel.</div></div>
+        </div>
+      </div>
+
       <div id="adminResourcesPane" class="admin-pane" style="display:none">
         <div class="legal-card admin-card">
           <h3>Publier un document</h3>
@@ -854,7 +919,7 @@
           <input class="input" id="adminResourceTitle" placeholder="Ex : Sujet corrigé BEPC 2024">
 
           <label class="field-label" for="adminResourceCategory">Catégorie</label>
-          <select class="input" id="adminResourceCategory">
+          <select class="input" id="adminResourceCategory" onchange="updateAdminPublicationPreviews()">
             <option>Documents</option>
             <option>Burkina Faso</option>
             <option>Culture générale</option>
@@ -866,6 +931,7 @@
             <option>SVT</option>
             <option>Greffier / Droit</option>
           </select>
+          <div class="publication-target" id="adminResourceDestinationPreview"></div>
 
           <label class="field-label" for="adminResourceDescription">Petite description</label>
           <textarea class="input admin-textarea" id="adminResourceDescription" placeholder="Ex : QCM corrigés pour réviser avant le concours"></textarea>
@@ -874,7 +940,7 @@
           <input class="input" type="file" id="adminResourceFile" accept="image/*,.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
 
           <div class="admin-switch-row">
-            <label><input type="checkbox" id="adminResourcePremium"> Document Premium</label>
+            <label><input type="checkbox" id="adminResourcePremium" onchange="updateAdminPublicationPreviews()"> Document Premium</label>
           </div>
 
           <button class="btn btn-green btn-block" id="adminResourceSaveBtn" onclick="uploadAdminResource()">Publier le document</button>
@@ -990,21 +1056,20 @@
             <div class="admin-options-grid">
               <div>
                 <label class="field-label" for="aiDailyCategory">Catégorie / module</label>
-                <select class="input" id="aiDailyCategory">
-                  <option value="">Rotation automatique</option>
+                <select class="input" id="aiDailyCategory" onchange="updateAdminPublicationPreviews()">
                   <option>Burkina Faso</option><option>Culture générale</option><option>Histoire-Géo</option><option>Mathématiques</option><option>Physique-Chimie</option><option>Psychotechnique</option><option>Français</option><option>SVT</option><option>Greffier / Droit</option>
                 </select>
               </div>
               <div>
                 <label class="field-label" for="aiDailyLevel">Niveau</label>
                 <select class="input" id="aiDailyLevel" onchange="refreshDailyCategoryOptions()">
-                  <option value="">Rotation automatique</option>
                   <option>Concours</option><option>BEPC</option><option>BAC</option><option>CEP</option><option>Licence</option>
                 </select>
               </div>
             </div>
+            <div class="publication-target" id="aiDailyDestinationPreview"></div>
             <div class="admin-switch-row">
-              <label><input type="checkbox" id="aiDailyPremium"> Préparer pour Premium <small>(sinon Gratuit)</small></label>
+              <label><input type="checkbox" id="aiDailyPremium" onchange="updateAdminPublicationPreviews()"> Préparer pour Premium <small>(sinon Gratuit)</small></label>
               <label><input type="checkbox" id="aiDailyForce"> Régénérer aujourd’hui</label>
             </div>
             <button class="btn btn-green btn-block" id="aiDailyRunBtn" onclick="runDailyAiQcm()">Créer le PDF du jour maintenant</button>
@@ -1017,7 +1082,7 @@
           <div class="admin-options-grid">
             <div>
               <label class="field-label" for="aiCategory">Catégorie</label>
-              <select class="input" id="aiCategory">
+              <select class="input" id="aiCategory" onchange="updateAdminPublicationPreviews()">
                 <option>Burkina Faso</option>
                 <option>Culture générale</option>
                 <option>Histoire-Géo</option>
@@ -1040,6 +1105,7 @@
               </select>
             </div>
           </div>
+          <div class="publication-target" id="aiDestinationPreview"></div>
 
           <label class="field-label" for="aiTheme">Sujet souhaité</label>
           <textarea class="input admin-textarea" id="aiTheme" placeholder="Ex : institutions du Burkina Faso, pour concours directs, avec corrections détaillées"></textarea>
@@ -1065,7 +1131,7 @@
             <div>
               <label class="field-label">Options</label>
               <div class="admin-switch-row" style="margin-top:0">
-                <label><input type="checkbox" id="aiPremium"> Générer pour Premium <small>(sinon Gratuit)</small></label>
+                <label><input type="checkbox" id="aiPremium" onchange="updateAdminPublicationPreviews()"> Générer pour Premium <small>(sinon Gratuit)</small></label>
               </div>
             </div>
           </div>
@@ -1342,7 +1408,7 @@
         <div class="admin-options-grid">
           <div>
             <label class="field-label" for="dailyPublishCategory">Catégorie</label>
-            <select class="input" id="dailyPublishCategory">
+            <select class="input" id="dailyPublishCategory" onchange="updateAdminPublicationPreviews()">
               <option>Burkina Faso</option><option>Culture générale</option><option>Histoire-Géo</option><option>Mathématiques</option><option>Physique-Chimie</option><option>Psychotechnique</option><option>Français</option><option>SVT</option><option>Greffier / Droit</option>
             </select>
           </div>
@@ -1353,8 +1419,9 @@
             </select>
           </div>
         </div>
+        <div class="publication-target" id="dailyPublishDestinationPreview"></div>
         <div class="admin-switch-row" style="margin-top:0">
-          <label><input type="checkbox" id="dailyPublishPremium"> Publier en Premium <small>(sinon Gratuit)</small></label>
+          <label><input type="checkbox" id="dailyPublishPremium" onchange="updateAdminPublicationPreviews()"> Publier en Premium <small>(sinon Gratuit)</small></label>
         </div>
       </div>
       <div class="pdf-review-actions">
@@ -1414,7 +1481,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=email-automation-v20.1"></script>
-<script src="js/app.js?v=email-automation-v20.1"></script>
+<script src="js/questions.js?v=publication-categories-v21"></script>
+<script src="js/app.js?v=publication-categories-v21"></script>
 </body>
 </html>

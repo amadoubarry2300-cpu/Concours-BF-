@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'email-automation-v20.1';
+const CACHE_VERSION = 'publication-categories-v21';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=email-automation-v20.1',
-  '/js/questions.js?v=email-automation-v20.1',
-  '/js/app.js?v=email-automation-v20.1',
-  '/js/vendor/pdf.mjs?v=email-automation-v20.1',
-  '/js/vendor/pdf.worker.mjs?v=email-automation-v20.1',
+  '/css/styles.css?v=publication-categories-v21',
+  '/js/questions.js?v=publication-categories-v21',
+  '/js/app.js?v=publication-categories-v21',
+  '/js/vendor/pdf.mjs?v=publication-categories-v21',
+  '/js/vendor/pdf.worker.mjs?v=publication-categories-v21',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',
@@ -50,6 +50,7 @@ function isCandidateApi(path){
   return path === '/api/questions'
     || path === '/api/qcm-publications'
     || path === '/api/resources'
+    || path === '/api/revision-fiches'
     || path === '/api/news'
     || path === '/api/subscription/status';
 }

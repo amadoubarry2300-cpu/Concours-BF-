@@ -31,17 +31,18 @@ function normalizeDailyLevel(level){
   return raw || 'Concours';
 }
 
-function dailyAllowedCategories(level){
-  return DAILY_LEVEL_CATEGORY_RULES[normalizeDailyLevel(level)] || ALL_QCM_CATEGORIES;
+function dailyAllowedCategories(_level){
+  return ALL_QCM_CATEGORIES;
 }
 
 function setDailyCategoryOptions(select, level, preferred='', includeRotation=false){
   if (!select) return '';
   const allowed = dailyAllowedCategories(level);
   const current = preferred !== undefined && preferred !== null ? String(preferred) : select.value;
-  select.innerHTML = `${includeRotation ? '<option value="">Rotation automatique</option>' : ''}${allowed.map(cat=>`<option>${escapeHtml(cat)}</option>`).join('')}`;
+  select.innerHTML = `${includeRotation ? '<option value="">Choisir une catégorie</option>' : ''}${allowed.map(cat=>`<option>${escapeHtml(cat)}</option>`).join('')}`;
   if (current && allowed.includes(current)) select.value = current;
   else select.value = includeRotation ? '' : (allowed[0] || 'Culture générale');
+  updateAdminPublicationPreviews();
   return select.value;
 }
 
@@ -175,8 +176,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=email-automation-v20.1').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=email-automation-v20.1';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=publication-categories-v21').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=publication-categories-v21';
       return pdfjs;
     });
   }
@@ -889,7 +890,10 @@ function show(id){
   if (id==='publishedqcm') loadPublishedQcm(currentPublishedQcmFilter);
   if (id==='news') loadNews();
   if (id==='resources') loadResources();
-  if (id==='revision') renderRevisionFiches(currentRevisionFilter);
+  if (id==='revision'){
+    renderRevisionFiches(currentRevisionFilter);
+    loadRevisionFiches().catch(()=>{});
+  }
   if (id==='subscription') setTimeout(renderSubscription, 20);
   if (id==='account') setTimeout(renderAccountScreen, 20);
   if (id==='admin') setTimeout(()=>renderAdminPanel(false), 20);
@@ -1588,6 +1592,8 @@ let showAdminQuestionHistory = false;
 let adminResourceCache = [];
 let showAdminResourceHistory = false;
 let adminNewsCache = [];
+let adminRevisionCache = [];
+let revisionRemoteFiches = [];
 let aiDraftCache = [];
 let aiDraftSelectedIndexes = new Set();
 let aiDraftEditingIndex = -1;
@@ -1630,11 +1636,29 @@ async function adminFetch(path, options = {}){
   return data;
 }
 
+function setPublicationPreview(id, block, category, premium){
+  const target = $(id);
+  if (!target) return;
+  target.innerHTML = `<b>Publié dans :</b><span>${escapeHtml(block)} → ${escapeHtml(category || 'Catégorie à choisir')} → ${premium ? '⭐ Premium' : '✅ Gratuit'}</span>`;
+}
+
+function updateAdminPublicationPreviews(){
+  setPublicationPreview('#adminQcmDestinationPreview', 'Formations / Nouveaux QCM', $('#adminCategory')?.value, Boolean($('#adminPremium')?.checked));
+  const pastedPremium = document.querySelector('input[name="pastedQcmDestination"]:checked')?.value === 'premium';
+  setPublicationPreview('#pastedQcmDestinationPreview', 'Formations / Nouveaux QCM', $('#pastedQcmCategory')?.value, pastedPremium);
+  setPublicationPreview('#adminRevisionDestinationPreview', 'Fiches de révision', $('#adminRevisionCategory')?.value, Boolean($('#adminRevisionPremium')?.checked));
+  setPublicationPreview('#adminResourceDestinationPreview', 'Documents & fichiers', $('#adminResourceCategory')?.value, Boolean($('#adminResourcePremium')?.checked));
+  setPublicationPreview('#aiDailyDestinationPreview', 'Formations / Nouveaux QCM', $('#aiDailyCategory')?.value, Boolean($('#aiDailyPremium')?.checked));
+  setPublicationPreview('#aiDestinationPreview', 'Formations / Nouveaux QCM', $('#aiCategory')?.value, Boolean($('#aiPremium')?.checked));
+  setPublicationPreview('#dailyPublishDestinationPreview', 'Formations / Nouveaux QCM', $('#dailyPublishCategory')?.value, Boolean($('#dailyPublishPremium')?.checked));
+}
+
 function setAdminTab(tab){
   adminTab = tab || 'create';
   $('#adminCreatePane') && ($('#adminCreatePane').style.display = adminTab === 'create' ? 'block' : 'none');
   $('#adminPastePane') && ($('#adminPastePane').style.display = adminTab === 'paste' ? 'block' : 'none');
   $('#adminListPane') && ($('#adminListPane').style.display = adminTab === 'list' ? 'block' : 'none');
+  $('#adminRevisionPane') && ($('#adminRevisionPane').style.display = adminTab === 'revision' ? 'block' : 'none');
   $('#adminResourcesPane') && ($('#adminResourcesPane').style.display = adminTab === 'resources' ? 'block' : 'none');
   $('#adminNewsPane') && ($('#adminNewsPane').style.display = adminTab === 'news' ? 'block' : 'none');
   $('#adminAiPane') && ($('#adminAiPane').style.display = adminTab === 'ai' ? 'block' : 'none');
@@ -1642,12 +1666,14 @@ function setAdminTab(tab){
   $('#adminTabCreate')?.classList.toggle('on', adminTab === 'create');
   $('#adminTabPaste')?.classList.toggle('on', adminTab === 'paste');
   $('#adminTabList')?.classList.toggle('on', adminTab === 'list');
+  $('#adminTabRevision')?.classList.toggle('on', adminTab === 'revision');
   $('#adminTabResources')?.classList.toggle('on', adminTab === 'resources');
   $('#adminTabNews')?.classList.toggle('on', adminTab === 'news');
   $('#adminTabAi')?.classList.toggle('on', adminTab === 'ai');
   $('#adminTabNotifications')?.classList.toggle('on', adminTab === 'notifications');
   if (adminTab === 'paste') initializePastedQcmTool();
   if (adminTab === 'list') loadAdminQuestions();
+  if (adminTab === 'revision') loadAdminRevisionFiches();
   if (adminTab === 'resources') loadAdminResources();
   if (adminTab === 'news') loadAdminNews();
   if (adminTab === 'ai') loadAiStatus();
@@ -1655,6 +1681,7 @@ function setAdminTab(tab){
     loadAdminNotificationStatus();
     loadAdminEmailCampaigns();
   }
+  updateAdminPublicationPreviews();
 }
 
 async function ensureAdminAccess(){
@@ -1835,6 +1862,7 @@ function updatePastedQcmDestinationButtons(){
     if (ready && !hasMultipleAnswers) quizBtn.textContent = `🧩 Publier le quiz de ${ready} QCM dans ${destination}`;
   }
   if (pdfBtn && pastedQcmPdfCache) pdfBtn.textContent = `📕 Publier le livre PDF dans ${destination}`;
+  updateAdminPublicationPreviews();
 }
 
 function renderPastedQcmPreview(data){
@@ -1893,7 +1921,10 @@ async function analyzePastedQcm(){
   if (result) result.innerHTML = '<div class="pay-note">Aucune publication pendant cette étape : tu pourras relire le résultat avant de valider.</div>';
   try{
     refreshPastedQcmCategoryOptions();
-    const data = await adminFetch('/api/admin/questions/import/preview', { method:'POST', body:JSON.stringify(pastedQcmPayload()) });
+    const payload = pastedQcmPayload();
+    const compatibleCategories = DAILY_LEVEL_CATEGORY_RULES[normalizeDailyLevel(payload.level)] || ALL_QCM_CATEGORIES;
+    if (!compatibleCategories.includes(payload.category)) throw new Error(`La catégorie « ${payload.category} » n’est pas compatible avec le niveau ${payload.level}. Choisis une autre catégorie ou un autre niveau.`);
+    const data = await adminFetch('/api/admin/questions/import/preview', { method:'POST', body:JSON.stringify(payload) });
     pastedQcmPreviewCache = data;
     pastedQcmPreviewSignature = pastedQcmContentSignature();
     const blocked = Number(data.rejected?.length || 0);
@@ -2465,11 +2496,17 @@ async function runDailyAiQcm(){
   if (result) result.innerHTML = '<div class="pay-note">Préparation sécurisée en cours. Les sources et les réponses sont contrôlées avant la création du PDF.</div>';
   try{
     refreshDailyCategoryOptions();
+    const selectedCategory = $('#aiDailyCategory')?.value || '';
+    const selectedLevel = $('#aiDailyLevel')?.value || '';
+    if (!ALL_QCM_CATEGORIES.includes(selectedCategory)) throw new Error('Choisis la catégorie exacte avant de créer le PDF.');
+    if (!selectedLevel) throw new Error('Choisis le niveau avant de créer le PDF.');
+    const compatibleCategories = DAILY_LEVEL_CATEGORY_RULES[normalizeDailyLevel(selectedLevel)] || ALL_QCM_CATEGORIES;
+    if (!compatibleCategories.includes(selectedCategory)) throw new Error(`La catégorie « ${selectedCategory} » n’est pas compatible avec le niveau ${selectedLevel}. Choisis une autre catégorie ou un autre niveau.`);
     const payload = {
       count:50,
       mode:$('#aiDailyMode')?.value || 'module',
-      category:$('#aiDailyCategory')?.value || '',
-      level:$('#aiDailyLevel')?.value || '',
+      category:selectedCategory,
+      level:selectedLevel,
       is_premium:Boolean($('#aiDailyPremium')?.checked),
       force:Boolean($('#aiDailyForce')?.checked)
     };
@@ -2907,6 +2944,7 @@ async function openDailyAiPdf(index){
     $('#dailyPublishLevel') && ($('#dailyPublishLevel').value = d.level || 'Concours');
     refreshDailyPublishCategoryOptions(d.category || 'Culture générale');
     $('#dailyPublishPremium') && ($('#dailyPublishPremium').checked = Boolean(d.is_premium));
+    updateAdminPublicationPreviews();
     renderDailyPdfHtml(d);
     renderDailyQuestionEditor();
     const editorLaunch = $('#dailyQuestionEditorLaunch');
@@ -2987,6 +3025,8 @@ async function publishDailyAiDraft(index){
   const level = reviewOpen ? ($('#dailyPublishLevel')?.value || d.level || 'Concours') : (d.level || 'Concours');
   if (reviewOpen) refreshDailyPublishCategoryOptions();
   const category = reviewOpen ? ($('#dailyPublishCategory')?.value || d.category || 'Culture générale') : (d.category || 'Culture générale');
+  const compatibleCategories = DAILY_LEVEL_CATEGORY_RULES[normalizeDailyLevel(level)] || ALL_QCM_CATEGORIES;
+  if (!compatibleCategories.includes(category)){ toast(`La catégorie « ${category} » n’est pas compatible avec le niveau ${level}.`); return; }
   const isPremium = reviewOpen ? Boolean($('#dailyPublishPremium')?.checked) : Boolean(d.is_premium);
   const destination = isPremium ? 'Premium' : 'Gratuit';
   const verb = d.status === 'published' ? 'Synchroniser' : 'Publier';
@@ -3079,6 +3119,8 @@ async function generateAiQcm(){
       is_premium: Boolean($('#aiPremium')?.checked),
       publication_name: publicationNameInput
     };
+    const compatibleCategories = DAILY_LEVEL_CATEGORY_RULES[normalizeDailyLevel(payload.level)] || ALL_QCM_CATEGORIES;
+    if (!compatibleCategories.includes(payload.category)) throw new Error(`La catégorie « ${payload.category} » n’est pas compatible avec le niveau ${payload.level}. Choisis une autre catégorie ou un autre niveau.`);
     const publicationName = (publicationNameInput || payload.theme || (pdfFile?.name ? pdfFile.name.replace(/\.pdf$/i,'') : '') || ('QCM ' + formatDate(new Date().toISOString()))).trim();
     let data;
     if (pdfFile){
@@ -3598,6 +3640,122 @@ function resourceIcon(kind){
   if (kind === 'pdf') return '📄';
   if (kind === 'word') return '📝';
   return '📎';
+}
+
+function adminRevisionPayload(){
+  return {
+    title:String($('#adminRevisionTitle')?.value || '').trim(),
+    category:$('#adminRevisionCategory')?.value || '',
+    level:$('#adminRevisionLevel')?.value || 'Tous niveaux',
+    duration:$('#adminRevisionDuration')?.value || '3 min',
+    points:String($('#adminRevisionPoints')?.value || '').split(/\n+/).map(value => value.trim()).filter(Boolean),
+    remember:String($('#adminRevisionRemember')?.value || '').trim(),
+    quizTitle:String($('#adminRevisionQuizTitle')?.value || '').trim(),
+    is_premium:Boolean($('#adminRevisionPremium')?.checked),
+    is_active:true
+  };
+}
+
+function resetAdminRevisionForm(){
+  $('#adminRevisionId') && ($('#adminRevisionId').value = '');
+  $('#adminRevisionFormTitle') && ($('#adminRevisionFormTitle').textContent = 'Publier une fiche de révision');
+  $('#adminRevisionTitle') && ($('#adminRevisionTitle').value = '');
+  $('#adminRevisionPoints') && ($('#adminRevisionPoints').value = '');
+  $('#adminRevisionRemember') && ($('#adminRevisionRemember').value = '');
+  $('#adminRevisionQuizTitle') && ($('#adminRevisionQuizTitle').value = '');
+  $('#adminRevisionPremium') && ($('#adminRevisionPremium').checked = false);
+  $('#adminRevisionSaveBtn') && ($('#adminRevisionSaveBtn').textContent = 'Publier la fiche de révision');
+  $('#adminRevisionResult') && ($('#adminRevisionResult').innerHTML = '');
+  updateAdminPublicationPreviews();
+}
+
+async function saveAdminRevisionFiche(){
+  const payload = adminRevisionPayload();
+  if (!ALL_QCM_CATEGORIES.includes(payload.category)){ toast('Choisis la catégorie de publication'); return; }
+  if (payload.title.length < 4){ toast('Ajoute un titre clair'); return; }
+  if (payload.points.length < 2){ toast('Ajoute au moins deux points essentiels'); return; }
+  if (payload.remember.length < 5){ toast('Ajoute le point à retenir'); return; }
+  const id = $('#adminRevisionId')?.value || '';
+  const btn = $('#adminRevisionSaveBtn');
+  const result = $('#adminRevisionResult');
+  if (!confirm(`Publier cette fiche dans « Fiches de révision → ${payload.category} → ${payload.is_premium ? 'Premium' : 'Gratuit'} » ?`)) return;
+  setButtonLoading(btn, true, id ? 'Modification...' : 'Publication...');
+  try{
+    const data = await adminFetch('/api/admin/revision-fiches' + (id ? '/' + encodeURIComponent(id) : ''), {
+      method:id ? 'PATCH' : 'POST',
+      body:JSON.stringify(payload)
+    });
+    resetAdminRevisionForm();
+    if (result) result.innerHTML = `<div class="pay-note success">Fiche publiée dans <b>${escapeHtml(payload.category)}</b> ✅</div>`;
+    toast('Fiche de révision publiée ✅');
+    await Promise.all([loadAdminRevisionFiches(), loadRevisionFiches(true)]);
+    return data;
+  }catch(err){
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
+  }finally{ setButtonLoading(btn, false); }
+}
+
+function editAdminRevisionFiche(index){
+  const fiche = adminRevisionCache[index];
+  if (!fiche) return;
+  $('#adminRevisionId') && ($('#adminRevisionId').value = fiche.id || '');
+  $('#adminRevisionFormTitle') && ($('#adminRevisionFormTitle').textContent = 'Modifier la fiche de révision');
+  $('#adminRevisionCategory') && ($('#adminRevisionCategory').value = fiche.category || fiche.cat || 'Culture générale');
+  $('#adminRevisionLevel') && ($('#adminRevisionLevel').value = fiche.level || 'Tous niveaux');
+  $('#adminRevisionDuration') && ($('#adminRevisionDuration').value = fiche.time || '3 min');
+  $('#adminRevisionTitle') && ($('#adminRevisionTitle').value = fiche.title || '');
+  $('#adminRevisionPoints') && ($('#adminRevisionPoints').value = (fiche.points || []).join('\n'));
+  $('#adminRevisionRemember') && ($('#adminRevisionRemember').value = fiche.remember || '');
+  $('#adminRevisionQuizTitle') && ($('#adminRevisionQuizTitle').value = fiche.quizTitle || '');
+  $('#adminRevisionPremium') && ($('#adminRevisionPremium').checked = Boolean(fiche.is_premium));
+  $('#adminRevisionSaveBtn') && ($('#adminRevisionSaveBtn').textContent = 'Enregistrer les modifications');
+  updateAdminPublicationPreviews();
+  window.scrollTo({ top:$('#adminRevisionPane')?.offsetTop || 0, behavior:'smooth' });
+}
+
+async function deleteAdminRevisionFiche(index){
+  const fiche = adminRevisionCache[index];
+  if (!fiche || !confirm(`Supprimer définitivement « ${fiche.title} » ?`)) return;
+  try{
+    await adminFetch('/api/admin/revision-fiches/' + encodeURIComponent(fiche.id), { method:'DELETE' });
+    await Promise.all([loadAdminRevisionFiches(), loadRevisionFiches(true)]);
+    toast('Fiche supprimée définitivement');
+  }catch(err){ toast(err.message); }
+}
+
+async function loadAdminRevisionFiches(){
+  const wrap = $('#adminRevisionList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="admin-empty">Chargement...</div>';
+  try{
+    const data = await adminFetch('/api/admin/revision-fiches');
+    adminRevisionCache = Array.isArray(data.fiches) ? data.fiches : [];
+    if (!adminRevisionCache.length){ wrap.innerHTML = '<div class="admin-empty">Aucune fiche publiée depuis le panel.</div>'; return; }
+    wrap.innerHTML = adminRevisionCache.map((fiche, index) => `
+      <article class="admin-row">
+        <div class="admin-row-main">
+          <span class="admin-badge ${fiche.is_premium ? 'premium' : 'free'}">${fiche.is_premium ? 'Premium' : 'Gratuit'}</span>
+          <h4>${escapeHtml(fiche.title)}</h4>
+          <p><b>${escapeHtml(fiche.category || fiche.cat)}</b> · ${escapeHtml(fiche.level || 'Tous niveaux')} · ${escapeHtml(fiche.time || '3 min')}</p>
+          <small>Bloc : Fiches de révision</small>
+        </div>
+        <div class="admin-q-actions"><button class="edit" onclick="editAdminRevisionFiche(${index})">Modifier</button><button class="delete" onclick="deleteAdminRevisionFiche(${index})">Supprimer</button></div>
+      </article>`).join('');
+  }catch(err){ wrap.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`; }
+}
+
+async function loadRevisionFiches(force=false){
+  if (!force && revisionRemoteFiches.length) return revisionRemoteFiches;
+  try{
+    const res = await fetchWithTimeout('/api/revision-fiches?v=' + Date.now(), { cache:'no-store' });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(data.message || 'Fiches indisponibles');
+    revisionRemoteFiches = Array.isArray(data.fiches) ? data.fiches : [];
+    if (currentScreenId === 'revision') renderRevisionFiches(currentRevisionFilter);
+  }catch(err){
+    if (force) toast(err.message || 'Fiches indisponibles');
+  }
+  return revisionRemoteFiches;
 }
 
 async function loadResources(){
@@ -4226,16 +4384,23 @@ const REVISION_FICHES = [
   }
 ];
 
+function allRevisionFiches(){
+  const remote = Array.isArray(revisionRemoteFiches) ? revisionRemoteFiches : [];
+  const remoteIds = new Set(remote.map(item => item.id));
+  return [...remote, ...REVISION_FICHES.filter(item => !remoteIds.has(item.id))];
+}
+
 function revisionReadSet(){
   return new Set(Array.isArray(state.revisionRead) ? state.revisionRead : []);
 }
 
 function revisionFilteredList(filter = currentRevisionFilter){
   const f = filter || 'Tout';
-  return REVISION_FICHES.filter(item => {
+  return allRevisionFiches().filter(item => {
     if (f === 'Tout') return true;
-    if (f === 'Gratuit') return isFreeCategory(item.cat);
-    if (f === 'Premium') return isPaidCategory(item.cat);
+    const paid = item.is_premium === undefined ? isPaidCategory(item.cat) : Boolean(item.is_premium);
+    if (f === 'Gratuit') return !paid;
+    if (f === 'Premium') return paid;
     return item.cat === f;
   });
 }
@@ -4272,16 +4437,17 @@ function renderRevisionFiches(filter = currentRevisionFilter){
   $$('#revisionFilterRow .chip').forEach(c=>c.classList.toggle('on', c.dataset.filter === currentRevisionFilter));
   const list = revisionFilteredList(currentRevisionFilter);
   const read = revisionReadSet();
-  const readCount = REVISION_FICHES.filter(f=>read.has(f.id)).length;
-  const pct = Math.round(readCount / REVISION_FICHES.length * 100);
+  const allFiches = allRevisionFiches();
+  const readCount = allFiches.filter(f=>read.has(f.id)).length;
+  const pct = Math.round(readCount / Math.max(1, allFiches.length) * 100);
   const recCat = smartRecommendedCategory();
-  const rec = REVISION_FICHES.find(f=>f.cat === recCat) || REVISION_FICHES[0];
+  const rec = allFiches.find(f=>f.cat === recCat) || allFiches[0];
   const progress = $('#revisionProgressCard');
   if (progress){
     progress.innerHTML = `
       <div class="revision-progress-copy">
         <span>Progression fiches</span>
-        <b>${readCount}/${REVISION_FICHES.length} lue${readCount>1?'s':''}</b>
+        <b>${readCount}/${allFiches.length} lue${readCount>1?'s':''}</b>
         <small>Conseil du jour : ${escapeHtml(rec.title)}</small>
       </div>
       <div class="revision-progress-actions">
@@ -4296,7 +4462,7 @@ function renderRevisionFiches(filter = currentRevisionFilter){
     return;
   }
   wrap.innerHTML = list.map(f=>{
-    const paid = isPaidCategory(f.cat);
+    const paid = f.is_premium === undefined ? isPaidCategory(f.cat) : Boolean(f.is_premium);
     const locked = paid && !hasOpenAccess();
     const done = read.has(f.id);
     const meta = paid ? 'Premium' : 'Gratuit';
@@ -4913,7 +5079,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'email-automation-v20.1') location.reload();
+    if (data.build && data.build !== 'publication-categories-v21') location.reload();
   }catch{}
 }
 
@@ -4926,7 +5092,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=email-automation-v20.1')
+    navigator.serviceWorker.register('/sw.js?v=publication-categories-v21')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
