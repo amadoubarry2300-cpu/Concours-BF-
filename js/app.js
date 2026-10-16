@@ -1646,7 +1646,18 @@ function updateAdminPublicationPreviews(){
   setPublicationPreview('#adminQcmDestinationPreview', 'Formations / Nouveaux QCM', $('#adminCategory')?.value, Boolean($('#adminPremium')?.checked));
   const pastedPremium = document.querySelector('input[name="pastedQcmDestination"]:checked')?.value === 'premium';
   setPublicationPreview('#pastedQcmDestinationPreview', 'Formations / Nouveaux QCM', $('#pastedQcmCategory')?.value, pastedPremium);
-  setPublicationPreview('#adminRevisionDestinationPreview', 'Fiches de révision', $('#adminRevisionCategory')?.value, Boolean($('#adminRevisionPremium')?.checked));
+  const revisionTarget = $('#adminRevisionDestinationPreview');
+  if (revisionTarget){
+    const parts = [
+      'Fiches de révision',
+      $('#adminRevisionContentType')?.value || 'Fiche de révision',
+      $('#adminRevisionCompetitionType')?.value || 'Concours direct',
+      $('#adminRevisionCategory')?.value || 'Catégorie à choisir',
+      $('#adminRevisionLevel')?.value || 'Tous niveaux',
+      $('#adminRevisionPremium')?.checked ? '⭐ Premium' : '✅ Gratuit'
+    ];
+    revisionTarget.innerHTML = `<b>Publié dans :</b><span>${parts.map(escapeHtml).join(' → ')}</span>`;
+  }
   setPublicationPreview('#adminResourceDestinationPreview', 'Documents & fichiers', $('#adminResourceCategory')?.value, Boolean($('#adminResourcePremium')?.checked));
   setPublicationPreview('#aiDailyDestinationPreview', 'Formations / Nouveaux QCM', $('#aiDailyCategory')?.value, Boolean($('#aiDailyPremium')?.checked));
   setPublicationPreview('#aiDestinationPreview', 'Formations / Nouveaux QCM', $('#aiCategory')?.value, Boolean($('#aiPremium')?.checked));
@@ -3646,11 +3657,12 @@ function adminRevisionPayload(){
   return {
     title:String($('#adminRevisionTitle')?.value || '').trim(),
     category:$('#adminRevisionCategory')?.value || '',
+    contentType:$('#adminRevisionContentType')?.value || 'Fiche de révision',
+    competitionType:$('#adminRevisionCompetitionType')?.value || 'Concours direct',
     level:$('#adminRevisionLevel')?.value || 'Tous niveaux',
     duration:$('#adminRevisionDuration')?.value || '3 min',
     points:String($('#adminRevisionPoints')?.value || '').split(/\n+/).map(value => value.trim()).filter(Boolean),
     remember:String($('#adminRevisionRemember')?.value || '').trim(),
-    quizTitle:String($('#adminRevisionQuizTitle')?.value || '').trim(),
     is_premium:Boolean($('#adminRevisionPremium')?.checked),
     is_active:true
   };
@@ -3658,13 +3670,15 @@ function adminRevisionPayload(){
 
 function resetAdminRevisionForm(){
   $('#adminRevisionId') && ($('#adminRevisionId').value = '');
-  $('#adminRevisionFormTitle') && ($('#adminRevisionFormTitle').textContent = 'Publier une fiche de révision');
+  $('#adminRevisionFormTitle') && ($('#adminRevisionFormTitle').textContent = 'Publier une fiche ou une notion');
   $('#adminRevisionTitle') && ($('#adminRevisionTitle').value = '');
   $('#adminRevisionPoints') && ($('#adminRevisionPoints').value = '');
   $('#adminRevisionRemember') && ($('#adminRevisionRemember').value = '');
-  $('#adminRevisionQuizTitle') && ($('#adminRevisionQuizTitle').value = '');
+  $('#adminRevisionContentType') && ($('#adminRevisionContentType').value = 'Fiche de révision');
+  $('#adminRevisionCompetitionType') && ($('#adminRevisionCompetitionType').value = 'Concours direct');
+  $('#adminRevisionLevel') && ($('#adminRevisionLevel').value = 'Tous niveaux');
   $('#adminRevisionPremium') && ($('#adminRevisionPremium').checked = false);
-  $('#adminRevisionSaveBtn') && ($('#adminRevisionSaveBtn').textContent = 'Publier la fiche de révision');
+  $('#adminRevisionSaveBtn') && ($('#adminRevisionSaveBtn').textContent = 'Publier la fiche ou notion');
   $('#adminRevisionResult') && ($('#adminRevisionResult').innerHTML = '');
   updateAdminPublicationPreviews();
 }
@@ -3678,7 +3692,7 @@ async function saveAdminRevisionFiche(){
   const id = $('#adminRevisionId')?.value || '';
   const btn = $('#adminRevisionSaveBtn');
   const result = $('#adminRevisionResult');
-  if (!confirm(`Publier cette fiche dans « Fiches de révision → ${payload.category} → ${payload.is_premium ? 'Premium' : 'Gratuit'} » ?`)) return;
+  if (!confirm(`Publier dans « Fiches de révision → ${payload.contentType} → ${payload.competitionType} → ${payload.category} → ${payload.level} → ${payload.is_premium ? 'Premium' : 'Gratuit'} » ?`)) return;
   setButtonLoading(btn, true, id ? 'Modification...' : 'Publication...');
   try{
     const data = await adminFetch('/api/admin/revision-fiches' + (id ? '/' + encodeURIComponent(id) : ''), {
@@ -3686,8 +3700,8 @@ async function saveAdminRevisionFiche(){
       body:JSON.stringify(payload)
     });
     resetAdminRevisionForm();
-    if (result) result.innerHTML = `<div class="pay-note success">Fiche publiée dans <b>${escapeHtml(payload.category)}</b> ✅</div>`;
-    toast('Fiche de révision publiée ✅');
+    if (result) result.innerHTML = `<div class="pay-note success">${escapeHtml(payload.contentType)} publiée dans <b>${escapeHtml(payload.category)}</b> ✅</div>`;
+    toast('Publication enregistrée ✅');
     await Promise.all([loadAdminRevisionFiches(), loadRevisionFiches(true)]);
     return data;
   }catch(err){
@@ -3699,14 +3713,15 @@ function editAdminRevisionFiche(index){
   const fiche = adminRevisionCache[index];
   if (!fiche) return;
   $('#adminRevisionId') && ($('#adminRevisionId').value = fiche.id || '');
-  $('#adminRevisionFormTitle') && ($('#adminRevisionFormTitle').textContent = 'Modifier la fiche de révision');
+  $('#adminRevisionFormTitle') && ($('#adminRevisionFormTitle').textContent = 'Modifier la fiche ou notion');
   $('#adminRevisionCategory') && ($('#adminRevisionCategory').value = fiche.category || fiche.cat || 'Culture générale');
+  $('#adminRevisionContentType') && ($('#adminRevisionContentType').value = fiche.contentType || 'Fiche de révision');
+  $('#adminRevisionCompetitionType') && ($('#adminRevisionCompetitionType').value = fiche.competitionType || 'Concours direct');
   $('#adminRevisionLevel') && ($('#adminRevisionLevel').value = fiche.level || 'Tous niveaux');
   $('#adminRevisionDuration') && ($('#adminRevisionDuration').value = fiche.time || '3 min');
   $('#adminRevisionTitle') && ($('#adminRevisionTitle').value = fiche.title || '');
   $('#adminRevisionPoints') && ($('#adminRevisionPoints').value = (fiche.points || []).join('\n'));
   $('#adminRevisionRemember') && ($('#adminRevisionRemember').value = fiche.remember || '');
-  $('#adminRevisionQuizTitle') && ($('#adminRevisionQuizTitle').value = fiche.quizTitle || '');
   $('#adminRevisionPremium') && ($('#adminRevisionPremium').checked = Boolean(fiche.is_premium));
   $('#adminRevisionSaveBtn') && ($('#adminRevisionSaveBtn').textContent = 'Enregistrer les modifications');
   updateAdminPublicationPreviews();
@@ -3719,7 +3734,7 @@ async function deleteAdminRevisionFiche(index){
   try{
     await adminFetch('/api/admin/revision-fiches/' + encodeURIComponent(fiche.id), { method:'DELETE' });
     await Promise.all([loadAdminRevisionFiches(), loadRevisionFiches(true)]);
-    toast('Fiche supprimée définitivement');
+    toast('Publication supprimée définitivement');
   }catch(err){ toast(err.message); }
 }
 
@@ -3730,14 +3745,14 @@ async function loadAdminRevisionFiches(){
   try{
     const data = await adminFetch('/api/admin/revision-fiches');
     adminRevisionCache = Array.isArray(data.fiches) ? data.fiches : [];
-    if (!adminRevisionCache.length){ wrap.innerHTML = '<div class="admin-empty">Aucune fiche publiée depuis le panel.</div>'; return; }
+    if (!adminRevisionCache.length){ wrap.innerHTML = '<div class="admin-empty">Aucune fiche ou notion publiée.</div>'; return; }
     wrap.innerHTML = adminRevisionCache.map((fiche, index) => `
       <article class="admin-row">
         <div class="admin-row-main">
           <span class="admin-badge ${fiche.is_premium ? 'premium' : 'free'}">${fiche.is_premium ? 'Premium' : 'Gratuit'}</span>
           <h4>${escapeHtml(fiche.title)}</h4>
-          <p><b>${escapeHtml(fiche.category || fiche.cat)}</b> · ${escapeHtml(fiche.level || 'Tous niveaux')} · ${escapeHtml(fiche.time || '3 min')}</p>
-          <small>Bloc : Fiches de révision</small>
+          <p><b>${escapeHtml(fiche.contentType || 'Fiche de révision')}</b> · ${escapeHtml(fiche.category || fiche.cat)} · ${escapeHtml(fiche.competitionType || 'Concours direct')}</p>
+          <small>${escapeHtml(fiche.level || 'Tous niveaux')} · ${escapeHtml(fiche.time || '3 min')} · Bloc : Fiches de révision</small>
         </div>
         <div class="admin-q-actions"><button class="edit" onclick="editAdminRevisionFiche(${index})">Modifier</button><button class="delete" onclick="deleteAdminRevisionFiche(${index})">Supprimer</button></div>
       </article>`).join('');
@@ -4336,58 +4351,8 @@ async function simulatePaymentSuccess(){
 
 /* ---------- rendus ---------- */
 
-const REVISION_FICHES = [
-  {
-    id:'bf-reperes', cat:'Burkina Faso', img:'img/subject-burkina.svg', title:'Burkina Faso : repères indispensables', time:'2 min', level:'Base concours', quizTitle:'QCM repères Burkina Faso',
-    points:['Capitale à retenir : Ouagadougou.', 'Monnaie utilisée : franc CFA (XOF).', 'Révise les institutions, les régions/provinces, les symboles nationaux et les grandes dates.'],
-    remember:'Dans les QCM, commence par identifier si la question porte sur un lieu, une institution, une date ou un symbole.'
-  },
-  {
-    id:'bf-citoyennete', cat:'Burkina Faso', img:'img/subject-burkina.svg', title:'Citoyenneté : droits, devoirs et institutions', time:'3 min', level:'Concours', quizTitle:'QCM citoyenneté Burkina Faso',
-    points:['Un citoyen connaît ses droits mais respecte aussi ses devoirs.', 'Distingue pouvoir exécutif, pouvoir législatif et pouvoir judiciaire.', 'Les sujets demandent souvent de relier une institution à son rôle.'],
-    remember:'Pour répondre vite, cherche le verbe clé : gouverner, voter la loi, rendre la justice, contrôler.'
-  },
-  {
-    id:'culture-organisations', cat:'Culture générale', img:'img/subject-culture.svg', title:'Organisations et sigles fréquents', time:'2 min', level:'Tous niveaux', quizTitle:'QCM organisations et sigles',
-    points:['ONU : coopération internationale, paix et sécurité.', 'Union africaine : coopération entre États africains.', 'Dans l’actualité régionale, lis toujours le sigle puis son rôle.'],
-    remember:'Ne mémorise pas seulement le sigle : retiens aussi pourquoi l’organisation existe.'
-  },
-  {
-    id:'histoire-geo-methode', cat:'Histoire-Géo', img:'img/subject-history-geo.svg', title:'Histoire-Géo : méthode pour ne pas confondre', time:'3 min', level:'BEPC/BAC', quizTitle:'QCM méthode Histoire-Géo',
-    points:['Classe les informations en trois familles : dates, lieux, acteurs.', 'En géographie, repère d’abord l’échelle : pays, région, continent ou monde.', 'En histoire, cherche la chronologie avant de choisir la réponse.'],
-    remember:'Une bonne réponse en Histoire-Géo est souvent la plus précise dans le temps et dans l’espace.'
-  },
-  {
-    id:'maths-pourcentages', cat:'Mathématiques', img:'img/subject-math.svg', title:'Maths : pourcentages rapides', time:'3 min', level:'BEPC/BAC', quizTitle:'QCM pourcentages',
-    points:['x% signifie x divisé par 100.', 'Augmenter de 20% revient à multiplier par 1,20.', 'Diminuer de 15% revient à multiplier par 0,85.'],
-    remember:'Pour gagner du temps, transforme le pourcentage en coefficient multiplicateur.'
-  },
-  {
-    id:'francais-accords', cat:'Français', img:'img/subject-french.svg', title:'Français : accords à surveiller', time:'3 min', level:'Tous niveaux', quizTitle:'QCM accords en français',
-    points:['Le verbe s’accorde avec son sujet.', 'Avec être, le participe passé s’accorde généralement avec le sujet.', 'Avec avoir, il s’accorde avec le COD si le COD est placé avant le verbe.'],
-    remember:'Dans une phrase longue, retrouve d’abord le sujet réel avant de choisir l’accord.'
-  },
-  {
-    id:'svt-sante-environnement', cat:'SVT', img:'img/subject-svt.svg', title:'SVT : santé et environnement', time:'2 min', level:'BEPC/BAC', quizTitle:'QCM santé et environnement',
-    points:['Prévention : agir avant la maladie ou le risque.', 'Hygiène : ensemble des pratiques qui protègent la santé.', 'Écosystème : êtres vivants, milieu et relations entre eux.'],
-    remember:'Quand deux réponses semblent proches, choisis celle qui décrit le mécanisme le plus complet.'
-  },
-  {
-    id:'psycho-series', cat:'Psychotechnique', img:'img/subject-psychotech.svg', title:'Psychotechnique : séries logiques', time:'2 min', level:'Concours', quizTitle:'QCM séries logiques',
-    points:['Cherche d’abord l’opération : +, −, ×, ÷, alternance.', 'Teste si la suite avance par deux séries séparées : positions paires et impaires.', 'Pour les formes, compare nombre, orientation, couleur et ordre.'],
-    remember:'Ne réponds pas trop vite : écris mentalement la règle avant de choisir.'
-  },
-  {
-    id:'droit-vocabulaire', cat:'Greffier / Droit', img:'img/subject-law.svg', title:'Droit : vocabulaire de base', time:'3 min', level:'Concours pro', quizTitle:'QCM vocabulaire juridique',
-    points:['Une juridiction est un organe chargé de rendre la justice.', 'Une infraction est un comportement puni par la loi.', 'Une procédure est l’ensemble des règles à suivre dans une affaire.'],
-    remember:'En droit, la précision des mots compte : lis chaque terme avant de choisir.'
-  }
-];
-
 function allRevisionFiches(){
-  const remote = Array.isArray(revisionRemoteFiches) ? revisionRemoteFiches : [];
-  const remoteIds = new Set(remote.map(item => item.id));
-  return [...remote, ...REVISION_FICHES.filter(item => !remoteIds.has(item.id))];
+  return Array.isArray(revisionRemoteFiches) ? revisionRemoteFiches : [];
 }
 
 function revisionReadSet(){
@@ -4427,22 +4392,34 @@ function markRevisionFiche(id){
   toast('Fiche marquée comme lue ✅');
 }
 
-function startRevisionQuiz(cat, title){
-  startFormationQuiz(title || ('QCM ' + cat), cat);
-}
-
 function renderRevisionFiches(filter = currentRevisionFilter){
   renderAccount();
   currentRevisionFilter = filter || 'Tout';
+  const allFiches = allRevisionFiches();
+  const hasFiches = allFiches.length > 0;
+  const filterRow = $('#revisionFilterRow');
+  if (filterRow) filterRow.style.display = hasFiches ? '' : 'none';
   $$('#revisionFilterRow .chip').forEach(c=>c.classList.toggle('on', c.dataset.filter === currentRevisionFilter));
+
+  const progress = $('#revisionProgressCard');
+  if (progress) progress.style.display = hasFiches ? '' : 'none';
+  const wrap = $('#revisionList');
+  if (!wrap) return;
+  if (!hasFiches){
+    wrap.innerHTML = `<div class="revision-empty">
+      <span>📘</span>
+      <h3>Aucune fiche publiée pour le moment</h3>
+      <p>Les fiches de révision et notions importantes pour les concours directs et professionnels apparaîtront ici après leur publication.</p>
+    </div>`;
+    return;
+  }
+
   const list = revisionFilteredList(currentRevisionFilter);
   const read = revisionReadSet();
-  const allFiches = allRevisionFiches();
   const readCount = allFiches.filter(f=>read.has(f.id)).length;
-  const pct = Math.round(readCount / Math.max(1, allFiches.length) * 100);
+  const pct = Math.round(readCount / allFiches.length * 100);
   const recCat = smartRecommendedCategory();
   const rec = allFiches.find(f=>f.cat === recCat) || allFiches[0];
-  const progress = $('#revisionProgressCard');
   if (progress){
     progress.innerHTML = `
       <div class="revision-progress-copy">
@@ -4455,38 +4432,40 @@ function renderRevisionFiches(filter = currentRevisionFilter){
         <i><em style="width:${pct}%"></em></i>
       </div>`;
   }
-  const wrap = $('#revisionList');
-  if (!wrap) return;
   if (!list.length){
-    wrap.innerHTML = '<div class="empty">Aucune fiche dans ce filtre.</div>';
+    wrap.innerHTML = '<div class="revision-empty compact"><span>📂</span><h3>Aucun contenu pour ce choix</h3><p>Essaie une autre catégorie ou un autre accès.</p></div>';
     return;
   }
   wrap.innerHTML = list.map(f=>{
-    const paid = f.is_premium === undefined ? isPaidCategory(f.cat) : Boolean(f.is_premium);
+    const paid = Boolean(f.is_premium);
     const locked = paid && !hasOpenAccess();
     const done = read.has(f.id);
-    const meta = paid ? 'Premium' : 'Gratuit';
+    const access = paid ? 'Premium' : 'Gratuit';
+    const contentType = f.contentType || 'Fiche de révision';
+    const competitionType = f.competitionType || 'Concours directs et professionnels';
+    const points = Array.isArray(f.points) ? f.points : [];
+    const body = locked
+      ? `<div class="revision-locked-note"><b>Contenu Premium</b><span>Active Premium pour lire cette publication.</span></div>`
+      : `<ul class="revision-points">${points.map(p=>`<li>${escapeHtml(p)}</li>`).join('')}</ul>
+         <div class="revision-remember"><b>À retenir</b><span>${escapeHtml(f.remember || '')}</span></div>`;
+    const action = locked
+      ? `<button class="btn btn-green" onclick="openPremium('les fiches de révision Premium')">Débloquer Premium</button>`
+      : `<button class="btn btn-ghost" onclick='markRevisionFiche(${JSON.stringify(f.id)})'>${done?'Lue ✅':'Marquer comme lue'}</button>`;
     return `<article class="revision-card ${locked?'locked':''} ${done?'read':''}">
       <div class="revision-head">
-        <img class="revision-thumb" src="${escapeHtml(f.img)}" alt="${escapeHtml(f.cat)}">
+        <img class="revision-thumb" src="${escapeHtml(f.img || 'img/study.jpg')}" alt="${escapeHtml(f.cat || f.category || 'Révision')}">
         <div>
           <div class="revision-meta">
-            <span class="${paid?'premium':''}">${paid?'🔒 ':''}${meta}</span>
-            <span>${escapeHtml(f.time)}</span>
-            <span>${escapeHtml(f.level)}</span>
+            <span>${escapeHtml(contentType)}</span>
+            <span class="${paid?'premium':'free'}">${paid?'🔒 ':''}${access}</span>
+            <span>${escapeHtml(f.time || '3 min')}</span>
           </div>
           <h3>${escapeHtml(f.title)}</h3>
-          <p>${escapeHtml(f.cat)}</p>
+          <p>${escapeHtml(f.cat || f.category)} · ${escapeHtml(competitionType)} · ${escapeHtml(f.level || 'Tous niveaux')}</p>
         </div>
       </div>
-      <ul class="revision-points">
-        ${f.points.map(p=>`<li>${escapeHtml(p)}</li>`).join('')}
-      </ul>
-      <div class="revision-remember"><b>À retenir</b><span>${escapeHtml(f.remember)}</span></div>
-      <div class="revision-actions">
-        <button class="btn btn-green" onclick='startRevisionQuiz(${JSON.stringify(f.cat)},${JSON.stringify(f.quizTitle)})'>Lancer un QCM lié</button>
-        <button class="btn btn-ghost" onclick='markRevisionFiche(${JSON.stringify(f.id)})'>${done?'Lue ✅':'Marquer comme lue'}</button>
-      </div>
+      ${body}
+      <div class="revision-actions">${action}</div>
     </article>`;
   }).join('');
 }

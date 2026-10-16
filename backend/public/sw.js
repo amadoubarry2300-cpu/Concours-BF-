@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'publication-categories-v21';
+const CACHE_VERSION = 'revision-clean-v22';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=publication-categories-v21',
-  '/js/questions.js?v=publication-categories-v21',
-  '/js/app.js?v=publication-categories-v21',
-  '/js/vendor/pdf.mjs?v=publication-categories-v21',
-  '/js/vendor/pdf.worker.mjs?v=publication-categories-v21',
+  '/css/styles.css?v=revision-clean-v22',
+  '/js/questions.js?v=revision-clean-v22',
+  '/js/app.js?v=revision-clean-v22',
+  '/js/vendor/pdf.mjs?v=revision-clean-v22',
+  '/js/vendor/pdf.worker.mjs?v=revision-clean-v22',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

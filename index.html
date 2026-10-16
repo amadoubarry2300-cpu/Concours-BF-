@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=publication-categories-v21">
+<link rel="manifest" href="/manifest.webmanifest?v=revision-clean-v22">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=publication-categories-v21">
+<link rel="stylesheet" href="css/styles.css?v=revision-clean-v22">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -127,7 +127,7 @@
           <img class="action-photo" src="img/students-group.jpg" alt="Défi du jour"><h3>Défi du jour</h3><p id="dailySub">10 QCM gratuits · chaque jour</p>
         </button>
         <button class="action-card" onclick="show('revision')">
-          <img class="action-photo" src="img/study.jpg" alt="Fiches de révision"><h3>Fiches de révision</h3><p>Résumés clairs avant les QCM</p>
+          <img class="action-photo" src="img/study.jpg" alt="Fiches de révision"><h3>Fiches de révision</h3><p>Notions importantes pour les concours</p>
         </button>
         <button class="action-card" onclick="show('quickpick')">
           <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20, 40, 100 ou toute la banque</p>
@@ -442,11 +442,11 @@
     </div>
     <div class="section" style="padding-top:10px">
       <div class="revision-intro-card">
-        <img src="img/study.jpg" alt="Révision courte">
+        <img src="img/study.jpg" alt="Fiches de révision">
         <div>
-          <span>Révision rapide</span>
-          <h2>L’essentiel avant les QCM</h2>
-          <p>Lis une fiche de révision, retiens les points clés, puis lance un QCM lié.</p>
+          <span>À retenir</span>
+          <h2>Notions importantes pour les concours</h2>
+          <p>Fiches classées par catégorie, type de concours et niveau.</p>
         </div>
       </div>
       <div class="revision-progress-card" id="revisionProgressCard"></div>
@@ -628,7 +628,7 @@
       <div class="account-actions-panel">
         <button class="account-action" onclick="show('subscription')"><span>⭐</span><div><b>Gérer mon accès</b><small>Premium, paiement et renouvellement</small></div><em>›</em></button>
         <button class="account-action" onclick="show('passport')"><span>🛂</span><div><b>Mon passeport</b><small>Niveaux, badges et progression</small></div><em>›</em></button>
-        <button class="account-action" onclick="show('revision')"><span>📘</span><div><b>Fiches de révision</b><small>Résumés clairs avant les QCM</small></div><em>›</em></button>
+        <button class="account-action" onclick="show('revision')"><span>📘</span><div><b>Fiches de révision</b><small>Notions importantes par niveau</small></div><em>›</em></button>
         <button class="account-action" onclick="show('stats')"><span>📊</span><div><b>Mes statistiques</b><small>Scores et progression par matière</small></div><em>›</em></button>
         <button class="account-action" id="adminPanelBtn" onclick="show('admin')" style="display:none"><span>🛠️</span><div><b>Administration</b><small>Publier et gérer les QCM</small></div><em>›</em></button>
       </div>
@@ -683,7 +683,7 @@
         <p>Chaque contenu est rangé dans le bloc et la catégorie que tu choisis. Aucun classement au hasard.</p>
         <div class="admin-publication-blocks">
           <button onclick="setAdminTab('create')"><b>🧩 QCM</b><span>Formations et nouveaux QCM</span></button>
-          <button onclick="setAdminTab('revision')"><b>📘 Fiches de révision</b><span>Résumés par catégorie</span></button>
+          <button onclick="setAdminTab('revision')"><b>📘 Fiches de révision</b><span>Fiches et notions par niveau</span></button>
           <button onclick="setAdminTab('resources')"><b>📁 Documents</b><span>Documents & fichiers</span></button>
           <button onclick="setAdminTab('news')"><b>📢 Actualités</b><span>Actualités concours</span></button>
         </div>
@@ -863,8 +863,8 @@
 
       <div id="adminRevisionPane" class="admin-pane" style="display:none">
         <div class="legal-card admin-card">
-          <h3 id="adminRevisionFormTitle">Publier une fiche de révision</h3>
-          <p class="admin-help">Choisis d’abord la catégorie. La fiche apparaîtra exactement dans <b>Fiches de révision</b>, sous la catégorie sélectionnée.</p>
+          <h3 id="adminRevisionFormTitle">Publier une fiche ou une notion</h3>
+          <p class="admin-help">Publie uniquement des fiches et des notions importantes à retenir, classées par catégorie, type de concours et niveau. Ce bloc ne contient pas de QCM.</p>
           <input type="hidden" id="adminRevisionId">
 
           <label class="field-label" for="adminRevisionCategory">Catégorie de publication</label>
@@ -875,8 +875,16 @@
 
           <div class="admin-options-grid">
             <div>
-              <label class="field-label" for="adminRevisionLevel">Niveau</label>
-              <select class="input" id="adminRevisionLevel"><option>Tous niveaux</option><option>Concours</option><option>CEP</option><option>BEPC</option><option>BAC</option><option>Licence</option></select>
+              <label class="field-label" for="adminRevisionContentType">Type de contenu</label>
+              <select class="input" id="adminRevisionContentType" onchange="updateAdminPublicationPreviews()"><option>Fiche de révision</option><option>Notion importante</option></select>
+            </div>
+            <div>
+              <label class="field-label" for="adminRevisionCompetitionType">Type de concours</label>
+              <select class="input" id="adminRevisionCompetitionType" onchange="updateAdminPublicationPreviews()"><option>Concours direct</option><option>Concours professionnel</option><option>Concours directs et professionnels</option></select>
+            </div>
+            <div>
+              <label class="field-label" for="adminRevisionLevel">Niveau requis</label>
+              <select class="input" id="adminRevisionLevel" onchange="updateAdminPublicationPreviews()"><option>Tous niveaux</option><option>CEP</option><option>BEPC</option><option>CAP / BEP</option><option>BAC</option><option>BAC+2</option><option>Licence</option><option>Master</option><option>Doctorat</option></select>
             </div>
             <div>
               <label class="field-label" for="adminRevisionDuration">Durée de lecture</label>
@@ -884,7 +892,7 @@
             </div>
           </div>
 
-          <label class="field-label" for="adminRevisionTitle">Titre de la fiche</label>
+          <label class="field-label" for="adminRevisionTitle">Titre de la publication</label>
           <input class="input" id="adminRevisionTitle" maxlength="180" placeholder="Ex : Les institutions du Burkina Faso">
 
           <label class="field-label" for="adminRevisionPoints">Points essentiels <span>(un point par ligne)</span></label>
@@ -893,19 +901,16 @@
           <label class="field-label" for="adminRevisionRemember">À retenir</label>
           <textarea class="input admin-textarea" id="adminRevisionRemember" placeholder="La règle ou l’idée principale à mémoriser"></textarea>
 
-          <label class="field-label" for="adminRevisionQuizTitle">Titre du QCM lié</label>
-          <input class="input" id="adminRevisionQuizTitle" maxlength="180" placeholder="Ex : QCM institutions du Burkina Faso">
-
           <div class="admin-switch-row">
-            <label><input type="checkbox" id="adminRevisionPremium" onchange="updateAdminPublicationPreviews()"> Fiche Premium <small>(sinon Gratuit)</small></label>
+            <label><input type="checkbox" id="adminRevisionPremium" onchange="updateAdminPublicationPreviews()"> Publication Premium <small>(sinon Gratuit)</small></label>
           </div>
 
-          <button class="btn btn-green btn-block" id="adminRevisionSaveBtn" onclick="saveAdminRevisionFiche()">Publier la fiche de révision</button>
+          <button class="btn btn-green btn-block" id="adminRevisionSaveBtn" onclick="saveAdminRevisionFiche()">Publier la fiche ou notion</button>
           <button class="btn btn-ghost btn-block" onclick="resetAdminRevisionForm()" style="margin-top:10px">Vider le formulaire</button>
           <div class="payment-result" id="adminRevisionResult"></div>
 
           <hr class="soft-separator">
-          <h3>Fiches publiées</h3>
+          <h3>Fiches et notions publiées</h3>
           <div id="adminRevisionList" class="admin-list"><div class="admin-empty">Aucune fiche publiée depuis le panel.</div></div>
         </div>
       </div>
@@ -1481,7 +1486,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=publication-categories-v21"></script>
-<script src="js/app.js?v=publication-categories-v21"></script>
+<script src="js/questions.js?v=revision-clean-v22"></script>
+<script src="js/app.js?v=revision-clean-v22"></script>
 </body>
 </html>

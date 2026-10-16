@@ -110,6 +110,7 @@ const AI_QCM_VERIFICATION_VERSION = 'official-sources-v2';
 const OFFICIAL_NEWS_SOURCES = process.env.OFFICIAL_NEWS_SOURCES || '';
 const AI_DAILY_INDEX_PATH = 'ai-daily/index.json';
 const AI_DAILY_DEFAULT_CATEGORIES = ['Burkina Faso','Culture générale','Histoire-Géo','Mathématiques','Physique-Chimie','Psychotechnique','Français','SVT','Greffier / Droit'];
+const REVISION_LEVELS = ['Tous niveaux','CEP','BEPC','CAP / BEP','BAC','BAC+2','Licence','Master','Doctorat'];
 const AI_DAILY_DEFAULT_LEVELS = ['Concours','BEPC','BAC','CEP','Licence'];
 const AI_DAILY_QCM_COUNT = Math.min(50, Math.max(1, Number(process.env.AI_DAILY_QCM_COUNT || 50)));
 const AI_QCM_MAX_COUNT = Math.min(50, Math.max(1, Number(process.env.AI_QCM_MAX_COUNT || 50)));
@@ -429,7 +430,8 @@ function publicRevisionFiche(row){
     title:row.title || 'Fiche de révision',
     time:row.duration || '3 min',
     level:row.level || 'Tous niveaux',
-    quizTitle:row.quiz_title || `QCM ${row.category || 'Culture générale'}`,
+    contentType:row.content_type || 'Fiche de révision',
+    competitionType:row.competition_type || 'Concours directs et professionnels',
     points:Array.isArray(row.points) ? row.points.filter(Boolean).slice(0, 6) : [],
     remember:row.remember || '',
     is_premium:Boolean(row.is_premium),
@@ -444,12 +446,19 @@ function adminRevisionPayload(body){
   if (!AI_DAILY_DEFAULT_CATEGORIES.includes(category)) throw Object.assign(new Error('Choisis une catégorie de publication.'), { status:400 });
   const points = (Array.isArray(body?.points) ? body.points : String(body?.points || '').split(/\n+/))
     .map(value => cleanText(value, 500)).filter(Boolean).slice(0, 6);
+  const contentType = cleanText(body?.contentType || body?.content_type || 'Fiche de révision', 60);
+  const competitionType = cleanText(body?.competitionType || body?.competition_type || 'Concours directs et professionnels', 80);
+  const level = cleanText(body?.level || 'Tous niveaux', 60);
+  if (!['Fiche de révision','Notion importante'].includes(contentType)) throw Object.assign(new Error('Choisis le type de contenu.'), { status:400 });
+  if (!['Concours direct','Concours professionnel','Concours directs et professionnels'].includes(competitionType)) throw Object.assign(new Error('Choisis le type de concours.'), { status:400 });
+  if (!REVISION_LEVELS.includes(level)) throw Object.assign(new Error('Choisis le niveau requis.'), { status:400 });
   const payload = {
     title:cleanText(body?.title, 180),
     category,
-    level:cleanText(body?.level || 'Tous niveaux', 60),
+    level,
     duration:cleanText(body?.duration || '3 min', 30),
-    quiz_title:cleanText(body?.quizTitle || body?.quiz_title || `QCM ${category}`, 180),
+    content_type:contentType,
+    competition_type:competitionType,
     points,
     remember:cleanText(body?.remember, 800),
     is_premium:Boolean(body?.is_premium),
@@ -5087,7 +5096,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'publication-categories-v21',
+    build: 'revision-clean-v22',
     time: new Date().toISOString()
   });
 });
@@ -6514,7 +6523,7 @@ app.post('/api/admin/revision-fiches', requireAdmin, async (req, res, next) => {
     const rows = await loadRevisionIndex();
     rows.unshift(row);
     await saveRevisionIndex(rows);
-    res.json({ ok:true, fiche:publicRevisionFiche(row), destination:{ block:'Fiches de révision', category:row.category, access:row.is_premium ? 'Premium' : 'Gratuit' } });
+    res.json({ ok:true, fiche:publicRevisionFiche(row), destination:{ block:'Fiches de révision', contentType:row.content_type, competitionType:row.competition_type, category:row.category, level:row.level, access:row.is_premium ? 'Premium' : 'Gratuit' } });
   }catch(err){ next(err); }
 });
 

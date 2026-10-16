@@ -305,19 +305,19 @@ Après retour utilisateur, l’interface a été corrigée à nouveau :
 - Il affiche les QCM faits, le taux de réussite, le niveau, les erreurs à revoir et une priorité de révision.
 - Ajout de boutons directs pour le défi du jour, la révision des erreurs, les nouveaux QCM ou la matière prioritaire.
 
-## 2026-09-24 — Fiches de révision courtes
+## 2026-09-24 — Fiches de révision
 
-- Ajout d’un écran **Fiches de révision courtes** accessible depuis l’accueil.
-- Les candidats peuvent lire des résumés rapides par matière, filtrer par catégorie, puis lancer un QCM lié.
+- Ajout d’un écran **Fiches de révision** accessible depuis l’accueil.
+- Les candidats peuvent lire les fiches et notions importantes publiées, classées par catégorie, type de concours et niveau.
 - Ajout d’un suivi local des fiches déjà lues et d’une fiche conseillée selon la priorité de révision.
-- Les matières Premium gardent le cadenas au moment de lancer les QCM associés.
+- Les publications Premium restent verrouillées jusqu’à l’activation de l’abonnement.
 
 
 ## 2026-09-24 — Accueil candidat connecté mieux différencié
 
 - Le tableau de bord candidat apparaît maintenant juste sous le bloc principal de l’accueil après connexion.
 - La barre supérieure et le bouton profil changent visuellement quand le candidat est connecté, sans ajouter de bloc inutile au milieu de l’accueil.
-- Ajout d’un raccourci **Fiches courtes** dans l’espace compte pour mieux organiser les actions du candidat.
+- Ajout d’un raccourci **Fiches de révision** dans l’espace compte pour mieux organiser les actions du candidat.
 
 
 ## 2026-09-24 — Accueil transformé en espace candidat connecté
