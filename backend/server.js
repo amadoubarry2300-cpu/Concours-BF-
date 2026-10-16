@@ -60,6 +60,9 @@ const SMTP_PASS = process.env.SMTP_PASS || '';
 const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || '';
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const RESEND_FROM = process.env.RESEND_FROM || SMTP_FROM || '';
+const EMAIL_LOGIN_ALERTS = !/^(?:false|0|no|non)$/i.test(String(process.env.EMAIL_LOGIN_ALERTS || 'true'));
+const EMAIL_EXPIRY_REMINDER_DAYS = [7, 3, 1];
+const EMAIL_CAMPAIGN_RECIPIENTS_PER_RUN = Math.min(100, Math.max(5, Number(process.env.EMAIL_CAMPAIGN_RECIPIENTS_PER_RUN || 10)));
 const SMS_API_URL = process.env.SMS_API_URL || '';
 const SMS_API_TOKEN = process.env.SMS_API_TOKEN || '';
 const SMS_SENDER = process.env.SMS_SENDER || 'ConcoursBF';
@@ -112,6 +115,7 @@ const LOCAL_QCM_BANK_PATH = path.join(__dirname, 'data', 'qcm_bank_5000_v1.json'
 const QCM_CORRECTIONS_PATH = path.join(__dirname, 'data', 'qcm_corrections_v3.json');
 let localQcmBankCache = null;
 let qcmCorrectionsCache = null;
+let smtpTransporterCache = null;
 
 function parseEnvList(value, fallback){
   const rows = String(value || '').split(/[,;\n]+/).map(v => v.trim()).filter(Boolean);
@@ -496,31 +500,98 @@ function appEmailFrom(){
   return RESEND_FROM || SMTP_FROM || SMTP_USER || '';
 }
 
-async function sendEmailNotification({ to, subject, text, html }){
+function absoluteAppUrl(pathname=''){
+  const base = String(APP_ORIGIN || PUBLIC_BASE_URL || '').replace(/\/$/, '');
+  const path = String(pathname || '');
+  return `${base}${path.startsWith('/') ? path : '/' + path}`;
+}
+
+function brandedEmailHtml({ title, greeting='', paragraphs=[], ctaLabel='', ctaUrl='', footer='' }){
+  const safeParagraphs = (Array.isArray(paragraphs) ? paragraphs : [paragraphs]).filter(Boolean);
+  const button = ctaLabel && ctaUrl
+    ? `<p style="margin:28px 0"><a href="${htmlEscape(ctaUrl)}" style="display:inline-block;background:#07855f;color:#fff;text-decoration:none;font-weight:800;padding:13px 20px;border-radius:12px">${htmlEscape(ctaLabel)}</a></p>`
+    : '';
+  return `<!doctype html><html lang="fr"><body style="margin:0;background:#f3f7f5;font-family:Arial,sans-serif;color:#15231e"><div style="max-width:620px;margin:0 auto;padding:24px 14px"><div style="background:#07855f;color:#fff;padding:22px;border-radius:18px 18px 0 0"><div style="font-size:13px;font-weight:800;letter-spacing:.5px">RÉUSSITE CONCOURS BF</div><h1 style="font-size:24px;margin:8px 0 0">${htmlEscape(title)}</h1></div><div style="background:#fff;padding:24px;border-radius:0 0 18px 18px;border:1px solid #dce9e3">${greeting ? `<p style="font-size:17px"><b>${htmlEscape(greeting)}</b></p>` : ''}${safeParagraphs.map(p => `<p style="font-size:16px;line-height:1.65">${p}</p>`).join('')}${button}<p style="margin-top:30px;color:#557067;font-size:13px;line-height:1.5">${footer || 'Réussite Concours BF — Prépare tes examens et concours avec sérieux.'}</p></div></div></body></html>`;
+}
+
+function marketingUnsubscribeToken(email){
+  return crypto.createHmac('sha256', SESSION_SECRET).update(`email-unsubscribe:${normalizeEmail(email)}`).digest('hex');
+}
+
+function marketingUnsubscribeUrl(email){
+  const clean = normalizeEmail(email);
+  if (!clean) return '';
+  return absoluteAppUrl(`/api/email/unsubscribe?email=${encodeURIComponent(clean)}&token=${marketingUnsubscribeToken(clean)}`);
+}
+
+async function smtpTransporter(){
+  if (smtpTransporterCache) return smtpTransporterCache;
+  const nodemailer = await import('nodemailer');
+  smtpTransporterCache = nodemailer.default.createTransport({
+    pool:true,
+    maxConnections:2,
+    maxMessages:50,
+    host:SMTP_HOST,
+    port:SMTP_PORT,
+    secure:SMTP_PORT === 465,
+    connectionTimeout:10000,
+    greetingTimeout:10000,
+    socketTimeout:20000,
+    auth:{ user:SMTP_USER, pass:SMTP_PASS }
+  });
+  return smtpTransporterCache;
+}
+
+async function sendEmailNotification({ to, subject, text, html, headers={}, replyTo='' }){
   const email = normalizeEmail(to);
   if (!email) return false;
   const from = appEmailFrom();
+  const cleanSubject = String(subject || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 180);
+  if (!cleanSubject) throw new Error('Objet e-mail manquant');
   if (RESEND_API_KEY && from){
+    const payload = { from, to:email, subject:cleanSubject, text:String(text || ''), html:html || String(text || '') };
+    if (headers && Object.keys(headers).length) payload.headers = headers;
+    if (replyTo) payload.reply_to = replyTo;
     const res = await fetch('https://api.resend.com/emails', {
       method:'POST',
       headers:{ Authorization:`Bearer ${RESEND_API_KEY}`, 'Content-Type':'application/json' },
-      body:JSON.stringify({ from, to:email, subject, text, html:html || text })
+      body:JSON.stringify(payload)
     });
-    if (!res.ok) throw new Error(`Email non envoyé (${res.status})`);
+    if (!res.ok) throw new Error(`E-mail non envoyé (${res.status})`);
     return true;
   }
   if (SMTP_HOST && SMTP_USER && SMTP_PASS && from){
-    const nodemailer = await import('nodemailer');
-    const transporter = nodemailer.default.createTransport({
-      host:SMTP_HOST,
-      port:SMTP_PORT,
-      secure:SMTP_PORT === 465,
-      auth:{ user:SMTP_USER, pass:SMTP_PASS }
-    });
-    await transporter.sendMail({ from, to:email, subject, text, html:html || text });
+    const transporter = await smtpTransporter();
+    await transporter.sendMail({ from, to:email, subject:cleanSubject, text:String(text || ''), html:html || String(text || ''), headers, replyTo:replyTo || undefined });
     return true;
   }
   return false;
+}
+
+async function sendEmailEventOnce({ profile, email:rawEmail, eventType, eventKey, subject, text, html, headers={} }){
+  const email = normalizeEmail(rawEmail || profile?.email);
+  if (!email || !eventKey || !supabaseReady() || !emailNotificationsConfigured()) return false;
+  let event = null;
+  try{
+    const rows = await supabaseRequest('email_notification_events?on_conflict=event_key&select=*', {
+      method:'POST',
+      prefer:'resolution=ignore-duplicates,return=representation',
+      body:[{ profile_id:profile?.id || null, email, event_type:String(eventType || 'notification').slice(0, 80), event_key:String(eventKey).slice(0, 240), status:'pending' }]
+    });
+    event = Array.isArray(rows) ? rows[0] || null : null;
+  }catch(err){
+    console.warn('Journal e-mail indisponible:', err.message);
+    return false;
+  }
+  if (!event) return false;
+  try{
+    await sendEmailNotification({ to:email, subject, text, html, headers });
+    await supabaseRequest(`email_notification_events?id=eq.${encodeURIComponent(event.id)}`, { method:'PATCH', prefer:'return=minimal', body:{ status:'sent', sent_at:new Date().toISOString(), error:null } }).catch(()=>{});
+    return true;
+  }catch(err){
+    await supabaseRequest(`email_notification_events?id=eq.${encodeURIComponent(event.id)}`, { method:'PATCH', prefer:'return=minimal', body:{ status:'failed', error:String(err.message || 'Envoi impossible').slice(0, 500) } }).catch(()=>{});
+    throw err;
+  }
 }
 
 async function sendSmsNotification({ to, message }){
@@ -559,7 +630,13 @@ async function notifyRegistration(profile, rawEmail){
   const sms = `Bienvenue ${name} sur Réussite Concours BF. Ton compte est créé. Bonne préparation !`;
   const subject = 'Bienvenue sur Réussite Concours BF';
   const text = `Bonjour ${name},\n\nTon compte Réussite Concours BF est bien créé. Tu peux sauvegarder ta progression et préparer tes examens et concours.\n\nBonne préparation !`;
-  const html = `<p>Bonjour <b>${htmlEscape(name)}</b>,</p><p>Ton compte <b>Réussite Concours BF</b> est bien créé.</p><p>Tu peux sauvegarder ta progression et préparer tes examens et concours.</p><p>Bonne préparation !</p>`;
+  const html = brandedEmailHtml({
+    title:'Bienvenue !',
+    greeting:`Bonjour ${name},`,
+    paragraphs:['Ton compte <b>Réussite Concours BF</b> est bien créé.', 'Ta progression, tes résultats et ton abonnement seront sauvegardés dans ton espace candidat.'],
+    ctaLabel:'Commencer ma préparation',
+    ctaUrl:absoluteAppUrl('/')
+  });
   const tasks = [sendSmsNotification({ to:phone, message:sms })];
   if (email) tasks.push(sendEmailNotification({ to:email, subject, text, html }));
   await Promise.allSettled(tasks).then(results => results.forEach(r => { if (r.status === 'rejected') console.warn('Notification inscription:', r.reason?.message || r.reason); }));
@@ -570,14 +647,199 @@ async function notifyPremiumActivation(profile, sub, rawEmail){
   const phone = profile?.phone;
   const name = profileDisplayName(profile, 'candidat');
   const endDate = sub?.expiresAt ? new Date(sub.expiresAt).toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric' }) : '';
-  const subject = 'Ton Premium est activé';
-  const text = `Bonjour ${name},\n\nTon accès Premium Réussite Concours BF est activé${endDate ? ` jusqu'au ${endDate}` : ''}. Tu peux maintenant profiter des contenus Premium.\n\nBonne préparation !`;
-  const html = `<p>Bonjour <b>${htmlEscape(name)}</b>,</p><p>Ton accès <b>Premium Réussite Concours BF</b> est activé${endDate ? ` jusqu'au <b>${htmlEscape(endDate)}</b>` : ''}.</p><p>Tu peux maintenant profiter des contenus Premium.</p><p>Bonne préparation !</p>`;
+  const subject = sub?.renewed ? 'Ton abonnement Premium est renouvelé' : 'Ton accès Premium est activé';
+  const text = `Bonjour ${name},\n\nTon accès Premium Réussite Concours BF est ${sub?.renewed ? 'renouvelé' : 'activé'}${endDate ? ` jusqu'au ${endDate}` : ''}. Référence : ${sub?.txRef || 'confirmée'}.\n\nBonne préparation !`;
+  const html = brandedEmailHtml({
+    title:sub?.renewed ? 'Premium renouvelé' : 'Premium activé',
+    greeting:`Bonjour ${name},`,
+    paragraphs:[`Ton accès <b>Premium</b> est ${sub?.renewed ? 'renouvelé' : 'activé'}${endDate ? ` jusqu’au <b>${htmlEscape(endDate)}</b>` : ''}.`, sub?.txRef ? `Référence de paiement : <b>${htmlEscape(sub.txRef)}</b>.` : '', 'Tu peux maintenant ouvrir les QCM, examens blancs, statistiques et documents Premium.'],
+    ctaLabel:'Accéder à Premium',
+    ctaUrl:absoluteAppUrl('/#subscription')
+  });
   const sms = `Réussite Concours BF: ton Premium est activé${endDate ? ' jusqu au ' + endDate : ''}. Bonne préparation !`;
   const tasks = [];
   if (email) tasks.push(sendEmailNotification({ to:email, subject, text, html }));
   if (phone) tasks.push(sendSmsNotification({ to:phone, message:sms }));
   await Promise.allSettled(tasks).then(results => results.forEach(r => { if (r.status === 'rejected') console.warn('Notification Premium:', r.reason?.message || r.reason); }));
+}
+
+async function notifyLoginSuccess(profile, req){
+  if (!EMAIL_LOGIN_ALERTS || !profile?.id || !profile?.email) return false;
+  const day = new Date().toISOString().slice(0, 10);
+  const name = profileDisplayName(profile, 'candidat');
+  const when = new Date().toLocaleString('fr-FR', { dateStyle:'long', timeStyle:'short', timeZone:'Africa/Ouagadougou' });
+  const ip = clientIp(req);
+  const subject = 'Connexion réussie à ton compte';
+  const text = `Bonjour ${name},\n\nUne connexion réussie à ton compte Réussite Concours BF a eu lieu le ${when}${ip ? ` depuis ${ip}` : ''}. Si ce n’était pas toi, réinitialise immédiatement ton PIN.\n`;
+  const html = brandedEmailHtml({
+    title:'Connexion réussie',
+    greeting:`Bonjour ${name},`,
+    paragraphs:[`Une connexion à ton compte a réussi le <b>${htmlEscape(when)}</b>.`, ip ? `Adresse réseau : <b>${htmlEscape(ip)}</b>.` : '', 'Si ce n’était pas toi, utilise immédiatement « PIN oublié » pour sécuriser ton compte.'],
+    ctaLabel:'Ouvrir mon compte',
+    ctaUrl:absoluteAppUrl('/#account')
+  });
+  return sendEmailEventOnce({ profile, eventType:'login_success', eventKey:`login:${profile.id}:${day}`, subject, text, html }).catch(err => { console.warn('Alerte connexion:', err.message); return false; });
+}
+
+async function notifyPinChanged(profile){
+  const email = normalizeEmail(profile?.email);
+  if (!email) return false;
+  const name = profileDisplayName(profile, 'candidat');
+  return sendEmailNotification({
+    to:email,
+    subject:'Ton code PIN a été modifié',
+    text:`Bonjour ${name},\n\nLe code PIN de ton compte Réussite Concours BF vient d’être modifié. Si ce n’était pas toi, contacte immédiatement le support.`,
+    html:brandedEmailHtml({ title:'PIN modifié', greeting:`Bonjour ${name},`, paragraphs:['Le code PIN de ton compte vient d’être modifié.', 'Si ce n’était pas toi, contacte immédiatement le support Réussite Concours BF.'] })
+  });
+}
+
+async function queueMarketingCampaign({ kind='promotion', subject, text, html='', ctaLabel='', ctaUrl='', createdBy='' }){
+  if (!supabaseReady() || !emailNotificationsConfigured()) return null;
+  const cleanSubject = cleanText(subject, 160).replace(/[\r\n]+/g, ' ');
+  const cleanBody = cleanText(text, 5000);
+  if (!cleanSubject || !cleanBody) return null;
+  try{
+    const rows = await supabaseRequest('email_campaigns?select=*', {
+      method:'POST',
+      prefer:'return=representation',
+      body:[{
+        kind:cleanText(kind, 60) || 'promotion',
+        subject:cleanSubject,
+        text_body:cleanBody,
+        html_body:String(html || '').slice(0, 15000),
+        cta_label:cleanText(ctaLabel, 80),
+        cta_url:/^https:\/\//i.test(String(ctaUrl || '')) ? String(ctaUrl).slice(0, 1000) : '',
+        status:'pending',
+        created_by:cleanText(createdBy, 120)
+      }]
+    });
+    return Array.isArray(rows) ? rows[0] || null : null;
+  }catch(err){
+    console.warn('Campagne e-mail non créée:', err.message);
+    return null;
+  }
+}
+
+function marketingCampaignContent(campaign, profile){
+  const email = normalizeEmail(profile?.email);
+  const name = profileDisplayName(profile, 'candidat');
+  const unsubscribe = marketingUnsubscribeUrl(email);
+  const ctaUrl = /^https:\/\//i.test(String(campaign?.cta_url || '')) ? campaign.cta_url : absoluteAppUrl('/');
+  const bodyHtml = campaign?.html_body
+    ? String(campaign.html_body)
+    : String(campaign?.text_body || '').split(/\n{2,}/).map(p => htmlEscape(p).replace(/\n/g, '<br>')).filter(Boolean).join('<br><br>');
+  const html = brandedEmailHtml({
+    title:campaign?.subject || 'Nouveauté',
+    greeting:`Bonjour ${name},`,
+    paragraphs:[bodyHtml],
+    ctaLabel:campaign?.cta_label || 'Ouvrir Réussite Concours BF',
+    ctaUrl,
+    footer:`Tu reçois ce message parce que tu as accepté les nouvelles et offres de Réussite Concours BF. <a href="${htmlEscape(unsubscribe)}">Se désabonner</a>.`
+  });
+  const text = `Bonjour ${name},\n\n${campaign?.text_body || ''}\n\n${campaign?.cta_label || 'Ouvrir'} : ${ctaUrl}\n\nSe désabonner : ${unsubscribe}`;
+  return { email, text, html, unsubscribe };
+}
+
+async function processNextEmailCampaign(){
+  if (!supabaseReady() || !emailNotificationsConfigured()) return { processed:false };
+  const campaigns = await supabaseRequest('email_campaigns?status=in.(pending,processing)&select=*&order=created_at.asc&limit=1').catch(()=>[]);
+  const campaign = Array.isArray(campaigns) ? campaigns[0] || null : null;
+  if (!campaign) return { processed:false };
+  await supabaseRequest(`email_campaigns?id=eq.${encodeURIComponent(campaign.id)}`, { method:'PATCH', prefer:'return=minimal', body:{ status:'processing', updated_at:new Date().toISOString() } }).catch(()=>{});
+  const cursorFilter = campaign.cursor_profile_id ? `&id=gt.${encodeURIComponent(campaign.cursor_profile_id)}` : '';
+  const profiles = await supabaseRequest(`profiles?marketing_email_opt_in=eq.true&marketing_email_unsubscribed_at=is.null&email=not.is.null${cursorFilter}&select=id,email,first_name,last_name,display_name&order=id.asc&limit=${EMAIL_CAMPAIGN_RECIPIENTS_PER_RUN}`).catch(()=>[]);
+  const recipients = Array.isArray(profiles) ? profiles : [];
+  if (!recipients.length){
+    await supabaseRequest(`email_campaigns?id=eq.${encodeURIComponent(campaign.id)}`, { method:'PATCH', prefer:'return=minimal', body:{ status:'completed', completed_at:new Date().toISOString(), updated_at:new Date().toISOString() } }).catch(()=>{});
+    return { processed:true, completed:true, sent:0, failed:0 };
+  }
+  let sent = 0;
+  let failed = 0;
+  for (let offset=0; offset<recipients.length; offset+=4){
+    const group = recipients.slice(offset, offset + 4);
+    await Promise.all(group.map(async profile => {
+      const email = normalizeEmail(profile.email);
+      if (!email) return;
+      let delivery = null;
+      try{
+        const inserted = await supabaseRequest('email_campaign_deliveries?on_conflict=campaign_id,profile_id&select=*', {
+          method:'POST',
+          prefer:'resolution=ignore-duplicates,return=representation',
+          body:[{ campaign_id:campaign.id, profile_id:profile.id, email, status:'pending' }]
+        });
+        delivery = Array.isArray(inserted) ? inserted[0] || null : null;
+        if (!delivery) return;
+        const content = marketingCampaignContent(campaign, profile);
+        await sendEmailNotification({
+          to:email,
+          subject:campaign.subject,
+          text:content.text,
+          html:content.html,
+          headers:{ 'List-Unsubscribe':`<${content.unsubscribe}>`, 'List-Unsubscribe-Post':'List-Unsubscribe=One-Click' }
+        });
+        sent++;
+        await supabaseRequest(`email_campaign_deliveries?id=eq.${encodeURIComponent(delivery.id)}`, { method:'PATCH', prefer:'return=minimal', body:{ status:'sent', sent_at:new Date().toISOString(), error:null } }).catch(()=>{});
+      }catch(err){
+        failed++;
+        if (delivery?.id) await supabaseRequest(`email_campaign_deliveries?id=eq.${encodeURIComponent(delivery.id)}`, { method:'PATCH', prefer:'return=minimal', body:{ status:'failed', error:String(err.message || 'Envoi impossible').slice(0, 500) } }).catch(()=>{});
+      }
+    }));
+  }
+  const lastProfileId = recipients[recipients.length - 1]?.id || campaign.cursor_profile_id || null;
+  const completed = recipients.length < EMAIL_CAMPAIGN_RECIPIENTS_PER_RUN;
+  await supabaseRequest(`email_campaigns?id=eq.${encodeURIComponent(campaign.id)}`, {
+    method:'PATCH',
+    prefer:'return=minimal',
+    body:{
+      status:completed ? 'completed' : 'pending',
+      cursor_profile_id:lastProfileId,
+      sent_count:Number(campaign.sent_count || 0) + sent,
+      failed_count:Number(campaign.failed_count || 0) + failed,
+      updated_at:new Date().toISOString(),
+      completed_at:completed ? new Date().toISOString() : null
+    }
+  }).catch(()=>{});
+  return { processed:true, campaignId:campaign.id, completed, sent, failed };
+}
+
+async function processExpiryReminderEmails(){
+  if (!supabaseReady() || !emailNotificationsConfigured()) return { checked:0, sent:0 };
+  const nowMs = Date.now();
+  const until = new Date(nowMs + 8 * 24 * 60 * 60 * 1000).toISOString();
+  const rows = await supabaseRequest(`subscriptions?status=eq.premium&expires_at=gt.${encodeURIComponent(new Date(nowMs).toISOString())}&expires_at=lte.${encodeURIComponent(until)}&select=id,profile_id,phone,expires_at,tx_ref&order=expires_at.asc&limit=500`).catch(()=>[]);
+  const subscriptionsToCheck = Array.isArray(rows) ? rows : [];
+  const latestByPhone = new Map();
+  let sent = 0;
+  for (const sub of subscriptionsToCheck){
+    if (sub.phone){
+      let latest = latestByPhone.get(sub.phone);
+      if (latest === undefined){
+        const latestRows = await supabaseRequest(`subscriptions?phone=eq.${encodeURIComponent(sub.phone)}&status=eq.premium&expires_at=gt.${encodeURIComponent(new Date(nowMs).toISOString())}&select=id,expires_at&order=expires_at.desc&limit=1`).catch(()=>[]);
+        latest = Array.isArray(latestRows) ? latestRows[0] || null : null;
+        latestByPhone.set(sub.phone, latest);
+      }
+      if (latest?.id && latest.id !== sub.id) continue;
+    }
+    const remainingDays = Math.ceil((new Date(sub.expires_at).getTime() - nowMs) / 86400000);
+    if (!EMAIL_EXPIRY_REMINDER_DAYS.includes(remainingDays)) continue;
+    const profiles = sub.profile_id
+      ? await supabaseRequest(`profiles?id=eq.${encodeURIComponent(sub.profile_id)}&select=*&limit=1`).catch(()=>[])
+      : await supabaseRequest(`profiles?phone=eq.${encodeURIComponent(sub.phone)}&select=*&limit=1`).catch(()=>[]);
+    const profile = Array.isArray(profiles) ? profiles[0] || null : null;
+    if (!profile?.email) continue;
+    const name = profileDisplayName(profile, 'candidat');
+    const endDate = new Date(sub.expires_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric' });
+    const ok = await sendEmailEventOnce({
+      profile,
+      eventType:'premium_expiry',
+      eventKey:`expiry:${sub.id || sub.tx_ref}:${remainingDays}`,
+      subject:`Ton Premium expire dans ${remainingDays} jour${remainingDays > 1 ? 's' : ''}`,
+      text:`Bonjour ${name},\n\nTon abonnement Premium expire le ${endDate}. Renouvelle-le pour conserver l’accès à tous les QCM et documents.`,
+      html:brandedEmailHtml({ title:'Ton Premium arrive à échéance', greeting:`Bonjour ${name},`, paragraphs:[`Ton abonnement Premium expire le <b>${htmlEscape(endDate)}</b>.`, 'Renouvelle-le pour conserver l’accès aux QCM, examens blancs, statistiques et documents Premium.'], ctaLabel:'Renouveler Premium', ctaUrl:absoluteAppUrl('/#subscription') })
+    }).catch(()=>false);
+    if (ok) sent++;
+  }
+  return { checked:subscriptionsToCheck.length, sent };
 }
 
 function normalizePhone(phone){
@@ -728,10 +990,10 @@ async function activateSubscription({ phone, txRef, provider, email, plan:planId
   const durationDays = Math.max(1, Number(days || plan.days || 30));
   const current = subscriptions.get(normalized);
   const sameTxAlreadyInMemory = current?.txRef && txRef && current.txRef === txRef;
-  const base = current && new Date(current.expiresAt).getTime() > Date.now()
+  let base = current && new Date(current.expiresAt).getTime() > Date.now()
     ? new Date(current.expiresAt)
     : new Date();
-  const expiresAt = addDays(base, durationDays).toISOString();
+  let expiresAt = addDays(base, durationDays).toISOString();
   const sub = {
     phone: normalized,
     status: 'premium',
@@ -740,9 +1002,9 @@ async function activateSubscription({ phone, txRef, provider, email, plan:planId
     provider: provider || 'CINETPAY',
     plan: plan.id,
     days: durationDays,
+    renewed:Boolean(current && new Date(current.expiresAt).getTime() > Date.now()),
     updatedAt: new Date().toISOString()
   };
-  subscriptions.set(normalized, sub);
 
   let profile = null;
   let alreadyRecorded = sameTxAlreadyInMemory;
@@ -753,6 +1015,16 @@ async function activateSubscription({ phone, txRef, provider, email, plan:planId
       const existingRows = await supabaseRequest(`subscriptions?tx_ref=eq.${encodeURIComponent(txRef)}&select=id,expires_at,provider,tx_ref&limit=1`).catch(()=>[]);
       alreadyRecorded = Array.isArray(existingRows) && existingRows.length > 0;
       if (alreadyRecorded && existingRows[0]?.expires_at) sub.expiresAt = existingRows[0].expires_at;
+    }
+    if (!alreadyRecorded){
+      const activeRows = await supabaseRequest(`subscriptions?phone=eq.${encodeURIComponent(normalized)}&status=eq.premium&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,expires_at&order=expires_at.desc&limit=1`).catch(()=>[]);
+      const active = Array.isArray(activeRows) ? activeRows[0] || null : null;
+      if (active?.expires_at){
+        base = new Date(active.expires_at);
+        expiresAt = addDays(base, durationDays).toISOString();
+        sub.expiresAt = expiresAt;
+        sub.renewed = true;
+      }
     }
     if (cleanEmail && profile && !profile.email){
       const updated = await saveProfileEmail(normalized, cleanEmail).catch(()=>null);
@@ -774,8 +1046,9 @@ async function activateSubscription({ phone, txRef, provider, email, plan:planId
       await supabaseRequest('subscriptions', { method:'POST', prefer:'return=minimal', body:[payload] });
     }
   }
+  subscriptions.set(normalized, sub);
 
-  const notifyKey = txRef || `${normalized}:${expiresAt}`;
+  const notifyKey = txRef || `${normalized}:${sub.expiresAt}`;
   if (!alreadyRecorded && !premiumNotificationTxSent.has(notifyKey)){
     premiumNotificationTxSent.add(notifyKey);
     await notifyPremiumActivation(profile || { phone:normalized, email:cleanEmail }, sub, cleanEmail).catch(err => console.warn('Notification Premium:', err.message));
@@ -4709,6 +4982,7 @@ function safeProfile(row){
     lastName: row.last_name || '',
     displayName: row.display_name || '',
     email: row.email || '',
+    marketingEmailOptIn: Boolean(row.marketing_email_opt_in) && !row.marketing_email_unsubscribed_at,
     avatarData: row.avatar_data || '',
     role: row.role || 'student',
     isAdmin: isAdminProfile(row),
@@ -4729,7 +5003,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'saspay-checkout-confirmation-v19',
+    build: 'email-automation-v20',
     time: new Date().toISOString()
   });
 });
@@ -4754,11 +5028,16 @@ app.post('/api/auth/register', async (req, res, next) => {
     const lastName = String(req.body?.lastName || '').trim();
     const email = normalizeEmail(req.body?.email);
     const pin = String(req.body?.pin || '').replace(/\D/g, '');
+    const marketingEmailOptIn = Boolean(req.body?.marketingEmailOptIn);
     const avatarData = cleanAvatarData(req.body?.avatarData);
     if (!phone) return res.status(400).json({ message:'Numéro invalide' });
     if (firstName.length < 2 || lastName.length < 2) return res.status(400).json({ message:'Nom et prénom requis' });
     if (!email) return res.status(400).json({ message:'Adresse e-mail invalide' });
     if (pin.length < 4) return res.status(400).json({ message:'PIN invalide' });
+    const existingProfile = await getProfile(phone).catch(()=>null);
+    if (existingProfile) return res.status(409).json({ message:'Un compte existe déjà avec ce numéro. Connecte-toi ou utilise « PIN oublié ».' });
+    const existingEmailRows = await supabaseRequest(`profiles?email=eq.${encodeURIComponent(email)}&select=id&limit=1`).catch(()=>[]);
+    if (Array.isArray(existingEmailRows) && existingEmailRows.length) return res.status(409).json({ message:'Cette adresse e-mail est déjà utilisée. Connecte-toi ou utilise « PIN oublié ».' });
 
     const displayName = `${firstName} ${lastName}`.trim();
     const profilePayload = {
@@ -4767,6 +5046,9 @@ app.post('/api/auth/register', async (req, res, next) => {
       last_name:lastName,
       display_name:displayName,
       email,
+      marketing_email_opt_in:marketingEmailOptIn,
+      marketing_email_opt_in_at:marketingEmailOptIn ? new Date().toISOString() : null,
+      marketing_email_unsubscribed_at:null,
       pin_hash:hashPin(pin),
       last_login_at:new Date().toISOString()
     };
@@ -4778,13 +5060,34 @@ app.post('/api/auth/register', async (req, res, next) => {
         body:[profilePayload]
       });
     }catch(err){
-      if (!isMissingEmailColumnError(err)) throw err;
-      const { email: _email, ...fallbackPayload } = profilePayload;
-      rows = await supabaseRequest('profiles?on_conflict=phone&select=*', {
-        method:'POST',
-        prefer:'resolution=merge-duplicates,return=representation',
-        body:[fallbackPayload]
-      });
+      const msg = String(err?.message || err?.details?.message || err?.details?.hint || '');
+      const missingMarketing = /marketing_email_|schema cache/i.test(msg);
+      if (missingMarketing){
+        const { marketing_email_opt_in, marketing_email_opt_in_at, marketing_email_unsubscribed_at, ...withoutMarketing } = profilePayload;
+        try{
+          rows = await supabaseRequest('profiles?on_conflict=phone&select=*', {
+            method:'POST',
+            prefer:'resolution=merge-duplicates,return=representation',
+            body:[withoutMarketing]
+          });
+        }catch(innerErr){
+          if (!isMissingEmailColumnError(innerErr)) throw innerErr;
+          const { email: _email, ...fallbackPayload } = withoutMarketing;
+          rows = await supabaseRequest('profiles?on_conflict=phone&select=*', {
+            method:'POST',
+            prefer:'resolution=merge-duplicates,return=representation',
+            body:[fallbackPayload]
+          });
+        }
+      }else{
+        if (!isMissingEmailColumnError(err)) throw err;
+        const { email: _email, marketing_email_opt_in, marketing_email_opt_in_at, marketing_email_unsubscribed_at, ...fallbackPayload } = profilePayload;
+        rows = await supabaseRequest('profiles?on_conflict=phone&select=*', {
+          method:'POST',
+          prefer:'resolution=merge-duplicates,return=representation',
+          body:[fallbackPayload]
+        });
+      }
     }
     let profile = Array.isArray(rows) ? rows[0] : null;
     if (profile && !profile.email) profile.email = email;
@@ -4800,6 +5103,65 @@ app.post('/api/auth/register', async (req, res, next) => {
     const user = safeProfile(profile);
     if (user && !user.email) user.email = email;
     res.json({ user, progress, subscription, session });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/auth/pin-reset/request', async (req, res, next) => {
+  try{
+    const email = normalizeEmail(req.body?.email);
+    const generic = { ok:true, message:'Si cette adresse correspond à un compte, un code de sécurité vient d’être envoyé.' };
+    if (!email || !supabaseReady() || !emailNotificationsConfigured()) return res.json(generic);
+    const profiles = await supabaseRequest(`profiles?email=eq.${encodeURIComponent(email)}&select=*&limit=1`).catch(()=>[]);
+    const profile = Array.isArray(profiles) ? profiles[0] || null : null;
+    if (!profile) return res.json(generic);
+    const recentAfter = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const recent = await supabaseRequest(`pin_reset_tokens?email=eq.${encodeURIComponent(email)}&created_at=gt.${encodeURIComponent(recentAfter)}&select=id&limit=1`).catch(()=>[]);
+    if (Array.isArray(recent) && recent.length) return res.json(generic);
+    const code = String(crypto.randomInt(100000, 1000000));
+    const codeHash = crypto.createHmac('sha256', SESSION_SECRET).update(`pin-reset:${email}:${code}`).digest('hex');
+    await supabaseRequest('pin_reset_tokens', {
+      method:'POST',
+      prefer:'return=minimal',
+      body:[{ profile_id:profile.id, email, code_hash:codeHash, expires_at:new Date(Date.now() + 15 * 60 * 1000).toISOString() }]
+    });
+    const name = profileDisplayName(profile, 'candidat');
+    await sendEmailNotification({
+      to:email,
+      subject:'Code de réinitialisation de ton PIN',
+      text:`Bonjour ${name},\n\nTon code de sécurité est : ${code}\nIl expire dans 15 minutes. Si tu n’as rien demandé, ignore ce message.`,
+      html:brandedEmailHtml({ title:'Réinitialisation du PIN', greeting:`Bonjour ${name},`, paragraphs:['Voici ton code de sécurité :', `<div style="font-size:32px;font-weight:900;letter-spacing:7px;text-align:center;padding:18px;background:#eef8f3;border-radius:14px">${code}</div>`, 'Ce code expire dans <b>15 minutes</b>. Si tu n’as rien demandé, ignore ce message.'] })
+    });
+    res.json(generic);
+  }catch(err){
+    console.warn('Demande de réinitialisation PIN:', err.message);
+    if (!res.headersSent) res.json({ ok:true, message:'Si cette adresse correspond à un compte, un code de sécurité vient d’être envoyé.' });
+  }
+});
+
+app.post('/api/auth/pin-reset/confirm', async (req, res, next) => {
+  try{
+    const email = normalizeEmail(req.body?.email);
+    const code = String(req.body?.code || '').replace(/\D/g, '').slice(0, 6);
+    const pin = String(req.body?.pin || '').replace(/\D/g, '').slice(0, 6);
+    if (!email || code.length !== 6 || pin.length < 4) return res.status(400).json({ message:'Code ou nouveau PIN invalide.' });
+    const now = new Date().toISOString();
+    const rows = await supabaseRequest(`pin_reset_tokens?email=eq.${encodeURIComponent(email)}&used_at=is.null&expires_at=gt.${encodeURIComponent(now)}&select=*&order=created_at.desc&limit=1`).catch(()=>[]);
+    const reset = Array.isArray(rows) ? rows[0] || null : null;
+    if (!reset || Number(reset.attempts || 0) >= 5) return res.status(400).json({ message:'Code expiré ou invalide. Demande un nouveau code.' });
+    const expected = crypto.createHmac('sha256', SESSION_SECRET).update(`pin-reset:${email}:${code}`).digest('hex');
+    const valid = expected.length === String(reset.code_hash || '').length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(String(reset.code_hash || '')));
+    if (!valid){
+      await supabaseRequest(`pin_reset_tokens?id=eq.${encodeURIComponent(reset.id)}`, { method:'PATCH', prefer:'return=minimal', body:{ attempts:Number(reset.attempts || 0) + 1 } }).catch(()=>{});
+      return res.status(400).json({ message:'Code expiré ou invalide. Demande un nouveau code.' });
+    }
+    const profiles = await supabaseRequest(`profiles?id=eq.${encodeURIComponent(reset.profile_id)}&select=*&limit=1`);
+    const profile = Array.isArray(profiles) ? profiles[0] || null : null;
+    if (!profile) return res.status(404).json({ message:'Compte introuvable.' });
+    await supabaseRequest(`profiles?id=eq.${encodeURIComponent(profile.id)}`, { method:'PATCH', prefer:'return=minimal', body:{ pin_hash:hashPin(pin) } });
+    await supabaseRequest(`pin_reset_tokens?id=eq.${encodeURIComponent(reset.id)}`, { method:'PATCH', prefer:'return=minimal', body:{ used_at:now, attempts:Number(reset.attempts || 0) + 1 } });
+    await supabaseRequest(`sessions?profile_id=eq.${encodeURIComponent(profile.id)}&revoked_at=is.null`, { method:'PATCH', prefer:'return=minimal', body:{ revoked_at:now } }).catch(()=>{});
+    await notifyPinChanged(profile).catch(err => console.warn('Confirmation PIN:', err.message));
+    res.json({ ok:true, message:'Ton PIN a été modifié. Tu peux maintenant te connecter.' });
   }catch(err){ next(err); }
 });
 
@@ -4838,6 +5200,7 @@ app.post('/api/auth/login', async (req, res, next) => {
     const progress = Array.isArray(progressRows) ? progressRows[0] || await ensureProgress(profile) : null;
     const subscription = await getActiveSubscription(phone);
     const session = await createSession(profile, req);
+    await notifyLoginSuccess(freshProfile, req).catch(err => console.warn('Alerte connexion:', err.message));
     res.json({ user:safeProfile(freshProfile), progress, subscription, session });
   }catch(err){ next(err); }
 });
@@ -4857,6 +5220,53 @@ app.post('/api/profile/avatar', requireSession, async (req, res, next) => {
     const profile = await saveProfileAvatar(req.phone, avatarData);
     res.json({ ok:true, user:safeProfile(profile || { ...req.profile, avatar_data:avatarData }) });
   }catch(err){ next(err); }
+});
+
+app.patch('/api/profile/email-preferences', requireSession, async (req, res, next) => {
+  try{
+    const optIn = Boolean(req.body?.marketingEmailOptIn);
+    const now = new Date().toISOString();
+    const rows = await supabaseRequest(`profiles?phone=eq.${encodeURIComponent(req.phone)}&select=*`, {
+      method:'PATCH',
+      prefer:'return=representation',
+      body:{
+        marketing_email_opt_in:optIn,
+        marketing_email_opt_in_at:optIn ? now : null,
+        marketing_email_unsubscribed_at:optIn ? null : now
+      }
+    });
+    const profile = Array.isArray(rows) ? rows[0] || null : null;
+    res.json({ ok:true, user:safeProfile(profile || req.profile) });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/email/unsubscribe', async (req, res) => {
+  const email = normalizeEmail(req.query?.email);
+  const token = String(req.query?.token || '');
+  const expected = email ? marketingUnsubscribeToken(email) : '';
+  const valid = Boolean(email && token && token.length === expected.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected)));
+  if (valid && supabaseReady()){
+    await supabaseRequest(`profiles?email=eq.${encodeURIComponent(email)}`, {
+      method:'PATCH',
+      prefer:'return=minimal',
+      body:{ marketing_email_opt_in:false, marketing_email_unsubscribed_at:new Date().toISOString() }
+    }).catch(()=>{});
+  }
+  res.status(valid ? 200 : 400).type('html').send(`<!doctype html><html lang="fr"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:Arial;background:#f3f7f5;padding:30px"><main style="max-width:560px;margin:auto;background:white;padding:28px;border-radius:18px"><h1>${valid ? 'Désabonnement confirmé' : 'Lien invalide'}</h1><p>${valid ? 'Tu ne recevras plus les offres et nouveautés par e-mail. Les messages indispensables liés à ton compte et à tes paiements restent actifs.' : 'Ce lien de désabonnement est invalide ou incomplet.'}</p><p><a href="${htmlEscape(absoluteAppUrl('/'))}">Retour à Réussite Concours BF</a></p></main></body></html>`);
+});
+
+app.post('/api/email/unsubscribe', async (req, res) => {
+  const email = normalizeEmail(req.query?.email);
+  const token = String(req.query?.token || '');
+  const expected = email ? marketingUnsubscribeToken(email) : '';
+  const valid = Boolean(email && token && token.length === expected.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected)));
+  if (!valid) return res.status(400).json({ ok:false });
+  await supabaseRequest(`profiles?email=eq.${encodeURIComponent(email)}`, {
+    method:'PATCH',
+    prefer:'return=minimal',
+    body:{ marketing_email_opt_in:false, marketing_email_unsubscribed_at:new Date().toISOString() }
+  }).catch(()=>{});
+  res.json({ ok:true });
 });
 
 app.post('/api/auth/logout', requireSession, async (req, res, next) => {
@@ -5521,6 +5931,16 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
       resource_id:resource?.id || draft.resource_id || ''
     };
     await saveAiDailyIndex(drafts);
+    if (!alreadyHasQuestions){
+      await queueMarketingCampaign({
+        kind:'new_qcm',
+        subject:`Nouveaux QCM : ${drafts[idx].title || publishCategory}`,
+        text:`De nouveaux QCM corrigés sont disponibles dans ${publishCategory}${publishLevel ? ` — niveau ${publishLevel}` : ''}. Ouvre Réussite Concours BF pour commencer la révision.`,
+        ctaLabel:'Découvrir les nouveaux QCM',
+        ctaUrl:absoluteAppUrl('/#formations'),
+        createdBy:req.phone
+      });
+    }
     res.json({ ok:true, published:publishedCount || Number(draft.published_count || questions.length || 0), alreadyPublished:alreadyHasQuestions, resource, draft:publicAiDailyDraft(drafts[idx]) });
   }catch(err){ next(err); }
 });
@@ -5587,8 +6007,12 @@ app.delete('/api/admin/ai/daily/:id', requireAdmin, async (req, res, next) => {
 app.get('/api/cron/ai-daily-qcm', async (req, res, next) => {
   try{
     if (!cronAuthorized(req)) return res.status(401).json({ ok:false, message:'Cron IA non autorisé' });
-    const result = await generateDailyAiQcmDraft({ force:false });
-    res.json({ ok:true, skipped:result.skipped, draft:publicAiDailyDraft(result.draft), plan:result.plan });
+    const [result, expiry, campaign] = await Promise.all([
+      generateDailyAiQcmDraft({ force:false }),
+      processExpiryReminderEmails().catch(err => ({ error:err.message })),
+      processNextEmailCampaign().catch(err => ({ error:err.message }))
+    ]);
+    res.json({ ok:true, skipped:result.skipped, draft:publicAiDailyDraft(result.draft), plan:result.plan, emailAutomation:{ expiry, campaign } });
   }catch(err){ next(err); }
 });
 
@@ -5691,9 +6115,12 @@ app.get('/api/cron/official-news-scan', async (req, res, next) => {
   try{
     if (!cronAuthorized(req)) return res.status(401).json({ ok:false, message:'Cron veille officielle non autorisé' });
     const limit = Math.min(8, Math.max(1, Number(req.query?.limit || 6)));
-    const result = await buildOfficialNewsDrafts(limit);
+    const [result, campaign] = await Promise.all([
+      buildOfficialNewsDrafts(limit),
+      processNextEmailCampaign().catch(err => ({ error:err.message }))
+    ]);
     const stagedItems = result.items.length ? await stageOfficialNewsDrafts(result.items, 'cron') : [];
-    res.json({ ok:true, found:result.candidates.length, staged:stagedItems.length, items:stagedItems, today:result.today, currentYear:result.currentYear, freshness:'current_only' });
+    res.json({ ok:true, found:result.candidates.length, staged:stagedItems.length, items:stagedItems, today:result.today, currentYear:result.currentYear, freshness:'current_only', emailAutomation:{ campaign } });
   }catch(err){ next(err); }
 });
 
@@ -5792,6 +6219,14 @@ app.post('/api/admin/questions/import/publish', requireAdmin, async (req, res, n
       body:payload
     });
     const published = Array.isArray(rows) ? rows.length : payload.length;
+    await queueMarketingCampaign({
+      kind:'new_qcm',
+      subject:`Nouveaux QCM : ${result.metadata.title}`,
+      text:`${published} nouveau${published > 1 ? 'x' : ''} QCM corrigé${published > 1 ? 's sont' : ' est'} disponible${published > 1 ? 's' : ''} dans ${result.metadata.category}.`,
+      ctaLabel:'Commencer les QCM',
+      ctaUrl:absoluteAppUrl('/#formations'),
+      createdBy:req.phone
+    });
     res.json({
       ok:true,
       published,
@@ -5847,6 +6282,14 @@ app.post('/api/admin/questions', requireAdmin, async (req, res, next) => {
       method:'POST',
       prefer:'return=representation',
       body:[payload]
+    });
+    await queueMarketingCampaign({
+      kind:'new_qcm',
+      subject:`Nouveau QCM : ${payload.category}`,
+      text:`Un nouveau QCM corrigé est disponible dans ${payload.category}${payload.level ? ` — ${payload.level}` : ''}.`,
+      ctaLabel:'Répondre au QCM',
+      ctaUrl:absoluteAppUrl('/#formations'),
+      createdBy:req.phone
     });
     res.json({ ok:true, question:Array.isArray(rows) ? rows[0] || null : null });
   }catch(err){ next(err); }
@@ -5994,6 +6437,14 @@ app.post('/api/admin/resources/upload', requireAdmin, express.raw({ type:() => t
     const resources = await loadResourceIndex();
     resources.unshift(resource);
     await saveResourceIndex(resources);
+    await queueMarketingCampaign({
+      kind:'new_document',
+      subject:`Nouveau document : ${title}`,
+      text:`Un nouveau document est disponible dans la rubrique ${category}.${description ? `\n\n${description}` : ''}`,
+      ctaLabel:'Voir le document',
+      ctaUrl:absoluteAppUrl('/#resources'),
+      createdBy:req.phone
+    });
     res.json({ ok:true, resource:publicResource(resource) });
   }catch(err){ next(err); }
 });
@@ -6211,6 +6662,37 @@ function emailNotificationsConfigured(){
 function smsNotificationsConfigured(){
   return Boolean(SMS_API_URL || (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_FROM));
 }
+
+app.get('/api/admin/email-campaigns', requireAdmin, async (_req, res, next) => {
+  try{
+    const rows = await supabaseRequest('email_campaigns?select=*&order=created_at.desc&limit=80');
+    res.json({ ok:true, campaigns:Array.isArray(rows) ? rows : [] });
+  }catch(err){ next(err); }
+});
+
+app.post('/api/admin/email-campaigns', requireAdmin, async (req, res, next) => {
+  try{
+    const subject = cleanText(req.body?.subject, 160);
+    const text = cleanText(req.body?.text, 5000);
+    const ctaLabel = cleanText(req.body?.ctaLabel || 'Découvrir', 80);
+    const ctaUrl = String(req.body?.ctaUrl || absoluteAppUrl('/')).trim();
+    if (subject.length < 4) return res.status(400).json({ message:'Ajoute un objet clair.' });
+    if (text.length < 10) return res.status(400).json({ message:'Ajoute un message plus complet.' });
+    if (ctaUrl && !/^https:\/\//i.test(ctaUrl)) return res.status(400).json({ message:'Le lien doit commencer par https://.' });
+    const campaign = await queueMarketingCampaign({ kind:'promotion', subject, text, ctaLabel, ctaUrl, createdBy:req.phone });
+    if (!campaign) return res.status(503).json({ message:'La campagne n’a pas pu être enregistrée.' });
+    res.json({ ok:true, campaign, message:'Campagne enregistrée. L’envoi automatique va commencer.' });
+  }catch(err){ next(err); }
+});
+
+app.get('/api/cron/email-automation', async (req, res, next) => {
+  try{
+    if (!cronAuthorized(req)) return res.status(401).json({ message:'Accès refusé' });
+    const expiry = await processExpiryReminderEmails();
+    const campaign = await processNextEmailCampaign();
+    res.json({ ok:true, expiry, campaign, at:new Date().toISOString() });
+  }catch(err){ next(err); }
+});
 
 app.get('/api/admin/notifications/status', requireAdmin, async (_req, res) => {
   res.json({
@@ -6537,5 +7019,11 @@ export {
   validatePaymentPhoneForProvider,
   saspayUsesHostedCheckout,
   checkoutStatusTransactionId,
-  checkoutStatusLabel
+  checkoutStatusLabel,
+  marketingUnsubscribeToken,
+  marketingCampaignContent,
+  sendEmailEventOnce,
+  processExpiryReminderEmails,
+  processNextEmailCampaign,
+  activateSubscription
 };

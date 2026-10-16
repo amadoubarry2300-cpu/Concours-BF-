@@ -1,41 +1,45 @@
-# Backend paiements Réussite Concours BF
+# Backend Réussite Concours BF
 
-Ce backend sert à encaisser l'abonnement **Premium 1 500 FCFA / mois** via Mobile Money avec CinetPay.
+Ce backend gère les comptes candidats, Premium, les paiements, les contenus administrateur et les notifications automatiques.
 
 ## Lancer localement
 
 ```bash
 cd backend
 cp .env.example .env
-# remplir CINETPAY_APIKEY, CINETPAY_SITE_ID, APP_ORIGIN, PUBLIC_BASE_URL
 npm install
 npm run dev
 ```
 
-Endpoints :
+Les secrets Supabase, paiement, Gemini et SMTP restent exclusivement dans les variables serveur.
 
-- `POST /api/payments/cinetpay/init` — crée une transaction CinetPay et renvoie `paymentUrl`
-- `POST /api/payments/cinetpay/webhook` — reçoit la confirmation CinetPay, vérifie la transaction, active 30 jours Premium
-- `GET /api/subscription/status?phone=+22670000000` — retourne l'état Premium
+## Automatisation e-mail v20
 
-## Branchement côté application
+Avant le déploiement v20, exécuter une seule fois dans **Supabase → SQL Editor** :
 
-Dans `js/app.js`, renseigner :
+- `email-automation-v20.sql`
 
-```js
-const PAYMENT_CONFIG = window.REUSSITE_CONCOURS_BF_PAYMENT_CONFIG || {
-  amount: 1500,
-  currency: 'XOF',
-  plan: 'premium_monthly',
-  backendBaseUrl: 'https://api.votre-domaine.com',
-  demoMode: false
-};
-```
+La migration ajoute :
 
-## Production
+- le consentement révocable aux nouveautés et offres ;
+- le journal anti-doublon des e-mails transactionnels ;
+- les codes de réinitialisation du PIN hachés et temporaires ;
+- les campagnes et leur suivi de livraison.
 
-1. Créer le compte marchand CinetPay/Ligdicash.
-2. Déployer ce backend sur Railway, Render, Fly.io, VPS, ou Vercel Functions.
-3. Mettre `PUBLIC_BASE_URL` sur l'URL publique du backend.
-4. Configurer l'URL webhook dans le compte marchand si nécessaire.
-5. Remplacer le stockage mémoire par Supabase/PostgreSQL avec `supabase-schema.sql`.
+Fonctions principales :
+
+- inscription et connexion sécurisée ;
+- activation ou renouvellement Premium ;
+- rappels avant expiration ;
+- demande et confirmation de réinitialisation du PIN ;
+- annonces automatiques des nouveaux QCM et documents ;
+- offres rédigées par l’administrateur ;
+- désabonnement en un clic.
+
+Les deux tâches quotidiennes existantes exécutent également les rappels et les campagnes, sans ajouter une nouvelle tâche Vercel.
+
+## Paiements
+
+- `POST /api/payments/cinetpay/init` — crée une transaction et renvoie l’URL de paiement.
+- `POST /api/payments/cinetpay/webhook` — vérifie la transaction puis active Premium.
+- `GET /api/subscription/status?phone=+22670000000` — retourne l’état Premium.

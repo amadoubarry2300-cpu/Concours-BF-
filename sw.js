@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'saspay-checkout-confirmation-v19';
+const CACHE_VERSION = 'email-automation-v20';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=saspay-checkout-confirmation-v19',
-  '/js/questions.js?v=saspay-checkout-confirmation-v19',
-  '/js/app.js?v=saspay-checkout-confirmation-v19',
-  '/js/vendor/pdf.mjs?v=saspay-checkout-confirmation-v19',
-  '/js/vendor/pdf.worker.mjs?v=saspay-checkout-confirmation-v19',
+  '/css/styles.css?v=email-automation-v20',
+  '/js/questions.js?v=email-automation-v20',
+  '/js/app.js?v=email-automation-v20',
+  '/js/vendor/pdf.mjs?v=email-automation-v20',
+  '/js/vendor/pdf.worker.mjs?v=email-automation-v20',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

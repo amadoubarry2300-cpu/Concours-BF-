@@ -175,8 +175,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=saspay-checkout-confirmation-v19').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=saspay-checkout-confirmation-v19';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=email-automation-v20').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=email-automation-v20';
       return pdfjs;
     });
   }
@@ -731,6 +731,21 @@ async function apiPost(path, body){
   return data;
 }
 
+async function apiPatch(path, body){
+  const res = await fetchWithTimeout(path, {
+    method:'PATCH',
+    headers:authHeaders({'Content-Type':'application/json'}),
+    body:JSON.stringify(body || {})
+  });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok){
+    const err = new Error(data.message || 'Service indisponible');
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
 function shouldUseLocalFallback(err){
   return err?.status === 404 || err?.status === 503 || err?.name === 'TypeError' || /Failed to fetch|NetworkError|Stockage indisponible/i.test(err?.message || '');
 }
@@ -746,6 +761,7 @@ function applyRemoteSession(data, fallbackPhone){
       lastName: data.user.lastName || '',
       displayName: data.user.displayName || '',
       email: data.user.email || state.user?.email || '',
+      marketingEmailOptIn:Boolean(data.user.marketingEmailOptIn),
       avatarData,
       role: data.user.role || state.user?.role || 'student',
       isAdmin: Boolean(data.user.isAdmin),
@@ -1095,6 +1111,8 @@ function renderAccountScreen(){
   $('#accountInfoPhone') && ($('#accountInfoPhone').textContent = '+226 ' + phone);
   $('#accountInfoEmail') && ($('#accountInfoEmail').textContent = state.user.email || '—');
   $('#accountLastLogin') && ($('#accountLastLogin').textContent = state.user.lastLoginAt ? formatDate(state.user.lastLoginAt) : 'Aujourd’hui');
+  const marketingBox = $('#accountMarketingEmailOptIn');
+  if (marketingBox) marketingBox.checked = Boolean(state.user.marketingEmailOptIn);
   renderSmartDashboard();
 
   const adminBtn = $('#adminPanelBtn');
@@ -1363,6 +1381,10 @@ function startSetupQuiz(){
 /* ---------- compte candidat ---------- */
 function renderLogin(){
   const isRegister = authMode !== 'login';
+  const resetPanel = $('#pinResetPanel');
+  const mainFields = $('#authMainFields');
+  if (resetPanel) resetPanel.style.display = 'none';
+  if (mainFields) mainFields.style.display = 'block';
   $('#registerTab')?.classList.toggle('on', isRegister);
   $('#loginTab')?.classList.toggle('on', !isRegister);
   if ($('#authTitle')) $('#authTitle').textContent = isRegister ? 'Créer ton compte candidat' : 'Connexion candidat';
@@ -1390,6 +1412,72 @@ function renderLogin(){
   if (pinInput) pinInput.value = '';
   const logoutBtn = $('#logoutBtn');
   if (logoutBtn) logoutBtn.style.display = state.user ? 'flex' : 'none';
+  const forgotBtn = $('#forgotPinBtn');
+  if (forgotBtn) forgotBtn.style.display = !isRegister && !state.user ? 'flex' : 'none';
+}
+
+function openPinReset(){
+  const panel = $('#pinResetPanel');
+  const main = $('#authMainFields');
+  if (panel) panel.style.display = 'block';
+  if (main) main.style.display = 'none';
+  if ($('#pinResetEmail') && state.user?.email) $('#pinResetEmail').value = state.user.email;
+  if ($('#pinResetResult')) $('#pinResetResult').textContent = '';
+}
+
+function closePinReset(){
+  if ($('#pinResetPanel')) $('#pinResetPanel').style.display = 'none';
+  if ($('#authMainFields')) $('#authMainFields').style.display = 'block';
+}
+
+async function requestPinReset(){
+  const email = String($('#pinResetEmail')?.value || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ toast('Entre ton adresse e-mail'); return; }
+  const btn = $('#pinResetRequestBtn');
+  const result = $('#pinResetResult');
+  setButtonLoading(btn, true, 'Envoi...');
+  try{
+    const data = await apiPost('/api/auth/pin-reset/request', { email });
+    if ($('#pinResetConfirmFields')) $('#pinResetConfirmFields').style.display = 'block';
+    if (result){ result.textContent = data.message || 'Si cette adresse correspond à un compte, un code vient d’être envoyé.'; result.className = 'payment-result ok'; }
+  }catch(err){
+    if (result){ result.textContent = err.message || 'Envoi impossible pour le moment.'; result.className = 'payment-result err'; }
+  }finally{ setButtonLoading(btn, false); }
+}
+
+async function confirmPinReset(){
+  const email = String($('#pinResetEmail')?.value || '').trim().toLowerCase();
+  const code = String($('#pinResetCode')?.value || '').replace(/\D/g, '');
+  const pin = String($('#pinResetNewPin')?.value || '').replace(/\D/g, '');
+  if (code.length !== 6){ toast('Entre le code à 6 chiffres'); return; }
+  if (pin.length < 4){ toast('Choisis un PIN de 4 à 6 chiffres'); return; }
+  const btn = $('#pinResetConfirmBtn');
+  const result = $('#pinResetResult');
+  setButtonLoading(btn, true, 'Modification...');
+  try{
+    const data = await apiPost('/api/auth/pin-reset/confirm', { email, code, pin });
+    if (result){ result.textContent = data.message || 'PIN modifié.'; result.className = 'payment-result ok'; }
+    toast('PIN modifié ✅');
+    setTimeout(()=>{ closePinReset(); setAuthMode('login'); }, 700);
+  }catch(err){
+    if (result){ result.textContent = err.message || 'Code invalide.'; result.className = 'payment-result err'; }
+  }finally{ setButtonLoading(btn, false); }
+}
+
+async function saveEmailPreferences(){
+  if (!state.user || !state.authToken){ toast('Connecte-toi d’abord'); return; }
+  const marketingEmailOptIn = Boolean($('#accountMarketingEmailOptIn')?.checked);
+  const btn = $('#saveEmailPreferencesBtn');
+  const result = $('#emailPreferencesResult');
+  setButtonLoading(btn, true, 'Enregistrement...');
+  try{
+    const data = await apiPatch('/api/profile/email-preferences', { marketingEmailOptIn });
+    if (data.user) state.user = { ...state.user, ...data.user };
+    save();
+    if (result){ result.textContent = marketingEmailOptIn ? 'Nouveautés activées ✅' : 'Nouveautés désactivées.'; result.className = 'payment-result ok'; }
+  }catch(err){
+    if (result){ result.textContent = err.message || 'Enregistrement impossible.'; result.className = 'payment-result err'; }
+  }finally{ setButtonLoading(btn, false); }
 }
 
 async function loginUser(){
@@ -1399,6 +1487,7 @@ async function loginUser(){
   const firstName = ($('#firstName')?.value || '').trim();
   const lastName = ($('#lastName')?.value || '').trim();
   const email = ($('#authEmail')?.value || '').trim().toLowerCase();
+  const marketingEmailOptIn = isRegister && Boolean($('#marketingEmailOptIn')?.checked);
   const avatarData = isRegister ? (pendingAvatarData || '') : '';
 
   if (isRegister){
@@ -1413,7 +1502,7 @@ async function loginUser(){
   setButtonLoading(btn, true, isRegister ? 'Création...' : 'Connexion...');
   try{
     const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-    const data = await apiPost(endpoint, { phone: fullPhone(phone), pin, firstName, lastName, email, avatarData });
+    const data = await apiPost(endpoint, { phone: fullPhone(phone), pin, firstName, lastName, email, avatarData, marketingEmailOptIn });
     applyRemoteSession(data, phone);
     if (avatarData && state.user) saveAvatarForPhone(state.user.phone, avatarData);
     const greetingText = isRegister ? `Bienvenue cher candidat ${displayUserName()}` : `Bon retour ${displayUserName()}`;
@@ -1454,6 +1543,7 @@ async function loginUser(){
     lastName: isRegister ? lastName : (previous.lastName || ''),
     displayName: isRegister ? `${firstName} ${lastName}`.trim() : (previous.displayName || ''),
     email: isRegister ? email : (previous.email || ''),
+    marketingEmailOptIn:isRegister ? marketingEmailOptIn : Boolean(previous.marketingEmailOptIn),
     avatarData: avatarData || previous.avatarData || (phone && state.profileAvatars?.[phone]) || '',
     createdAt,
     lastLoginAt:new Date().toISOString()
@@ -1561,7 +1651,10 @@ function setAdminTab(tab){
   if (adminTab === 'resources') loadAdminResources();
   if (adminTab === 'news') loadAdminNews();
   if (adminTab === 'ai') loadAiStatus();
-  if (adminTab === 'notifications') loadAdminNotificationStatus();
+  if (adminTab === 'notifications'){
+    loadAdminNotificationStatus();
+    loadAdminEmailCampaigns();
+  }
 }
 
 async function ensureAdminAccess(){
@@ -3745,6 +3838,52 @@ async function sendAdminNotificationTest(){
   }
 }
 
+function campaignStatusLabel(status){
+  return ({ pending:'Programmé', processing:'En cours', completed:'Terminé', failed:'Échec' })[status] || 'Programmé';
+}
+
+async function loadAdminEmailCampaigns(){
+  const wrap = $('#adminCampaignList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="admin-empty">Chargement...</div>';
+  try{
+    const data = await adminFetch('/api/admin/email-campaigns');
+    const rows = Array.isArray(data.campaigns) ? data.campaigns : [];
+    if (!rows.length){ wrap.innerHTML = '<div class="admin-empty">Aucune campagne.</div>'; return; }
+    wrap.innerHTML = rows.map(item => `
+      <article class="admin-row">
+        <div class="admin-row-main">
+          <span class="admin-badge ${item.status === 'completed' ? 'free' : 'premium'}">${escapeHtml(campaignStatusLabel(item.status))}</span>
+          <h4>${escapeHtml(item.subject || 'Message')}</h4>
+          <p>${escapeHtml((item.text_body || '').slice(0, 170))}</p>
+          <small>${formatDate(item.created_at)} · ${Number(item.sent_count || 0)} envoyé${Number(item.sent_count || 0) > 1 ? 's' : ''}${Number(item.failed_count || 0) ? ` · ${Number(item.failed_count)} échec${Number(item.failed_count) > 1 ? 's' : ''}` : ''}</small>
+        </div>
+      </article>`).join('');
+  }catch(err){ wrap.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`; }
+}
+
+async function createAdminEmailCampaign(){
+  const subject = String($('#adminCampaignSubject')?.value || '').trim();
+  const text = String($('#adminCampaignText')?.value || '').trim();
+  const ctaLabel = String($('#adminCampaignCtaLabel')?.value || 'Découvrir').trim();
+  const ctaUrl = String($('#adminCampaignCtaUrl')?.value || location.origin + '/').trim();
+  if (subject.length < 4){ toast('Ajoute un objet clair'); return; }
+  if (text.length < 10){ toast('Ajoute un message plus complet'); return; }
+  if (!confirm('Programmer cet e-mail pour les candidats ayant accepté les nouveautés ?')) return;
+  const btn = $('#adminCampaignSubmitBtn');
+  const result = $('#adminCampaignResult');
+  setButtonLoading(btn, true, 'Programmation...');
+  try{
+    const data = await adminFetch('/api/admin/email-campaigns', { method:'POST', body:JSON.stringify({ subject, text, ctaLabel, ctaUrl }) });
+    if (result) result.innerHTML = `<div class="pay-note success">${escapeHtml(data.message || 'Campagne programmée ✅')}</div>`;
+    if ($('#adminCampaignSubject')) $('#adminCampaignSubject').value = '';
+    if ($('#adminCampaignText')) $('#adminCampaignText').value = '';
+    await loadAdminEmailCampaigns();
+  }catch(err){
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
+  }finally{ setButtonLoading(btn, false); }
+}
+
 /* ---------- abonnement & paiements ---------- */
 const BF_PAYMENT_PREFIXES = Object.freeze({
   ORANGE_MONEY:['04','05','06','07','44','45','46','54','55','56','57','64','65','66','67','74','75','76','77'],
@@ -4774,7 +4913,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'saspay-checkout-confirmation-v19') location.reload();
+    if (data.build && data.build !== 'email-automation-v20') location.reload();
   }catch{}
 }
 
@@ -4787,7 +4926,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=saspay-checkout-confirmation-v19')
+    navigator.serviceWorker.register('/sw.js?v=email-automation-v20')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

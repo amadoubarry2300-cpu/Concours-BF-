@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=saspay-checkout-confirmation-v19">
+<link rel="manifest" href="/manifest.webmanifest?v=email-automation-v20">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=saspay-checkout-confirmation-v19">
+<link rel="stylesheet" href="css/styles.css?v=email-automation-v20">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -534,6 +534,23 @@
         <button class="auth-tab on" id="registerTab" onclick="setAuthMode('register')">Inscription</button>
         <button class="auth-tab" id="loginTab" onclick="setAuthMode('login')">Connexion</button>
       </div>
+      <div id="pinResetPanel" class="auth-reset-panel" style="display:none">
+        <h3>Réinitialiser mon PIN</h3>
+        <p class="admin-help">Saisis l’adresse e-mail enregistrée sur ton compte.</p>
+        <label class="field-label" for="pinResetEmail">Adresse e-mail</label>
+        <input class="input" type="email" id="pinResetEmail" placeholder="exemple@gmail.com" autocomplete="email">
+        <button class="btn btn-green btn-block" id="pinResetRequestBtn" onclick="requestPinReset()">Recevoir mon code</button>
+        <div id="pinResetConfirmFields" style="display:none">
+          <label class="field-label" for="pinResetCode">Code reçu</label>
+          <input class="input" type="text" id="pinResetCode" placeholder="6 chiffres" maxlength="6" inputmode="numeric">
+          <label class="field-label" for="pinResetNewPin">Nouveau PIN</label>
+          <input class="input" type="password" id="pinResetNewPin" placeholder="4 à 6 chiffres" maxlength="6" inputmode="numeric">
+          <button class="btn btn-green btn-block" id="pinResetConfirmBtn" onclick="confirmPinReset()">Modifier mon PIN</button>
+        </div>
+        <div class="payment-result" id="pinResetResult"></div>
+        <button class="btn btn-ghost btn-block" onclick="closePinReset()">Retour à la connexion</button>
+      </div>
+      <div id="authMainFields">
       <div class="avatar-upload" id="avatarUploadField">
         <label class="field-label">Photo de profil <span>(facultatif)</span></label>
         <div class="avatar-upload-row">
@@ -558,6 +575,10 @@
       <div id="emailField">
         <label class="field-label" for="authEmail">Adresse e-mail <span class="required-star">*</span></label>
         <input class="input" type="email" id="authEmail" placeholder="exemple@gmail.com" autocomplete="email" required>
+        <label class="consent-check" id="marketingConsentField">
+          <input type="checkbox" id="marketingEmailOptIn">
+          <span>Je souhaite recevoir les nouveaux QCM, documents et offres de Réussite Concours BF. Je peux me désabonner à tout moment.</span>
+        </label>
       </div>
       <label class="field-label" for="authPhone">Numéro de téléphone <span class="required-star">*</span></label>
       <div class="phone-row auth-phone-row">
@@ -567,7 +588,9 @@
       <label class="field-label" for="authPin">Code PIN personnel <span class="required-star">*</span></label>
       <input class="input" type="password" id="authPin" placeholder="4 chiffres" maxlength="6" inputmode="numeric" required>
       <button class="btn btn-green btn-block" id="authSubmitBtn" onclick="loginUser()">Continuer →</button>
+      <button class="btn btn-ghost btn-block" id="forgotPinBtn" onclick="openPinReset()" style="display:none;margin-top:10px">PIN oublié ?</button>
       <button class="btn btn-ghost btn-block" id="logoutBtn" onclick="logoutUser()" style="display:none;margin-top:10px">Déconnecter ce compte</button>
+      </div>
       <p class="fine-print">Tes informations servent à protéger ton compte, envoyer les confirmations et retrouver ta progression.</p>
     </div>
   </section>
@@ -615,6 +638,17 @@
         <div><span>Téléphone</span><b id="accountInfoPhone">—</b></div>
         <div><span>E-mail</span><b id="accountInfoEmail">—</b></div>
         <div><span>Dernière connexion</span><b id="accountLastLogin">—</b></div>
+      </div>
+
+      <div class="account-info-box account-email-preferences">
+        <h3>Mes e-mails</h3>
+        <label class="consent-check">
+          <input type="checkbox" id="accountMarketingEmailOptIn">
+          <span>Recevoir les nouveaux QCM, documents et offres.</span>
+        </label>
+        <p class="fine-print">Les confirmations de compte, de connexion, de paiement et de sécurité restent actives.</p>
+        <button class="btn btn-green btn-block" id="saveEmailPreferencesBtn" onclick="saveEmailPreferences()">Enregistrer</button>
+        <div class="payment-result" id="emailPreferencesResult"></div>
       </div>
 
       <button class="btn btn-red btn-block" onclick="logoutUser()">Se déconnecter</button>
@@ -1074,6 +1108,24 @@
           <button class="btn btn-green btn-block" id="adminTestNotificationBtn" onclick="sendAdminNotificationTest()">Envoyer un message</button>
           <div class="payment-result" id="adminNotificationResult"></div>
         </div>
+        <div class="legal-card admin-card">
+          <h3>Envoyer une offre</h3>
+          <p class="admin-help">Le message sera envoyé uniquement aux candidats qui ont accepté de recevoir les nouveautés et offres.</p>
+          <label class="field-label" for="adminCampaignSubject">Objet</label>
+          <input class="input" id="adminCampaignSubject" maxlength="160" placeholder="Ex : Offre spéciale préparation concours">
+          <label class="field-label" for="adminCampaignText">Message</label>
+          <textarea class="input" id="adminCampaignText" rows="7" maxlength="5000" placeholder="Présente clairement l’offre et sa durée."></textarea>
+          <label class="field-label" for="adminCampaignCtaLabel">Texte du bouton</label>
+          <input class="input" id="adminCampaignCtaLabel" maxlength="80" value="Découvrir l’offre">
+          <label class="field-label" for="adminCampaignCtaUrl">Lien</label>
+          <input class="input" type="url" id="adminCampaignCtaUrl" placeholder="https://concoursbf-fawn.vercel.app/">
+          <button class="btn btn-green btn-block" id="adminCampaignSubmitBtn" onclick="createAdminEmailCampaign()">Programmer l’envoi</button>
+          <div class="payment-result" id="adminCampaignResult"></div>
+        </div>
+        <div class="legal-card admin-card">
+          <div class="section-head"><h3>Suivi des envois</h3><button class="mini-btn" onclick="loadAdminEmailCampaigns()">Actualiser</button></div>
+          <div id="adminCampaignList" class="admin-list"><div class="admin-empty">Aucune campagne.</div></div>
+        </div>
       </div>
     </div>
   </section>
@@ -1362,7 +1414,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=saspay-checkout-confirmation-v19"></script>
-<script src="js/app.js?v=saspay-checkout-confirmation-v19"></script>
+<script src="js/questions.js?v=email-automation-v20"></script>
+<script src="js/app.js?v=email-automation-v20"></script>
 </body>
 </html>

@@ -39,6 +39,14 @@ alter table public.profiles add column if not exists role text not null default 
 create index if not exists profiles_phone_idx on public.profiles(phone);
 create index if not exists profiles_email_idx on public.profiles(email);
 
+-- Préférences e-mail : les messages de compte restent transactionnels ;
+-- les offres et nouveautés exigent un accord explicite et révocable.
+alter table public.profiles add column if not exists marketing_email_opt_in boolean not null default false;
+alter table public.profiles add column if not exists marketing_email_opt_in_at timestamptz;
+alter table public.profiles add column if not exists marketing_email_unsubscribed_at timestamptz;
+create index if not exists profiles_marketing_email_idx on public.profiles(id)
+  where marketing_email_opt_in = true and marketing_email_unsubscribed_at is null and email is not null;
+
 drop trigger if exists set_profiles_updated_at on public.profiles;
 create trigger set_profiles_updated_at
 before update on public.profiles
@@ -219,7 +227,72 @@ create table if not exists public.offer_leads (
 create index if not exists offer_leads_phone_idx on public.offer_leads(phone);
 
 -- =========================
--- 8) Sécurité RLS
+-- 8) Automatisation des e-mails
+-- =========================
+create table if not exists public.email_notification_events (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid references public.profiles(id) on delete cascade,
+  email text not null,
+  event_type text not null,
+  event_key text unique not null,
+  status text not null default 'pending' check (status in ('pending','sent','failed')),
+  error text,
+  sent_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists email_notification_events_profile_idx on public.email_notification_events(profile_id);
+create index if not exists email_notification_events_type_idx on public.email_notification_events(event_type);
+
+create table if not exists public.pin_reset_tokens (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  email text not null,
+  code_hash text not null,
+  expires_at timestamptz not null,
+  attempts integer not null default 0,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists pin_reset_tokens_email_created_idx on public.pin_reset_tokens(email, created_at desc);
+
+create table if not exists public.email_campaigns (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null default 'promotion',
+  subject text not null,
+  text_body text not null,
+  html_body text,
+  cta_label text,
+  cta_url text,
+  status text not null default 'pending' check (status in ('pending','processing','completed','failed')),
+  cursor_profile_id uuid,
+  sent_count integer not null default 0,
+  failed_count integer not null default 0,
+  created_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+
+create index if not exists email_campaigns_status_created_idx on public.email_campaigns(status, created_at);
+
+create table if not exists public.email_campaign_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid not null references public.email_campaigns(id) on delete cascade,
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  email text not null,
+  status text not null default 'pending' check (status in ('pending','sent','failed')),
+  error text,
+  sent_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique(campaign_id, profile_id)
+);
+
+create index if not exists email_campaign_deliveries_campaign_idx on public.email_campaign_deliveries(campaign_id, status);
+
+-- =========================
+-- 9) Sécurité RLS
 -- =========================
 alter table public.profiles enable row level security;
 alter table public.questions enable row level security;
@@ -230,6 +303,10 @@ alter table public.subscriptions enable row level security;
 alter table public.payments enable row level security;
 alter table public.quiz_attempts enable row level security;
 alter table public.offer_leads enable row level security;
+alter table public.email_notification_events enable row level security;
+alter table public.pin_reset_tokens enable row level security;
+alter table public.email_campaigns enable row level security;
+alter table public.email_campaign_deliveries enable row level security;
 
 -- Questions gratuites actives lisibles publiquement.
 -- Les questions Premium doivent passer par le backend après vérification de l'abonnement.
