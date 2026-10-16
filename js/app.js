@@ -175,8 +175,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=email-automation-v20').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=email-automation-v20';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=email-automation-v20.1').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=email-automation-v20.1';
       return pdfjs;
     });
   }
@@ -4913,7 +4913,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'email-automation-v20') location.reload();
+    if (data.build && data.build !== 'email-automation-v20.1') location.reload();
   }catch{}
 }
 
@@ -4926,7 +4926,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=email-automation-v20')
+    navigator.serviceWorker.register('/sw.js?v=email-automation-v20.1')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

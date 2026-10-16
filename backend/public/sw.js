@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'email-automation-v20';
+const CACHE_VERSION = 'email-automation-v20.1';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=email-automation-v20',
-  '/js/questions.js?v=email-automation-v20',
-  '/js/app.js?v=email-automation-v20',
-  '/js/vendor/pdf.mjs?v=email-automation-v20',
-  '/js/vendor/pdf.worker.mjs?v=email-automation-v20',
+  '/css/styles.css?v=email-automation-v20.1',
+  '/js/questions.js?v=email-automation-v20.1',
+  '/js/app.js?v=email-automation-v20.1',
+  '/js/vendor/pdf.mjs?v=email-automation-v20.1',
+  '/js/vendor/pdf.worker.mjs?v=email-automation-v20.1',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

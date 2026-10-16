@@ -9,7 +9,18 @@ import { fileURLToPath } from 'url';
 
 const app = express();
 const PORT = Number(process.env.PORT || 8080);
-const APP_ORIGIN = process.env.APP_ORIGIN || 'http://localhost:3000';
+
+function originWithProtocol(value){
+  const raw = String(value || '').trim().replace(/\/$/, '');
+  if (!raw) return '';
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
+const CONFIGURED_APP_ORIGIN = originWithProtocol(process.env.APP_ORIGIN);
+const VERCEL_PRODUCTION_ORIGIN = originWithProtocol(process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL);
+const APP_ORIGIN = CONFIGURED_APP_ORIGIN && !/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(CONFIGURED_APP_ORIGIN)
+  ? CONFIGURED_APP_ORIGIN
+  : (VERCEL_PRODUCTION_ORIGIN || (process.env.VERCEL ? 'https://concoursbf-fawn.vercel.app' : CONFIGURED_APP_ORIGIN || 'http://localhost:3000'));
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
 const CINETPAY_APIKEY = process.env.CINETPAY_APIKEY;
 const CINETPAY_SITE_ID = process.env.CINETPAY_SITE_ID;
@@ -5003,7 +5014,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'email-automation-v20',
+    build: 'email-automation-v20.1',
     time: new Date().toISOString()
   });
 });
@@ -7025,5 +7036,6 @@ export {
   sendEmailEventOnce,
   processExpiryReminderEmails,
   processNextEmailCampaign,
-  activateSubscription
+  activateSubscription,
+  absoluteAppUrl
 };
