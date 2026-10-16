@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'qcm-pdf-complete-v23';
+const CACHE_VERSION = 'qcm-pdf-no-limits-v24';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=qcm-pdf-complete-v23',
-  '/js/questions.js?v=qcm-pdf-complete-v23',
-  '/js/app.js?v=qcm-pdf-complete-v23',
-  '/js/vendor/pdf.mjs?v=qcm-pdf-complete-v23',
-  '/js/vendor/pdf.worker.mjs?v=qcm-pdf-complete-v23',
+  '/css/styles.css?v=qcm-pdf-no-limits-v24',
+  '/js/questions.js?v=qcm-pdf-no-limits-v24',
+  '/js/app.js?v=qcm-pdf-no-limits-v24',
+  '/js/vendor/pdf.mjs?v=qcm-pdf-no-limits-v24',
+  '/js/vendor/pdf.worker.mjs?v=qcm-pdf-no-limits-v24',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

@@ -1976,7 +1976,8 @@ function pastedQcmQualityIssue(question, dedupeIndex){
 function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex, forBook = false } = {}){
   const raw = String(rawText || '');
   if (!raw.trim()) throw Object.assign(new Error('Colle d’abord les QCM numérotés dans la grande case.'), { status:400 });
-  if (raw.length > 200000) throw Object.assign(new Error('Le texte collé est trop long. Limite : 50 QCM.'), { status:413 });
+  const maxTextLength = forBook ? 900000 : 200000;
+  if (raw.length > maxTextLength) throw Object.assign(new Error('Le texte collé est trop volumineux.'), { status:413 });
   const lines = raw.replace(/\r\n?/g, '\n').replace(/```(?:json|text|markdown)?/gi, '').split('\n');
   const blocks = [];
   let current = null;
@@ -2063,14 +2064,14 @@ function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex, forBook = fal
   const questions = [];
   const rejected = [];
   for (const block of blocks){
-    if (questions.length >= 50){
+    if (!forBook && questions.length >= 50){
       rejected.push({ number:block.number, question:block.question, reason:'Limite de 50 QCM par import.' });
       continue;
     }
     try{
-      if (block.duplicateOption) throw new Error('Une lettre de réponse est répétée dans les options.');
-      if (!block.options[0] || !block.options[1]) throw new Error('Ajoute au moins les deux options A et B.');
-      if (block.options[3] && !block.options[2]) throw new Error('Ajoute l’option C avant l’option D.');
+      if (!forBook && block.duplicateOption) throw new Error('Une lettre de réponse est répétée dans les options.');
+      if (!forBook && (!block.options[0] || !block.options[1])) throw new Error('Ajoute au moins les deux options A et B.');
+      if (!forBook && block.options[3] && !block.options[2]) throw new Error('Ajoute l’option C avant l’option D.');
       const noCorrectOption = forBook && pastedQcmHasNoCorrectOption(block.answerText);
       const correctAnswers = pastedQcmAnswerIndexes(block);
       if (!correctAnswers.length && !noCorrectOption){
@@ -2086,12 +2087,7 @@ function parsePastedQcmText(rawText, defaults = {}, { dedupeIndex, forBook = fal
       let question;
       if (forBook){
         const options = block.options.map(value => cleanEducationalText(value, 500));
-        const providedOptions = options.filter(Boolean);
         const questionText = cleanEducationalText(block.question, 1200);
-        if (questionText.length < 8) throw new Error('Question trop courte.');
-        if (new Set(providedOptions.map(normalizeQcmOptionKey)).size !== providedOptions.length){
-          throw new Error('Les options doivent être différentes.');
-        }
         question = {
           category:cleanText(defaults.category || 'Culture générale', 80),
           level:cleanText(defaults.level || 'Concours', 40),
@@ -3908,7 +3904,7 @@ async function preparePastedQcmBook(body = {}){
 function normalizePastedQcmBookSource(input = {}){
   const rawMetadata = input?.metadata && typeof input.metadata === 'object' ? input.metadata : input;
   const metadata = pastedQcmImportMetadata(rawMetadata);
-  const questions = (Array.isArray(input?.questions) ? input.questions : []).slice(0, 50).map(question => ({
+  const questions = (Array.isArray(input?.questions) ? input.questions : []).map(question => ({
     category:cleanText(question?.category || metadata.category, 80),
     level:cleanText(question?.level || metadata.level, 40),
     question_text:cleanEducationalText(question?.question_text, 1200),
@@ -5123,7 +5119,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-pdf-complete-v23',
+    build: 'qcm-pdf-no-limits-v24',
     time: new Date().toISOString()
   });
 });

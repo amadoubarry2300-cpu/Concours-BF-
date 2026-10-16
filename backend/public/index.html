@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=qcm-pdf-complete-v23">
+<link rel="manifest" href="/manifest.webmanifest?v=qcm-pdf-no-limits-v24">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=qcm-pdf-complete-v23">
+<link rel="stylesheet" href="css/styles.css?v=qcm-pdf-no-limits-v24">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -769,11 +769,10 @@
         <div class="legal-card admin-card admin-paste-card">
           <div class="admin-paste-heading">
             <div>
-              <div class="premium-kicker">Importation rapide</div>
-              <h3>Coller 1 à 50 QCM</h3>
-              <p class="admin-help">Colle directement les QCM reçus dans un chat. L’outil sépare les questions, les 2 à 4 choix, la bonne réponse et l’explication, puis prépare un quiz lisible comme les autres dans l’application.</p>
+              <div class="premium-kicker">Ajout de QCM</div>
+              <h3>Coller des QCM</h3>
+              <p class="admin-help">Colle les QCM. Le livre PDF reprend toutes les questions dans le même ordre.</p>
             </div>
-            <span class="admin-paste-badge">Sans crédit IA</span>
           </div>
 
           <label class="field-label" for="pastedQcmTitle">Titre affiché aux candidats</label>
@@ -800,38 +799,34 @@
 
           <label class="field-label" for="pastedQcmPdfTheme">Design du livre PDF</label>
           <select class="input" id="pastedQcmPdfTheme" onchange="clearPastedQcmPdfPreview()">
-            <option value="montserrat-concours" selected>Concours Canva — Montserrat</option>
-            <option value="open-sans-epure">Épuré — Open Sans</option>
-            <option value="roboto-classique">Classique — Roboto</option>
-            <option value="tinos-examen">Examen — Tinos, style Times New Roman</option>
+            <option value="montserrat-concours" selected>Concours</option>
+            <option value="open-sans-epure">Épuré</option>
+            <option value="roboto-classique">Classique</option>
+            <option value="tinos-examen">Examen</option>
           </select>
-          <p class="admin-help">Une couleur par livre. La génération suivante change de couleur. Plusieurs bonnes réponses sont acceptées.</p>
+          <p class="admin-help">Le même style est utilisé sur tout le livre.</p>
 
           <div class="admin-paste-destination">
             <b>Destination après validation</b>
             <div class="admin-paste-destination-grid">
-              <label class="free"><input type="radio" name="pastedQcmDestination" value="free" checked onchange="updatePastedQcmDestinationButtons()"><span>✅ Gratuit<small>Visible par tous les candidats</small></span></label>
-              <label class="premium"><input type="radio" name="pastedQcmDestination" value="premium" onchange="updatePastedQcmDestinationButtons()"><span>⭐ Premium payant<small>Réservé aux abonnés</small></span></label>
+              <label class="free"><input type="radio" name="pastedQcmDestination" value="free" checked onchange="updatePastedQcmDestinationButtons()"><span>Gratuit<small>Visible par tous les candidats</small></span></label>
+              <label class="premium"><input type="radio" name="pastedQcmDestination" value="premium" onchange="updatePastedQcmDestinationButtons()"><span>Premium payant<small>Réservé aux abonnés</small></span></label>
             </div>
           </div>
 
           <label class="field-label" for="pastedQcmText">QCM à transformer</label>
           <textarea class="input admin-textarea admin-paste-textarea" id="pastedQcmText" placeholder="1. Quelle est la capitale du Burkina Faso ?&#10;A. Bobo-Dioulasso&#10;B. Ouagadougou&#10;C. Koudougou&#10;D. Ouahigouya&#10;Réponse : B&#10;Explication : Ouagadougou est la capitale politique du Burkina Faso.&#10;&#10;2. Question suivante..."></textarea>
           <div class="admin-paste-format">
-            <b>Format reconnu automatiquement</b>
-            <span>Question numérotée · 2 à 4 options consécutives (A-B, A-C ou A-D) · Réponse : A/B/C/D · Explication ou Correction</span>
-          </div>
-          <div class="admin-paste-format book">
-            <b>Choisis le résultat avant de lancer</b>
-            <span>Le bouton Quiz prépare uniquement le quiz interactif. Le bouton PDF prépare uniquement le livre à prévisualiser puis publier, sans téléchargement automatique.</span>
+            <b>Colle les QCM comme ils sont</b>
+            <span>Toutes les questions seront conservées dans le livre PDF.</span>
           </div>
 
-          <button class="btn btn-green btn-block" id="pastedQcmAnalyzeBtn" onclick="analyzePastedQcm()">🧩 Transformer et prévisualiser le quiz</button>
-          <button class="btn btn-ghost btn-block" id="pastedQcmPdfBtn" onclick="downloadPastedQcmBookPdf()" style="margin-top:10px">📕 Créer et prévisualiser le livre PDF</button>
-          <button class="btn btn-green btn-block" id="pastedQcmPublishBtn" onclick="publishPastedQcm()" style="display:none;margin-top:10px">🧩 Publier le quiz</button>
-          <button class="btn btn-block admin-pdf-publish-btn" id="pastedQcmPdfPublishBtn" onclick="publishPreparedPastedQcmPdf()" style="display:none;margin-top:10px">📕 Publier le livre PDF</button>
-          <button class="btn btn-ghost btn-block" id="pastedQcmPdfOpenBtn" onclick="openPreparedPastedQcmPdf()" style="display:none;margin-top:8px">👁️ Ouvrir l’aperçu du PDF</button>
-          <button class="btn btn-ghost btn-block" id="pastedQcmPdfDownloadBtn" onclick="downloadPreparedPastedQcmPdf()" style="display:none;margin-top:8px">⬇️ Télécharger le PDF</button>
+          <button class="btn btn-green btn-block" id="pastedQcmAnalyzeBtn" onclick="analyzePastedQcm()">Prévisualiser le quiz</button>
+          <button class="btn btn-ghost btn-block" id="pastedQcmPdfBtn" onclick="downloadPastedQcmBookPdf()" style="margin-top:10px">Créer le livre PDF</button>
+          <button class="btn btn-green btn-block" id="pastedQcmPublishBtn" onclick="publishPastedQcm()" style="display:none;margin-top:10px">Publier le quiz</button>
+          <button class="btn btn-block admin-pdf-publish-btn" id="pastedQcmPdfPublishBtn" onclick="publishPreparedPastedQcmPdf()" style="display:none;margin-top:10px">Publier le livre PDF</button>
+          <button class="btn btn-ghost btn-block" id="pastedQcmPdfOpenBtn" onclick="openPreparedPastedQcmPdf()" style="display:none;margin-top:8px">Ouvrir le PDF</button>
+          <button class="btn btn-ghost btn-block" id="pastedQcmPdfDownloadBtn" onclick="downloadPreparedPastedQcmPdf()" style="display:none;margin-top:8px">Télécharger le PDF</button>
           <div class="payment-result" id="pastedQcmResult"></div>
           <div id="pastedQcmPdfPreview" class="admin-pdf-ready-wrap"></div>
           <div id="pastedQcmPreview" class="admin-list"></div>
@@ -1486,7 +1481,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=qcm-pdf-complete-v23"></script>
-<script src="js/app.js?v=qcm-pdf-complete-v23"></script>
+<script src="js/questions.js?v=qcm-pdf-no-limits-v24"></script>
+<script src="js/app.js?v=qcm-pdf-no-limits-v24"></script>
 </body>
 </html>
