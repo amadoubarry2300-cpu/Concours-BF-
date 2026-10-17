@@ -32,7 +32,7 @@ assert(html.includes('<span class="nav-label">Premium</span>'), 'libellé Premiu
 assert(fs.existsSync(new URL('../img/subject-physics.svg', import.meta.url)), 'illustration Physique-Chimie absente');
 assert(sw.includes("'/img/subject-physics.svg'"), 'illustration Physique-Chimie absente du cache PWA');
 assert(!sw.match(/isCandidateApi[\s\S]{0,500}subscription\/status/), 'statut privé encore mis en cache');
-assert(server.includes("build: 'application-coherence-cleanup-v27'"), 'marqueur v27 absent');
+assert(server.includes("build: 'plain-language-cleanup-v28'"), 'marqueur v28 absent');
 
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
 assert(new Set(ids).size === ids.length, 'identifiants HTML dupliqués');
@@ -50,4 +50,22 @@ for (const [root, mirror] of [
   assert(read(root) === read(mirror), `copie de déploiement non synchronisée : ${root}`);
 }
 
-console.log('COHÉRENCE ET NETTOYAGE APPLICATION V27 OK');
+const visibleCopy = [html, app, server].join('\n');
+for (const wording of [
+  'Tous les modules', 'Publications récentes', 'Banque complète', 'banque du module',
+  'Nouveaux QCM du module', '>Actualiser<', 'IA QCM', 'Destination après validation',
+  'Prévisualiser le quiz', 'code OTP', 'confirme la transaction', 'Référence : <b>',
+  'Synchronisation terminée', 'Génération en cours...', 'confirmée par le serveur',
+  'Statistiques détaillées', 'Matières avancées'
+]){
+  assert(!visibleCopy.includes(wording), `terme technique encore visible : ${wording}`);
+}
+for (const wording of [
+  'Matières et concours', 'Ajouts récents', 'Toutes les questions', 'Mettre à jour',
+  'Aide à créer des QCM', 'Numéro de suivi', 'Préparation en cours...',
+  'Suivi détaillé', 'Toutes les matières'
+]){
+  assert(visibleCopy.includes(wording), `libellé simple absent : ${wording}`);
+}
+
+console.log('LANGAGE SIMPLE ET COHÉRENCE APPLICATION V28 OK');

@@ -178,8 +178,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=application-coherence-cleanup-v27').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=application-coherence-cleanup-v27';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=plain-language-cleanup-v28').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=plain-language-cleanup-v28';
       return pdfjs;
     });
   }
@@ -602,7 +602,7 @@ function fileToAvatarData(file){
     reader.onerror = () => reject(new Error('Photo illisible'));
     reader.onload = () => {
       const img = new Image();
-      img.onerror = () => reject(new Error('Format image non supporté'));
+      img.onerror = () => reject(new Error('Cette image ne peut pas être utilisée'));
       img.onload = () => {
         const size = 320;
         const canvas = document.createElement('canvas');
@@ -701,7 +701,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 60000){
     return await fetch(url, { ...options, signal:controller.signal });
   }catch(err){
     if (err?.name === 'AbortError'){
-      const timeoutError = new Error('Le serveur met trop de temps à répondre. Le bouton est de nouveau disponible : réessaie sans perdre les données enregistrées.');
+      const timeoutError = new Error('La réponse prend trop de temps. Le bouton est de nouveau disponible : réessaie sans perdre ce que tu as déjà saisi.');
       timeoutError.name = 'TimeoutError';
       timeoutError.status = 504;
       throw timeoutError;
@@ -954,8 +954,8 @@ document.addEventListener('keydown', event=>{
 });
 
 function openPremium(feature){
-  paywallFeature = feature || 'Cette fonctionnalité';
-  toast('Fonction Premium 🔒');
+  paywallFeature = feature || 'Ce contenu';
+  toast('Contenu Premium 🔒');
   show('subscription');
 }
 
@@ -1081,7 +1081,7 @@ function renderAccountScreen(){
   setAvatarElement($('#accountAvatar'));
   $('#accountFullName') && ($('#accountFullName').textContent = name);
   $('#accountPhone') && ($('#accountPhone').textContent = '+226 ' + phone);
-  $('#accountKicker') && ($('#accountKicker').textContent = isAdmin() ? 'Compte Pro administrateur' : 'Espace candidat');
+  $('#accountKicker') && ($('#accountKicker').textContent = isAdmin() ? 'Compte Pro' : 'Espace candidat');
   const badge = $('#accountPlanBadge');
   if (badge){
     badge.textContent = isAdmin() ? 'Pro' : (ACCESS_OPEN_UNTIL_PAYMENT ? 'Accès ouvert' : (isPremium() ? 'Premium' : 'Gratuit'));
@@ -1102,8 +1102,8 @@ function renderAccountScreen(){
     if (isAdmin()){
       renewalCard.style.display = 'block';
       renewalCard.innerHTML = `
-        <div><span>Compte Pro administrateur</span><b>Accès complet actif</b><small>Toutes les ressources et fonctions de gestion sont ouvertes.</small></div>
-        <button class="mini-btn" onclick="show('admin')">Admin</button>
+        <div><span>Compte Pro</span><b>Accès complet actif</b><small>Tous les contenus et outils de gestion sont ouverts.</small></div>
+        <button class="mini-btn" onclick="show('admin')">Gérer</button>
         <i><em style="width:100%"></em></i>`;
     } else if (isPremium()){
       const days = premiumDaysLeft();
@@ -1162,9 +1162,9 @@ function premiumLockForQuiz(opts){
   if (!opts || opts.free || opts.daily) return null;
   if (opts.errorsMode) return 'Révision de tes erreurs';
   if (opts.title === 'Examen blanc') return 'Examen blanc chronométré';
-  if (opts.n === 'all') return 'Banque complète';
+  if (opts.n === 'all') return 'Toutes les questions';
   if (opts.n && opts.n > 10) return opts.n + ' questions';
-  if (opts.cat && !FREE_CATEGORIES.includes(opts.cat)) return 'Formation ' + opts.cat;
+  if (opts.cat && !FREE_CATEGORIES.includes(opts.cat)) return 'Matière ' + opts.cat;
   return null;
 }
 
@@ -1632,7 +1632,7 @@ let resourceCache = [];
 let newsCache = [];
 let publishedQcmCache = [];
 let publishedQcmLoadedAt = 0;
-let currentModuleQcm = { title:'Formation', category:'Culture générale', level:'', image:'img/subject-culture.svg' };
+let currentModuleQcm = { title:'Contenu', category:'Culture générale', level:'', image:'img/subject-culture.svg' };
 let currentNewsFilter = 'Tout';
 let currentPublishedQcmFilter = 'all';
 let currentRevisionFilter = 'Tout';
@@ -1648,7 +1648,7 @@ async function adminFetch(path, options = {}){
   });
   const data = await res.json().catch(()=>({}));
   if (!res.ok){
-    const err = new Error(data.message || 'Action administrateur impossible');
+    const err = new Error(data.message || 'Cette action est impossible');
     err.status = res.status;
     throw err;
   }
@@ -1662,9 +1662,9 @@ function setPublicationPreview(id, block, category, premium){
 }
 
 function updateAdminPublicationPreviews(){
-  setPublicationPreview('#adminQcmDestinationPreview', 'Formations / Nouveaux QCM', $('#adminCategory')?.value, Boolean($('#adminPremium')?.checked));
+  setPublicationPreview('#adminQcmDestinationPreview', 'Matières / Nouveaux QCM', $('#adminCategory')?.value, Boolean($('#adminPremium')?.checked));
   const pastedPremium = document.querySelector('input[name="pastedQcmDestination"]:checked')?.value === 'premium';
-  setPublicationPreview('#pastedQcmDestinationPreview', 'Formations / Nouveaux QCM', $('#pastedQcmCategory')?.value, pastedPremium);
+  setPublicationPreview('#pastedQcmDestinationPreview', 'Matières / Nouveaux QCM', $('#pastedQcmCategory')?.value, pastedPremium);
   const revisionTarget = $('#adminRevisionDestinationPreview');
   if (revisionTarget){
     const parts = [
@@ -1677,10 +1677,10 @@ function updateAdminPublicationPreviews(){
     ];
     revisionTarget.innerHTML = `<b>Publié dans :</b><span>${parts.map(escapeHtml).join(' → ')}</span>`;
   }
-  setPublicationPreview('#adminResourceDestinationPreview', 'Documents & fichiers', $('#adminResourceCategory')?.value, Boolean($('#adminResourcePremium')?.checked));
-  setPublicationPreview('#aiDailyDestinationPreview', 'Formations / Nouveaux QCM', $('#aiDailyCategory')?.value, Boolean($('#aiDailyPremium')?.checked));
-  setPublicationPreview('#aiDestinationPreview', 'Formations / Nouveaux QCM', $('#aiCategory')?.value, Boolean($('#aiPremium')?.checked));
-  setPublicationPreview('#dailyPublishDestinationPreview', 'Formations / Nouveaux QCM', $('#dailyPublishCategory')?.value, Boolean($('#dailyPublishPremium')?.checked));
+  setPublicationPreview('#adminResourceDestinationPreview', 'Documents', $('#adminResourceCategory')?.value, Boolean($('#adminResourcePremium')?.checked));
+  setPublicationPreview('#aiDailyDestinationPreview', 'Matières / Nouveaux QCM', $('#aiDailyCategory')?.value, Boolean($('#aiDailyPremium')?.checked));
+  setPublicationPreview('#aiDestinationPreview', 'Matières / Nouveaux QCM', $('#aiCategory')?.value, Boolean($('#aiPremium')?.checked));
+  setPublicationPreview('#dailyPublishDestinationPreview', 'Matières / Nouveaux QCM', $('#dailyPublishCategory')?.value, Boolean($('#dailyPublishPremium')?.checked));
 }
 
 function setAdminTab(tab){
@@ -1726,7 +1726,7 @@ async function ensureAdminAccess(){
       return isAdmin();
     }
   }catch(err){
-    toast('Accès admin non autorisé');
+    toast('Cet espace est réservé au gestionnaire');
     show('account');
     return false;
   }
@@ -1736,15 +1736,15 @@ async function ensureAdminAccess(){
 async function renderAdminPanel(force){
   const ok = await ensureAdminAccess();
   if (!ok) return;
-  if (force) toast('Espace admin actualisé');
+  if (force) toast('Page de gestion mise à jour');
   try{
     const summary = await adminFetch('/api/admin/summary');
     const stats = $('#adminStats');
     if (stats){
       stats.innerHTML = `
-        <div><b>${formatQcmCount(summary.localTotal || 0).replace(' QCM','')}</b><span>QCM banque</span></div>
-        <div><b>${summary.customCount || 0}</b><span>Ajouts admin</span></div>
-        <div><b>Actif</b><span>Admin</span></div>`;
+        <div><b>${formatQcmCount(summary.localTotal || 0).replace(' QCM','')}</b><span>QCM disponibles</span></div>
+        <div><b>${summary.customCount || 0}</b><span>QCM ajoutés</span></div>
+        <div><b>Actif</b><span>Gestion</span></div>`;
     }
   }catch(err){
     $('#adminResult') && ($('#adminResult').innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`);
@@ -1775,7 +1775,7 @@ function adminFormPayload(){
 async function saveAdminQuestion(){
   const result = $('#adminResult');
   const btn = $('#adminSaveBtn');
-  setButtonLoading(btn, true, 'Publication...');
+  setButtonLoading(btn, true, 'Mise en ligne...');
   try{
     const payload = adminFormPayload();
     const id = payload.id;
@@ -1816,7 +1816,7 @@ async function saveAdminQuestion(){
     const savedId = data.question?.id || id;
     if (savedId) await adminFetch('/api/admin/questions/' + encodeURIComponent(savedId) + '/status', { method:'PATCH', body:JSON.stringify({ is_active:Boolean(payload.admin_visible) }) });
     const destination = payload.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
-    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>${destination}</b> ✅<br>Il apparaît dans <b>Nouveaux QCM</b> et dans le module <b>${escapeHtml(payload.category)}</b>.<br>Il reste rangé dans <b>Voir historique publié</b>.<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>${destination}</b> ✅<br>Il apparaît dans <b>Nouveaux QCM</b> et dans la matière <b>${escapeHtml(payload.category)}</b>.<br>Il reste disponible dans <b>Mes QCM</b>.<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
     resetAdminForm(false);
     await loadAdminQuestions();
     await Promise.allSettled([loadSupabaseQuestions(), fetchPublishedQcmPublications(true)]);
@@ -1930,7 +1930,7 @@ function renderPastedQcmPreview(data){
     ${rejected.map(row=>`<div class="admin-q-item admin-paste-rejected">
       <div class="admin-q-meta"><span>QCM ${escapeHtml(row.number || '?')}</span><span>Non publié</span></div>
       <h4>${renderMathText(row.question || 'Question non reconnue')}</h4>
-      <p>${escapeHtml(row.reason || 'Format incomplet')}</p>
+      <p>${escapeHtml(row.reason || 'Informations incomplètes')}</p>
     </div>`).join('')}` : '';
   wrap.innerHTML = readyHtml + rejectedHtml || '<div class="empty">Aucun QCM détecté.</div>';
 }
@@ -1948,7 +1948,7 @@ async function analyzePastedQcm(){
   if (publishBtn) publishBtn.style.display = 'none';
   if (pdfBtn) pdfBtn.style.display = 'block';
   if (preview) preview.innerHTML = '<div class="empty">Lecture et mise au propre des QCM...</div>';
-  if (result) result.innerHTML = '<div class="pay-note">Aucune publication pendant cette étape : tu pourras relire le résultat avant de valider.</div>';
+  if (result) result.innerHTML = '<div class="pay-note">Rien n’est publié pendant cette étape : tu pourras tout relire avant de continuer.</div>';
   try{
     refreshPastedQcmCategoryOptions();
     const payload = pastedQcmPayload();
@@ -2006,7 +2006,7 @@ async function downloadPastedQcmBookPdf(){
   clearPastedQcmPdfPreview();
   if (qcmPreview) qcmPreview.innerHTML = '';
   if (quizPublishBtn) quizPublishBtn.style.display = 'none';
-  if (result) result.innerHTML = '<div class="pay-note">Création du livre PDF pour prévisualisation. Aucun téléchargement et aucune publication automatiques.</div>';
+  if (result) result.innerHTML = '<div class="pay-note">Préparation du livre PDF. Tu pourras le voir avant de le publier.</div>';
   try{
     const formPayload = pastedQcmPayload();
     const contentSignature = pastedQcmContentSignature(formPayload);
@@ -2053,7 +2053,7 @@ async function downloadPastedQcmBookPdf(){
     if (result){
       result.innerHTML = `<div class="pay-note success"><b>Livre prêt : ${count} QCM</b><br>${destination}.<br>Toutes les questions sont incluses.</div>`;
     }
-    toast('Livre PDF prêt à prévisualiser');
+    toast('Livre PDF prêt à vérifier');
   }catch(err){
     clearPastedQcmPdfPreview();
     if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
@@ -2107,7 +2107,7 @@ async function publishPreparedPastedQcmPdf(){
     if (!res.ok) throw new Error(data.message || 'Publication du PDF impossible');
     if (btn) btn.style.display = 'none';
     if (result){
-      result.innerHTML = `<div class="pay-note success"><b>Livre PDF publié dans ${destination}</b><br>Il est maintenant disponible dans Documents & fichiers pour les candidats.${payload.is_premium ? ' Son ouverture reste réservée aux abonnés.' : ' Il est accessible gratuitement.'}</div>`;
+      result.innerHTML = `<div class="pay-note success"><b>Livre PDF publié dans ${destination}</b><br>Il est maintenant disponible dans Documents pour les candidats.${payload.is_premium ? ' Son ouverture reste réservée aux abonnés.' : ' Il est accessible gratuitement.'}</div>`;
     }
     await Promise.allSettled([loadAdminResources(), loadResources()]);
     toast('Livre PDF publié');
@@ -2120,19 +2120,19 @@ async function publishPreparedPastedQcmPdf(){
 
 async function publishPastedQcm(){
   const ready = Number(pastedQcmPreviewCache?.ready || pastedQcmPreviewCache?.questions?.length || 0);
-  if (!ready) return toast('Transforme et prévisualise d’abord les QCM.');
-  if (pastedQcmPreviewSignature !== pastedQcmContentSignature()) return toast('Le contenu a changé : relance la prévisualisation avant de publier.');
+  if (!ready) return toast('Prépare d’abord les QCM et vérifie le résultat.');
+  if (pastedQcmPreviewSignature !== pastedQcmContentSignature()) return toast('Le contenu a changé : vérifie à nouveau le résultat avant de publier.');
   const chosenDestination = pastedQcmPayload().is_premium ? 'Premium payant' : 'Gratuit';
   if (!confirm(`Publier maintenant ${ready} QCM dans ${chosenDestination} ?`)) return;
   const btn = $('#pastedQcmPublishBtn');
   const result = $('#pastedQcmResult');
-  setButtonLoading(btn, true, 'Publication...');
+  setButtonLoading(btn, true, 'Mise en ligne...');
   try{
     const data = await adminFetch('/api/admin/questions/import/publish', { method:'POST', body:JSON.stringify(pastedQcmPayload()) });
     const destination = data.metadata?.is_premium ? 'Premium abonnés' : 'Gratuit tous les candidats';
     const blocked = Number(data.rejected?.length || 0);
     if (result){
-      result.innerHTML = `<div class="pay-note success"><b>${data.published || 0} QCM publiés dans ${destination}</b><br>Ils sont regroupés sous « ${escapeHtml(data.metadata?.title || 'Nouveau QCM')} », avec la date et le module choisis.<br>Ils apparaissent dans <b>Nouveaux QCM</b> et dans le module <b>${escapeHtml(data.metadata?.category || pastedQcmPayload().category)}</b>.${blocked ? `<br>${blocked} question${blocked>1?'s':''} à revoir.` : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${data.metadata?.is_premium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir le quiz dans l’application</button></div>`;
+      result.innerHTML = `<div class="pay-note success"><b>${data.published || 0} QCM publiés dans ${destination}</b><br>Ils sont regroupés sous « ${escapeHtml(data.metadata?.title || 'Nouveau QCM')} », avec la date et la matière choisies.<br>Ils apparaissent dans <b>Nouveaux QCM</b> et dans la matière <b>${escapeHtml(data.metadata?.category || pastedQcmPayload().category)}</b>.${blocked ? `<br>${blocked} question${blocked>1?'s':''} à revoir.` : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${data.metadata?.is_premium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir le quiz dans l’application</button></div>`;
     }
     // On conserve le texte et la prévisualisation afin que l’administrateur
     // puisse encore télécharger le livre PDF après la publication interactive.
@@ -2186,7 +2186,7 @@ function selectedAdminQuestions(){
 
 function renderAdminHistoryButton(count, visible){
   if (!count) return '';
-  return `<button class="mini-btn" onclick="toggleAdminQuestionHistory()">${visible ? 'Masquer l’historique publié' : `Voir historique publié (${count})`}</button>`;
+  return `<button class="mini-btn" onclick="toggleAdminQuestionHistory()">${visible ? 'Masquer les anciens QCM' : `Voir les anciens QCM (${count})`}</button>`;
 }
 
 function renderAdminBulkBar(visibleItems){
@@ -2227,7 +2227,7 @@ function renderAdminQuestionListFromCache(){
     return;
   }
   if (!showAdminQuestionHistory){
-    wrap.innerHTML = '<div class="empty">Les QCM publiés sont rangés dans l’historique pour garder cet espace léger.</div>';
+    wrap.innerHTML = '<div class="empty">Les anciens QCM restent disponibles ici.</div>';
     return;
   }
   let html = '';
@@ -2240,7 +2240,7 @@ function renderAdminQuestionListFromCache(){
       + renderAdminQuestionGroup('QCM Premium publiés', 'Visibles par les abonnés Premium.', premiumItems, 'premium');
   }
   const visibleItems = adminQuestionItemsForFilter();
-  wrap.innerHTML = renderAdminBulkBar(visibleItems) + (html || '<div class="empty">Aucun QCM dans ce filtre.</div>');
+  wrap.innerHTML = renderAdminBulkBar(visibleItems) + (html || '<div class="empty">Aucun QCM pour ce choix.</div>');
 }
 
 function toggleAdminQuestionSelection(id, checked){
@@ -2367,7 +2367,7 @@ async function toggleAdminQuestion(index){
     adminQuestionCache[index] = data.question || { ...q, is_active:true, admin_archived:!restoreInAdmin };
     renderAdminQuestionListFromCache();
     setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions(), fetchPublishedQcmPublications(true)]).then(()=>renderFormations(currentFormFilter)), 250);
-    toast(restoreInAdmin ? 'QCM remis dans l’administration ✅' : 'QCM rangé dans l’historique publié ✅');
+    toast(restoreInAdmin ? 'QCM remis dans la liste courante ✅' : 'QCM conservé dans Mes QCM ✅');
   }catch(err){ toast(err.message); }
 }
 
@@ -2415,7 +2415,7 @@ async function loadDailyAiDrafts(){
       status.innerHTML = `
         <div><b>${data.settings?.count || 50}</b><span>QCM / jour</span></div>
         <div><b>${data.configured ? 'Prêt' : 'À configurer'}</b><span>PDF</span></div>
-        <div><b>${data.settings?.mode === 'niveau' ? 'Niveau' : 'Module'}</b><span>Rotation</span></div>`;
+        <div><b>${data.settings?.mode === 'niveau' ? 'Niveau' : 'Matière'}</b><span>Choix du jour</span></div>`;
     }
     refreshDailyCategoryOptions();
     renderDailyAiDrafts();
@@ -2538,7 +2538,7 @@ async function runDailyAiQcm(){
     };
     const data = await adminFetch('/api/admin/ai/daily/run', { method:'POST', body:JSON.stringify(payload) });
     if (data.skipped){
-      if (result) result.innerHTML = '<div class="pay-note warn">Le PDF du jour existe déjà. Coche “Régénérer aujourd’hui” si tu veux le refaire.</div>';
+      if (result) result.innerHTML = '<div class="pay-note warn">Le PDF du jour existe déjà. Coche “Refaire aujourd’hui” si tu veux le préparer à nouveau.</div>';
       await loadDailyAiDrafts();
       return;
     }
@@ -2590,17 +2590,17 @@ function renderDailyAiDrafts(){
   const publishedCount = entries.filter(({d}) => d.status === 'published').length;
   const visibleEntries = entries.filter(({d}) => showPublishedDailyDrafts || d.status !== 'published');
   const historyButton = publishedCount
-    ? `<button class="mini-btn" onclick="toggleDailyPublishedHistory()">${showPublishedDailyDrafts ? 'Masquer l’historique publié' : `Voir l’historique publié (${publishedCount})`}</button>`
+    ? `<button class="mini-btn" onclick="toggleDailyPublishedHistory()">${showPublishedDailyDrafts ? 'Masquer les anciens PDF' : `Voir les anciens PDF (${publishedCount})`}</button>`
     : '';
   if (!visibleEntries.length){
-    wrap.innerHTML = `<div class="empty">Aucun PDF en attente de vérification.${publishedCount ? '<br>Les PDF déjà publiés sont rangés dans l’historique publié et restent visibles côté candidat.' : '<br>Clique sur “Créer le PDF du jour maintenant”.'}<br>${historyButton}</div>`;
+    wrap.innerHTML = `<div class="empty">Aucun PDF en attente de vérification.${publishedCount ? '<br>Les anciens PDF restent visibles chez les candidats.' : '<br>Clique sur “Créer le PDF du jour maintenant”.'}<br>${historyButton}</div>`;
     return;
   }
-  wrap.innerHTML = `${historyButton ? `<div class="pay-note">${showPublishedDailyDrafts ? 'Historique affiché : les PDF publiés restent dans Nouveaux QCM et Documents.' : 'Les PDF déjà publiés sont rangés dans l’historique pour garder cet espace léger.'} ${historyButton}</div>` : ''}` + visibleEntries.map(({d, idx})=>`
+  wrap.innerHTML = `${historyButton ? `<div class="pay-note">${showPublishedDailyDrafts ? 'Les anciens PDF sont affichés. Ils restent dans Nouveaux QCM et Documents.' : 'Les anciens PDF sont conservés ici.'} ${historyButton}</div>` : ''}` + visibleEntries.map(({d, idx})=>`
     <div class="admin-q-item daily-ai-draft ${d.status === 'published' ? 'ai-published' : ''}" data-daily-draft-id="${escapeHtml(d.id || '')}">
       <div class="admin-q-meta">
         <span>${escapeHtml(d.date || '')}</span>
-        <span>${escapeHtml(d.category || 'Module')}</span>
+        <span>${escapeHtml(d.category || 'Matière')}</span>
         <span>${escapeHtml(d.level || 'Niveau')}</span>
         ${d.is_premium ? '<span class="premium">Premium</span>' : '<span class="free">Gratuit</span>'}
         ${d.generating ? `<span class="qcm-blocked-badge" data-daily-progress-badge>Préparation ${Number(d.generationProgress || 0)}/${Number(d.generationTarget || 50)}</span>` : d.status === 'published' ? '<span class="active">Publié</span>' : '<span>PDF à relire</span>'}
@@ -2608,14 +2608,14 @@ function renderDailyAiDrafts(){
         ${Number(d.pdf_revision || 0) ? `<span class="active">PDF corrigé · v${Number(d.pdf_revision)}</span>` : ''}
       </div>
       <h4>${escapeHtml(d.title || 'QCM quotidien')}</h4>
-      <p class="admin-help">${d.generating ? `<b data-daily-progress-count>${Number(d.generationProgress || 0)}/${Number(d.generationTarget || 50)}</b> QCM vérifiés et enregistrés. La carte est actualisée après chaque contrôle.` : `<b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Ouvre le fichier, corrige une question si nécessaire, vérifie le nouveau PDF, puis publie seulement après validation.'}`}</p>
+      <p class="admin-help">${d.generating ? `<b data-daily-progress-count>${Number(d.generationProgress || 0)}/${Number(d.generationTarget || 50)}</b> QCM vérifiés et enregistrés. Cette page se met à jour après chaque contrôle.` : `<b>${Number(d.count || 0)}</b> QCM préparés en PDF. ${d.status === 'published' ? 'Déjà disponible côté candidat dans Nouveaux QCM et Documents.' : 'Ouvre le fichier, corrige une question si nécessaire, vérifie le nouveau PDF, puis publie seulement après le dernier contrôle.'}`}</p>
       ${d.status !== 'published' && !d.generating ? `<label class="admin-select-line"><input type="checkbox" ${d.is_premium ? 'checked' : ''} onchange="setDailyDraftPremium(${idx}, this.checked)"><span>Publier en Premium <small>(sinon Gratuit)</small></span></label>` : ''}
       <div class="admin-q-actions">
         ${d.generating ? `<button class="edit" data-resume-daily="${escapeHtml(d.id || '')}" onclick="resumeDailyAiGeneration(${idx})">Reprendre la préparation</button>` : `<button class="edit" onclick="openDailyAiPdf(${idx})">Ouvrir / Vérifier PDF</button>`}
         ${!d.generating && d.status !== 'published' && !(d.orphanResource || d.orphanQuestions) ? `<button class="edit" onclick="verifyDailyAiDraft(${idx})">Vérifier les sources</button>` : ''}
-        ${!d.generating && !(d.orphanResource || d.orphanQuestions) ? `<button class="pause" onclick="publishDailyAiDraft(${idx})" ${d.status !== 'published' && !dailyVerificationInfo(d).publishable ? 'disabled title="Vérifie toutes les sources avant publication"' : ''}>${d.status === 'published' ? 'Synchroniser' : dailyVerificationInfo(d).publishable ? `Publier en ${d.is_premium ? 'Premium' : 'Gratuit'}` : 'Publication bloquée'}</button>` : ''}
+        ${!d.generating && !(d.orphanResource || d.orphanQuestions) ? `<button class="pause" onclick="publishDailyAiDraft(${idx})" ${d.status !== 'published' && !dailyVerificationInfo(d).publishable ? 'disabled title="Vérifie toutes les sources avant publication"' : ''}>${d.status === 'published' ? 'Mettre à jour' : dailyVerificationInfo(d).publishable ? `Publier en ${d.is_premium ? 'Premium' : 'Gratuit'}` : 'Impossible de publier'}</button>` : ''}
         ${d.status === 'published' ? `<button class="delete" onclick="unpublishDailyAiDraft(${idx})">Supprimer chez candidat</button>` : ''}
-        ${!(d.orphanResource || d.orphanQuestions) ? `<button class="delete" onclick="deleteDailyAiDraft(${idx})">${d.status === 'published' ? 'Retirer de l’admin' : 'Supprimer'}</button>` : ''}
+        ${!(d.orphanResource || d.orphanQuestions) ? `<button class="delete" onclick="deleteDailyAiDraft(${idx})">${d.status === 'published' ? 'Retirer de la gestion' : 'Supprimer'}</button>` : ''}
       </div>
     </div>`).join('');
 }
@@ -2652,7 +2652,7 @@ function renderDailyPdfHtml(d){
         <div><span>DATE DU SUJET</span><b>${escapeHtml(d.date || '')}</b></div>
         <div><span>SUJET</span><b>${Number(d.count || questions.length || 0)} QCM</b></div>
       </div>
-      <div class="pdf-module-line"><b>MODULE : ${escapeHtml(d.category || 'Module')}</b><b>NIVEAU : ${escapeHtml(d.level || 'Niveau')}</b></div>
+      <div class="pdf-module-line"><b>MATIÈRE : ${escapeHtml(d.category || 'Matière')}</b><b>NIVEAU : ${escapeHtml(d.level || 'Niveau')}</b></div>
       <p>QCM corrigés pour entraînement intensif</p>
     </div>
     <div class="pdf-question-preview">
@@ -2722,12 +2722,12 @@ function updateDailyQuestionEditorMeta(draft){
     summary.className = `qcm-publication-gate ${verification.publishable ? 'ready' : 'blocked'}`;
     summary.innerHTML = verification.publishable
       ? `<b>✓ Publication autorisée</b><span>${verification.verified}/${verification.total} réponses disposent d’une preuve vérifiée.</span>`
-      : `<b>⚠ Publication bloquée</b><span>${verification.blocked || verification.total} question(s) sans validation suffisante. Corrige ou remplace les questions, puis clique sur « Vérifier les sources ».</span>`;
+      : `<b>⚠ Publication bloquée</b><span>${verification.blocked || verification.total} question(s) sans preuve suffisante. Corrige ou remplace les questions, puis clique sur « Vérifier les sources ».</span>`;
   }
   const publishButton = $('#dailyPublishVerifiedBtn');
   if (publishButton){
     publishButton.disabled = draft.status !== 'published' && !verification.publishable;
-    publishButton.textContent = draft.status === 'published' ? 'Synchroniser les QCM publiés' : verification.publishable ? 'Publier les QCM vérifiés' : 'Publication bloquée — sources à vérifier';
+    publishButton.textContent = draft.status === 'published' ? 'Mettre à jour les QCM publiés' : verification.publishable ? 'Publier les QCM vérifiés' : 'Impossible de publier — sources à vérifier';
   }
 }
 
@@ -2825,7 +2825,7 @@ function renderDailyQuestionEditor(){
   editor.innerHTML = `
     <div class="pdf-editor-head">
       <div><span>Correction du document</span><h3>${dailyQuestionEditorDraft.length} QCM modifiables</h3></div>
-      <p>Ouvre seulement la question à corriger. Une modification annule sa validation jusqu’au prochain contrôle des sources.</p>
+      <p>Ouvre seulement la question à corriger. Après une modification, contrôle à nouveau les sources.</p>
     </div>
     <div class="qcm-verification-toolbar">
       <div>${dailyVerificationBadge({ questions:dailyQuestionEditorDraft, verification:{ total:dailyQuestionEditorDraft.length, verified:dailyQuestionEditorDraft.filter(q => q.verification_status === 'verified').length, blocked:dailyQuestionEditorDraft.filter(q => q.verification_status !== 'verified').length, publishable:dailyQuestionEditorDraft.length > 0 && dailyQuestionEditorDraft.every(q => q.verification_status === 'verified') } })}<small>La publication exige une preuve pour chaque réponse.</small></div>
@@ -3055,7 +3055,7 @@ async function publishDailyAiDraft(index){
   if (!compatibleCategories.includes(category)){ toast(`La catégorie « ${category} » n’est pas compatible avec le niveau ${level}.`); return; }
   const isPremium = reviewOpen ? Boolean($('#dailyPublishPremium')?.checked) : Boolean(d.is_premium);
   const destination = isPremium ? 'Premium' : 'Gratuit';
-  const verb = d.status === 'published' ? 'Synchroniser' : 'Publier';
+  const verb = d.status === 'published' ? 'Mettre à jour' : 'Publier';
   if (!confirm(`${verb} les ${Number(d.count || 0)} QCM dans ${category} · ${level} · ${destination} ?`)) return;
   try{
     const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/publish', {
@@ -3063,13 +3063,13 @@ async function publishDailyAiDraft(index){
       body:JSON.stringify({ category, level, is_premium:isPremium })
     });
     const result = $('#aiDailyResult');
-    if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM disponibles dans <b>Nouveaux QCM</b> et dans le module <b>${escapeHtml(category)}</b> · ${destination} ✅${data.resource ? '<br>PDF ajouté dans <b>Documents & fichiers</b> ✅' : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${isPremium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir les QCM ${destination}</button> <button class="mini-btn" onclick="openResourcesFromAdmin()" style="margin-top:8px">Ouvrir Documents</button></div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">${data.published || 0} QCM disponibles dans <b>Nouveaux QCM</b> et dans la matière <b>${escapeHtml(category)}</b> · ${destination} ✅${data.resource ? '<br>PDF ajouté dans <b>Documents</b> ✅' : ''}<br><button class="mini-btn" onclick="openPublishedQcmFromAdmin('${isPremium ? 'premium' : 'free'}')" style="margin-top:8px">Ouvrir les QCM ${destination}</button> <button class="mini-btn" onclick="openResourcesFromAdmin()" style="margin-top:8px">Ouvrir Documents</button></div>`;
     if (data.draft) aiDailyDraftCache[index] = data.draft;
     else aiDailyDraftCache[index] = { ...d, status:'published', is_premium:isPremium, category, level, published_at:new Date().toISOString() };
     showPublishedDailyDrafts = false;
     renderDailyAiDrafts();
     if (currentDailyPdfIndex === index && $('#pdfreview')?.classList.contains('active')) closeDailyPdfReview();
-    toast(data.alreadyPublished ? 'Synchronisation terminée ✅' : 'QCM quotidiens publiés ✅');
+    toast(data.alreadyPublished ? 'Mise à jour terminée ✅' : 'QCM quotidiens publiés ✅');
     setTimeout(()=>Promise.allSettled([
       loadDailyAiDrafts(),
       loadAdminQuestions(),
@@ -3084,7 +3084,7 @@ async function publishDailyAiDraft(index){
 async function unpublishDailyAiDraft(index){
   const d = aiDailyDraftCache[index];
   if (!d || d.status !== 'published') return;
-  if (!confirm('Supprimer chez le candidat ? Les QCM disparaîtront de Nouveaux QCM et le PDF disparaîtra de Documents & fichiers. Le PDF restera dans l’admin pour correction ou republication.')) return;
+  if (!confirm('Supprimer chez le candidat ? Les QCM disparaîtront de Nouveaux QCM et le PDF disparaîtra de Documents. Le PDF restera dans l’espace de gestion pour être corrigé ou remis en ligne.')) return;
   try{
     toast('Suppression en cours...');
     const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id) + '/public', { method:'DELETE' });
@@ -3095,7 +3095,7 @@ async function unpublishDailyAiDraft(index){
     resourceCache = resourceCache.filter(r => r.title !== d.title);
     renderPublishedQcm();
     const result = $('#aiDailyResult');
-    if (result) result.innerHTML = `<div class="pay-note success">Contenu retiré côté candidat ✅ ${Number(data.removedQuestions || 0)} QCM retiré${Number(data.removedQuestions || 0)>1?'s':''}. Le PDF peut être corrigé ou supprimé dans l’admin.</div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">Contenu retiré côté candidat ✅ ${Number(data.removedQuestions || 0)} QCM retiré${Number(data.removedQuestions || 0)>1?'s':''}. Le PDF peut être corrigé ou supprimé dans l’espace de gestion.</div>`;
     toast('Supprimé chez le candidat ✅');
     setTimeout(()=>Promise.allSettled([
       loadDailyAiDrafts(),
@@ -3110,17 +3110,17 @@ async function deleteDailyAiDraft(index){
   const d = aiDailyDraftCache[index];
   if (!d) return;
   const msg = d.status === 'published'
-    ? 'Retirer ce PDF de l’historique publié ? Les QCM et le document restent visibles côté candidat.'
+    ? 'Retirer cet ancien PDF de la liste ? Les QCM et le document restent visibles côté candidat.'
     : 'Supprimer ce PDF quotidien ?';
   if (!confirm(msg)) return;
   try{
     toast('Suppression en cours...');
     const data = await adminFetch('/api/admin/ai/daily/' + encodeURIComponent(d.id), { method:'DELETE', cache:'no-store' });
-    if (!data.deleted) throw new Error('La suppression du PDF n’a pas été confirmée par le serveur.');
+    if (!data.deleted) throw new Error('Le PDF n’a pas pu être supprimé. Réessaie.');
     aiDailyDraftCache.splice(index, 1);
     renderDailyAiDrafts();
     await Promise.allSettled([loadDailyAiDrafts(), d.status === 'published' ? loadResources() : Promise.resolve()]);
-    toast(d.status === 'published' ? 'Retiré de l’administration ✅' : 'PDF supprimé définitivement ✅');
+    toast(d.status === 'published' ? 'Retiré de la gestion ✅' : 'PDF supprimé définitivement ✅');
   }catch(err){ toast(err.message); }
 }
 
@@ -3129,11 +3129,11 @@ async function generateAiQcm(){
   const result = $('#aiResult');
   const list = $('#aiDraftList');
   const pdfFile = $('#aiPdfSource')?.files?.[0] || null;
-  setButtonLoading(btn, true, pdfFile ? 'Lecture PDF...' : 'Génération...');
+  setButtonLoading(btn, true, pdfFile ? 'Lecture du PDF...' : 'Préparation...');
   if (result) result.innerHTML = pdfFile
-    ? '<div class="pay-note">L’IA lit le PDF et prépare des propositions à relire avant publication.</div>'
-    : '<div class="pay-note">L’IA prépare des propositions à relire avant publication.</div>';
-  if (list) list.innerHTML = '<div class="empty">Génération en cours...</div>';
+    ? '<div class="pay-note">L’outil lit le PDF et prépare des questions à relire avant publication.</div>'
+    : '<div class="pay-note">L’outil prépare des questions à relire avant publication.</div>';
+  if (list) list.innerHTML = '<div class="empty">Préparation en cours...</div>';
   try{
     refreshAiCategoryOptions();
     const publicationNameInput = ($('#aiPublicationName')?.value || '').trim();
@@ -3162,7 +3162,7 @@ async function generateAiQcm(){
       });
       const res = await fetchWithTimeout('/api/admin/ai/qcm-pdf', { method:'POST', headers, body:pdfFile });
       data = await res.json().catch(()=>({}));
-      if (!res.ok) throw new Error(data.message || 'Génération depuis PDF impossible');
+      if (!res.ok) throw new Error(data.message || 'Le PDF n’a pas pu être lu');
     }else{
       data = await adminFetch('/api/admin/ai/qcm', { method:'POST', body:JSON.stringify(payload) });
     }
@@ -3216,7 +3216,7 @@ function renderAiDrafts(){
       ${!q._published ? `<label class="admin-select-line"><input type="checkbox" ${q.is_premium ? 'checked' : ''} onchange="setAiDraftPremium(${idx}, this.checked)"><span>Publier en Premium <small>(sinon Gratuit)</small></span></label>` : ''}
       <div class="admin-q-actions">
         <button class="edit" onclick="editAiDraft(${idx})">Relire / Modifier</button>
-        <button class="pause" onclick="publishAiDraft(${idx})" ${q._published || q.verification_status !== 'verified' ? 'disabled title="Ce QCM doit être vérifié avant publication"' : ''}>${q.verification_status === 'verified' ? (q.is_premium ? 'Publier en Premium' : 'Publier en Gratuit') : 'Publication bloquée'}</button>
+        <button class="pause" onclick="publishAiDraft(${idx})" ${q._published || q.verification_status !== 'verified' ? 'disabled title="Ce QCM doit être vérifié avant publication"' : ''}>${q.verification_status === 'verified' ? (q.is_premium ? 'Publier en Premium' : 'Publier en Gratuit') : 'Impossible de publier'}</button>
         <button class="delete" onclick="removeAiDraft(${idx})">Retirer</button>
       </div>
     </div>`).join('');
@@ -3282,7 +3282,7 @@ function editAiDraft(index){
   $('#adminSource') && ($('#adminSource').value=q.source || 'Réussite Concours BF');
   $('#adminPremium') && ($('#adminPremium').checked=Boolean(q.is_premium));
   $('#adminActive') && ($('#adminActive').checked=true);
-  $('#adminFormTitle') && ($('#adminFormTitle').textContent='Relire une proposition IA');
+  $('#adminFormTitle') && ($('#adminFormTitle').textContent='Relire une question proposée');
   $('#adminSaveBtn') && ($('#adminSaveBtn').textContent='Enregistrer et revérifier');
 }
 
@@ -3291,7 +3291,7 @@ async function publishAiDraft(index){
   if (!q || q._published) return;
   if (q.verification_status !== 'verified') return toast('Publication bloquée : corrige puis fais revérifier ce QCM.');
   try{
-    toast('Publication en cours...');
+    toast('Mise en ligne en cours...');
     await adminFetch('/api/admin/questions', { method:'POST', body:JSON.stringify({
       category:q.category,
       level:q.level,
@@ -3320,7 +3320,7 @@ async function publishAiDraft(index){
     renderAiDrafts();
     const destination = qcmDestinationText(q);
     const result = $('#aiResult');
-    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>${destination}</b> ✅<br>Il apparaît dans <b>Nouveaux QCM</b> et dans le module <b>${escapeHtml(q.category || 'Culture générale')}</b>.<br>Il est rangé dans <b>Mes QCM → Voir historique publié</b><br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
+    if (result) result.innerHTML = `<div class="pay-note success">QCM publié dans <b>${destination}</b> ✅<br>Il apparaît dans <b>Nouveaux QCM</b> et dans la matière <b>${escapeHtml(q.category || 'Culture générale')}</b>.<br>Il reste disponible dans <b>Mes QCM</b><br><button class="mini-btn" onclick="openPublishedQcmFromAdmin()" style="margin-top:8px">Ouvrir les Nouveaux QCM</button></div>`;
     toast('QCM publié dans ' + destination + ' ✅');
     setTimeout(()=>Promise.allSettled([loadAdminQuestions(), loadSupabaseQuestions()]).then(()=>renderFormations(currentFormFilter)), 250);
   }catch(err){ toast(err.message); }
@@ -3351,7 +3351,7 @@ async function scanOfficialNews(){
     aiNewsDraftCache = data.items || [];
     if (result){
       const note = data.notificationSent ? ' Notification envoyée.' : '';
-      const fresh = data.today ? ` Filtre à jour appliqué (${data.today}).` : ' Filtre à jour appliqué.';
+      const fresh = data.today ? ` Liste vérifiée le ${data.today}.` : ' Liste vérifiée.';
       result.innerHTML = `<div class="pay-note success">${aiNewsDraftCache.length} annonce${aiNewsDraftCache.length>1?'s':''} de concours direct ou professionnel préparée${aiNewsDraftCache.length>1?'s':''} ✅${fresh}${note}</div>`;
     }
     renderAiNewsDrafts();
@@ -3531,7 +3531,7 @@ function adminNewsPayload(){
 async function saveAdminNews(){
   const result = $('#adminNewsResult');
   const btn = $('#adminNewsSaveBtn');
-  setButtonLoading(btn, true, 'Publication...');
+  setButtonLoading(btn, true, 'Mise en ligne...');
   try{
     const payload = adminNewsPayload();
     const id = payload.id;
@@ -3700,7 +3700,7 @@ function resetAdminRevisionForm(){
 
 async function saveAdminRevisionFiche(){
   const payload = adminRevisionPayload();
-  if (!ALL_QCM_CATEGORIES.includes(payload.category)){ toast('Choisis la catégorie de publication'); return; }
+  if (!ALL_QCM_CATEGORIES.includes(payload.category)){ toast('Choisis une catégorie'); return; }
   if (payload.title.length < 4){ toast('Ajoute un titre clair'); return; }
   if (payload.points.length < 2){ toast('Ajoute au moins deux points essentiels'); return; }
   if (payload.remember.length < 5){ toast('Ajoute le point à retenir'); return; }
@@ -3708,7 +3708,7 @@ async function saveAdminRevisionFiche(){
   const btn = $('#adminRevisionSaveBtn');
   const result = $('#adminRevisionResult');
   if (!confirm(`Publier dans « Fiches de révision → ${payload.contentType} → ${payload.competitionType} → ${payload.category} → ${payload.level} → ${payload.is_premium ? 'Premium' : 'Gratuit'} » ?`)) return;
-  setButtonLoading(btn, true, id ? 'Modification...' : 'Publication...');
+  setButtonLoading(btn, true, id ? 'Modification...' : 'Mise en ligne...');
   try{
     const data = await adminFetch('/api/admin/revision-fiches' + (id ? '/' + encodeURIComponent(id) : ''), {
       method:id ? 'PATCH' : 'POST',
@@ -3716,7 +3716,7 @@ async function saveAdminRevisionFiche(){
     });
     resetAdminRevisionForm();
     if (result) result.innerHTML = `<div class="pay-note success">${escapeHtml(payload.contentType)} publiée dans <b>${escapeHtml(payload.category)}</b> ✅</div>`;
-    toast('Publication enregistrée ✅');
+    toast('Contenu enregistré ✅');
     await Promise.all([loadAdminRevisionFiches(), loadRevisionFiches(true)]);
     return data;
   }catch(err){
@@ -3749,7 +3749,7 @@ async function deleteAdminRevisionFiche(index){
   try{
     await adminFetch('/api/admin/revision-fiches/' + encodeURIComponent(fiche.id), { method:'DELETE' });
     await Promise.all([loadAdminRevisionFiches(), loadRevisionFiches(true)]);
-    toast('Publication supprimée définitivement');
+    toast('Contenu supprimé définitivement');
   }catch(err){ toast(err.message); }
 }
 
@@ -3872,7 +3872,7 @@ async function uploadAdminResource(){
     if (result) result.innerHTML = '<div class="pay-note error">Choisis un fichier PDF, Word ou image.</div>';
     return;
   }
-  setButtonLoading(btn, true, 'Publication...');
+  setButtonLoading(btn, true, 'Mise en ligne...');
   try{
     const headers = authHeaders({
       'Content-Type': file.type || 'application/octet-stream',
@@ -3886,8 +3886,8 @@ async function uploadAdminResource(){
     });
     const res = await fetchWithTimeout('/api/admin/resources/upload', { method:'POST', headers, body:file });
     const data = await res.json().catch(()=>({}));
-    if (!res.ok) throw new Error(data.message || 'Publication impossible');
-    if (result) result.innerHTML = '<div class="pay-note success">Document publié avec succès ✅<br>Il est rangé dans <b>Voir historique publié</b> et reste visible chez le candidat.</div>';
+    if (!res.ok) throw new Error(data.message || 'Le document n’a pas pu être publié');
+    if (result) result.innerHTML = '<div class="pay-note success">Document publié avec succès ✅<br>Il reste visible chez les candidats et dans Mes documents.</div>';
     clearAdminResourceForm();
     await loadAdminResources();
     await loadResources();
@@ -3948,17 +3948,17 @@ function renderAdminResourcesFromCache(){
   }
   const controls = $('#adminResourceHistoryControls');
   if (controls){
-    controls.innerHTML = historyCount ? `<button class="mini-btn" onclick="toggleAdminResourceHistory()">${showAdminResourceHistory ? 'Masquer l’historique publié' : `Voir historique publié (${historyCount})`}</button>` : '';
+    controls.innerHTML = historyCount ? `<button class="mini-btn" onclick="toggleAdminResourceHistory()">${showAdminResourceHistory ? 'Masquer les anciens documents' : `Voir les anciens documents (${historyCount})`}</button>` : '';
   }
   if (!historyCount){
     wrap.innerHTML = '<div class="empty">Aucun document publié pour le moment.</div>';
     return;
   }
   if (!showAdminResourceHistory){
-    wrap.innerHTML = '<div class="empty">Les documents publiés sont rangés dans l’historique pour garder cet espace léger.</div>';
+    wrap.innerHTML = '<div class="empty">Les anciens documents restent disponibles ici.</div>';
     return;
   }
-  wrap.innerHTML = renderAdminResourceCards(historyItems) || '<div class="empty">Aucun document dans l’historique.</div>';
+  wrap.innerHTML = renderAdminResourceCards(historyItems) || '<div class="empty">Aucun ancien document.</div>';
 }
 
 async function loadAdminResources(){
@@ -3977,11 +3977,11 @@ async function loadAdminResources(){
 async function deleteAdminResource(index){
   const r = adminResourceCache[index];
   if (!r) return;
-  if (!confirm('Supprimer définitivement ce document de « Documents & fichiers » ? Il disparaîtra aussi chez les candidats.')) return;
+  if (!confirm('Supprimer définitivement ce document de « Documents » ? Il disparaîtra aussi chez les candidats.')) return;
   try{
     toast('Suppression définitive du document...');
     const data = await adminFetch('/api/admin/resources/' + encodeURIComponent(r.id), { method:'DELETE', cache:'no-store' });
-    if (!data.deleted || !data.persisted) throw new Error('La suppression n’a pas été confirmée par le serveur.');
+    if (!data.deleted || !data.persisted) throw new Error('Le document n’a pas pu être supprimé. Réessaie.');
     adminResourceCache = adminResourceCache.filter(item => item.id !== r.id && item.title !== r.title);
     resourceCache = resourceCache.filter(item => item.id !== r.id && item.title !== r.title);
     await Promise.all([loadAdminResources(), loadResources()]);
@@ -4102,11 +4102,11 @@ function paymentStatusFailed(status){
 function paymentProviderInstruction(provider, pending=false){
   if (provider === 'MOOV_MONEY'){
     return pending
-      ? '<b>Demande Moov envoyée.</b> Regarde ton téléphone et confirme la transaction Moov. Aucun code OTP ne sera demandé dans Réussite Concours BF. Ne relance pas un autre paiement.'
-      : '<b>Moov Money :</b> après avoir appuyé sur « Payer », regarde ton téléphone et confirme la demande Moov. Aucun code OTP ne sera demandé dans l’application.';
+      ? '<b>Demande Moov envoyée.</b> Regarde ton téléphone et confirme le paiement Moov sur ton téléphone. Réussite Concours BF ne te demandera aucun code de confirmation. Ne relance pas un autre paiement.'
+      : '<b>Moov Money :</b> après avoir appuyé sur « Payer », regarde ton téléphone et confirme la demande sur ton téléphone. Aucun code de confirmation ne sera demandé dans l’application.';
   }
   return pending
-    ? '<b>Demande Orange envoyée.</b> Termine la validation sur la page ou le téléphone Orange Money, puis reviens ici. Ne relance pas un autre paiement.'
+    ? '<b>Demande Orange envoyée.</b> Confirme le paiement sur la page Orange Money, avec le code demandé par Orange si nécessaire, puis reviens ici. Ne relance pas un autre paiement.'
     : '<b>Orange Money :</b> suis les instructions de la page sécurisée Orange. Réussite Concours BF ne demande jamais ton code secret.';
 }
 
@@ -4237,14 +4237,14 @@ function renderSubscription(){
   if (status){
     if (isAdmin()){
       status.className = 'sub-status active';
-      status.innerHTML = '🔓 Accès complet actif — ton compte administrateur est au niveau Pro.';
+      status.innerHTML = '🔓 Accès complet actif — ton compte Pro est actif.';
     } else if (isPremium()){
       status.className = 'sub-status active';
       status.innerHTML = `✅ Premium actif — expire le <b>${formatDate(state.subscription.expiresAt)}</b> (${premiumDaysLeft()} jour${premiumDaysLeft()>1?'s':''} restant${premiumDaysLeft()>1?'s':''})`;
     } else if (state.pendingPayment){
       status.className = 'sub-status pending';
       const pendingPlan = subscriptionPlan(state.pendingPayment.plan || state.selectedPlan);
-      status.innerHTML = `⏳ Paiement ${escapeHtml(pendingPlan.label)} en attente — référence <b>${escapeHtml(state.pendingPayment.ref)}</b>`;
+      status.innerHTML = `⏳ Paiement ${escapeHtml(pendingPlan.label)} en attente — numéro de suivi <b>${escapeHtml(state.pendingPayment.ref)}</b>`;
     } else if (paywallFeature){
       status.className = 'sub-status premium-prompt';
       status.innerHTML = `🔓 Premium ouvre <b>${escapeHtml(paywallFeature)}</b> et tous les entraînements avancés.`;
@@ -4268,7 +4268,7 @@ function renderSubscription(){
     if (runtimePaymentMessage){
       result.innerHTML = runtimePaymentMessage;
     } else if (state.pendingPayment){
-      result.innerHTML = `<div class="pay-note warn">${paymentProviderInstruction(state.pendingPayment.provider || state.selectedProvider, true)}<br>Référence : <b>${escapeHtml(state.pendingPayment.ref || '')}</b></div>`;
+      result.innerHTML = `<div class="pay-note warn">${paymentProviderInstruction(state.pendingPayment.provider || state.selectedProvider, true)}<br>Numéro de suivi : <b>${escapeHtml(state.pendingPayment.ref || '')}</b></div>`;
     } else {
       result.innerHTML = `<div class="pay-note">${paymentProviderInstruction(state.selectedProvider, false)}<br>Entre ensuite le numéro à débiter et appuie sur “${plan.actionLabel}”.</div>`;
     }
@@ -4293,7 +4293,7 @@ async function startSubscriptionPayment(){
   }
 
   if (state.pendingPayment?.ref){
-    runtimePaymentMessage = `<div class="pay-note warn">${paymentProviderInstruction(state.pendingPayment.provider || state.selectedProvider, true)}<br>Référence : <b>${escapeHtml(state.pendingPayment.ref)}</b></div>`;
+    runtimePaymentMessage = `<div class="pay-note warn">${paymentProviderInstruction(state.pendingPayment.provider || state.selectedProvider, true)}<br>Numéro de suivi : <b>${escapeHtml(state.pendingPayment.ref)}</b></div>`;
     renderSubscription();
     startPaymentAutoChecks(6);
     return;
@@ -4351,7 +4351,7 @@ async function startSubscriptionPayment(){
       location.href = data.paymentUrl;
       return;
     }
-    runtimePaymentMessage = `<div class="pay-note ${data.reused ? 'warn' : 'success'}">${paymentProviderInstruction(state.selectedProvider, true)}<br>Numéro à débiter : <b>${escapeHtml(prettyPhone(phone))}</b>.<br>Abonnement : <b>${plan.label}</b> (${money(plan.amount)}).<br>Référence : <b>${escapeHtml(state.pendingPayment.ref)}</b></div>`;
+    runtimePaymentMessage = `<div class="pay-note ${data.reused ? 'warn' : 'success'}">${paymentProviderInstruction(state.selectedProvider, true)}<br>Numéro à débiter : <b>${escapeHtml(prettyPhone(phone))}</b>.<br>Abonnement : <b>${plan.label}</b> (${money(plan.amount)}).<br>Numéro de suivi : <b>${escapeHtml(state.pendingPayment.ref)}</b></div>`;
     renderSubscription();
     startPaymentAutoChecks(6);
   }catch(err){
@@ -4383,7 +4383,7 @@ async function checkPaymentStatus(options={}){
       : paymentApiBase() + '/api/subscription/status';
     const res = await fetchWithTimeout(url, { headers: authHeaders({}) });
     const data = await res.json().catch(()=>({}));
-    if (!res.ok) throw new Error(data.message || 'Statut indisponible');
+    if (!res.ok) throw new Error(data.message || 'Vérification indisponible');
     if (data.active){
       state.subscription = {status:'premium', expiresAt:data.expiresAt, txRef:data.txRef, provider:data.provider || state.selectedProvider, plan:data.plan || state.pendingPayment?.plan || state.selectedPlan};
       state.pendingPayment = null;
@@ -4407,7 +4407,7 @@ async function checkPaymentStatus(options={}){
       } else {
         state.pendingPayment = { ...pending, status };
         save();
-        runtimePaymentMessage = `<div class="pay-note warn">${paymentProviderInstruction(pending.provider || state.selectedProvider, true)}<br>${escapeHtml(data.message || 'La vérification continue automatiquement.')}<br>Référence : <b>${escapeHtml(pending.ref || '')}</b></div>`;
+        runtimePaymentMessage = `<div class="pay-note warn">${paymentProviderInstruction(pending.provider || state.selectedProvider, true)}<br>${escapeHtml(data.message || 'Nous vérifions encore le paiement.')}<br>Numéro de suivi : <b>${escapeHtml(pending.ref || '')}</b></div>`;
       }
     }
     renderSubscription();
@@ -4777,15 +4777,15 @@ function renderCurrentModuleHeader(){
   const module = currentModuleQcm;
   const count = moduleBankCount(module);
   const paidBank = isPaidCategory(module.category);
-  const title = module.title || module.category || 'Formation';
+  const title = module.title || module.category || 'Contenu';
   $('#moduleQcmTitle') && ($('#moduleQcmTitle').textContent = title);
   $('#moduleQcmHeading') && ($('#moduleQcmHeading').textContent = title);
   const image = $('#moduleQcmImage');
   if (image){ image.src = module.image || 'img/subject-culture.svg'; image.alt = 'Illustration ' + title; }
-  $('#moduleQcmAccess') && ($('#moduleQcmAccess').textContent = 'Séries gratuites et Premium du même module');
-  $('#moduleQcmDescription') && ($('#moduleQcmDescription').textContent = `Les QCM publiés en ${module.category}${module.level ? ' · ' + module.level : ''} sont classés ici automatiquement.`);
+  $('#moduleQcmAccess') && ($('#moduleQcmAccess').textContent = 'QCM gratuits et Premium de la même matière');
+  $('#moduleQcmDescription') && ($('#moduleQcmDescription').textContent = `Retrouve les QCM de ${module.category}${module.level ? ' · ' + module.level : ''} au même endroit.`);
   const meta = $('#moduleBankMeta');
-  if (meta) meta.textContent = `${formatQcmCount(count)} corrigés${paidBank ? ' · banque Premium' : hasOpenAccess() ? ' disponibles' : ' · 10 gratuits par session'}`;
+  if (meta) meta.textContent = `${formatQcmCount(count)} corrigés${paidBank ? ' · Premium' : hasOpenAccess() ? ' disponibles' : ' · 10 gratuits par session'}`;
   const button = $('#moduleBankButton');
   button?.classList.toggle('locked', paidBank && !hasOpenAccess());
 }
@@ -4798,12 +4798,12 @@ function startCurrentModuleBank(){
 async function loadCurrentModuleQcm(force=false){
   const wrap = $('#modulePublishedQcmList');
   if (!wrap) return;
-  wrap.innerHTML = '<div class="empty">Chargement des QCM du module...</div>';
+  wrap.innerHTML = '<div class="empty">Chargement des QCM...</div>';
   try{
     await fetchPublishedQcmPublications(force);
     renderCurrentModulePublications();
   }catch(err){
-    wrap.innerHTML = `<div class="pay-note error">${escapeHtml(err.message || 'QCM du module indisponibles')}</div>`;
+    wrap.innerHTML = `<div class="pay-note error">${escapeHtml(err.message || 'QCM indisponibles')}</div>`;
   }
 }
 
@@ -4812,7 +4812,7 @@ function renderCurrentModulePublications(){
   if (!wrap) return;
   const items = publishedQcmCache.map((set, idx)=>({set, idx})).filter(({set})=>publicationMatchesModule(set));
   if (!items.length){
-    wrap.innerHTML = '<div class="empty"><div class="big">📭</div>Aucune nouvelle série publiée dans ce module pour le moment.<br>La banque du module reste disponible ci-dessus.</div>';
+    wrap.innerHTML = '<div class="empty"><div class="big">📭</div>Aucun nouveau QCM dans cette matière pour le moment.<br>Les autres QCM restent disponibles ci-dessus.</div>';
     return;
   }
   wrap.innerHTML = items.map(({set, idx})=>publishedQcmCardHtml(set, idx)).join('');
@@ -4841,7 +4841,7 @@ function renderFormations(filter){
         const publishedCount = publishedQcmCache.filter(set=>publicationMatchesModule(set,{category:cat,level:level || ''})).length;
         const titleHtml = escapeHtml(name);
         const bankDesc = paid
-          ? `Banque du module : ${formatQcmCount(total)} Premium`
+          ? `${formatQcmCount(total)} Premium`
           : `${hasOpenAccess() ? formatQcmCount(total) + ' corrigés disponibles' : '10 QCM gratuits pour débuter'}`;
         const desc = publishedCount ? `${bankDesc} · ${publishedCount} nouvelle${publishedCount>1?'s':''} série${publishedCount>1?'s':''}` : bankDesc;
         return `<button class="form-item" onclick='openFormationModule(${JSON.stringify(name)},${JSON.stringify(cat)},${JSON.stringify(level || '')},${JSON.stringify(img)})'>
@@ -4852,7 +4852,7 @@ function renderFormations(filter){
       }).join('')}
     </div></div>`;
   }).join('');
-  $('#formWrap').innerHTML = html || '<div class="section"><div class="empty">Aucune formation dans ce filtre.</div></div>';
+  $('#formWrap').innerHTML = html || '<div class="section"><div class="empty">Aucun contenu pour ce choix.</div></div>';
 }
 
 function filterForm(el, f){
@@ -4931,7 +4931,7 @@ function renderPublishedQcm(){
     return true;
   });
   if (!items.length){
-    wrap.innerHTML = '<div class="empty">Aucun nouveau QCM dans ce filtre pour le moment.</div>';
+    wrap.innerHTML = '<div class="empty">Aucun nouveau QCM pour ce choix en ce moment.</div>';
     return;
   }
   wrap.innerHTML = items.map(({set, idx})=>publishedQcmCardHtml(set, idx)).join('');
@@ -5133,7 +5133,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'application-coherence-cleanup-v27') location.reload();
+    if (data.build && data.build !== 'plain-language-cleanup-v28') location.reload();
   }catch{}
 }
 
@@ -5146,7 +5146,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=application-coherence-cleanup-v27')
+    navigator.serviceWorker.register('/sw.js?v=plain-language-cleanup-v28')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

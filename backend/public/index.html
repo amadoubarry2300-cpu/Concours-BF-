@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=application-coherence-cleanup-v27">
+<link rel="manifest" href="/manifest.webmanifest?v=plain-language-cleanup-v28">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=application-coherence-cleanup-v27">
+<link rel="stylesheet" href="css/styles.css?v=plain-language-cleanup-v28">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -40,11 +40,11 @@
       <div class="app-menu-brand"><img src="img/logo.png" alt=""><span><b>Réussite Concours BF</b><small>Choisis une rubrique</small></span></div>
       <button class="app-menu-close" type="button" onclick="closeAppMenu()" aria-label="Fermer le menu">×</button>
     </div>
-    <nav class="app-menu-nav" aria-label="Toutes les fonctionnalités">
+    <nav class="app-menu-nav" aria-label="Toutes les rubriques">
       <button class="menu-card tone-home" data-menu-target="home" onclick="menuNavigate('home')"><span>🏠</span><b>Accueil</b><small>Mon espace</small></button>
-      <button class="menu-card tone-training" data-menu-target="formations" onclick="menuNavigate('formations')"><span>🗂️</span><b>Formations</b><small>Tous les modules</small></button>
-      <button class="menu-card tone-qcm" data-menu-target="publishedqcm" onclick="menuNavigate('publishedqcm')"><span>📌</span><b>Nouveaux QCM</b><small>Publications récentes</small></button>
-      <button class="menu-card tone-documents" data-menu-target="resources" onclick="menuNavigate('resources')"><span>📚</span><b>Documents</b><small>PDF et fichiers</small></button>
+      <button class="menu-card tone-training" data-menu-target="formations" onclick="menuNavigate('formations')"><span>🗂️</span><b>Matières et concours</b><small>Toutes les matières</small></button>
+      <button class="menu-card tone-qcm" data-menu-target="publishedqcm" onclick="menuNavigate('publishedqcm')"><span>📌</span><b>Nouveaux QCM</b><small>Ajouts récents</small></button>
+      <button class="menu-card tone-documents" data-menu-target="resources" onclick="menuNavigate('resources')"><span>📚</span><b>Documents</b><small>Sujets et fiches à consulter</small></button>
       <button class="menu-card tone-revision" data-menu-target="revision" onclick="menuNavigate('revision')"><span>📘</span><b>Fiches de révision</b><small>Révision rapide</small></button>
       <button class="menu-card tone-news" data-menu-target="news" onclick="menuNavigate('news')"><span>📰</span><b>Actualités</b><small>Concours officiels</small></button>
       <button class="menu-card tone-passport" data-menu-target="passport" onclick="menuNavigate('passport')"><span>🛂</span><b>Passeport</b><small>Parcours candidat</small></button>
@@ -52,7 +52,7 @@
       <button class="menu-card tone-premium" data-menu-target="subscription" onclick="menuNavigate('subscription')"><span>⭐</span><b>Accès Premium</b><small>Abonnement</small></button>
       <button class="menu-card tone-account" data-menu-target="account" onclick="openAccountFromMenu()"><span>👤</span><b>Mon compte</b><small>Profil et accès</small></button>
       <button class="menu-card tone-help" data-menu-target="contact" onclick="menuNavigate('contact')"><span>💬</span><b>Assistance</b><small>Nous contacter</small></button>
-      <button class="menu-card tone-admin" data-menu-target="admin" id="appMenuAdminBtn" onclick="menuNavigate('admin')" style="display:none"><span>🛠️</span><b>Administration</b><small>Gérer les contenus</small></button>
+      <button class="menu-card tone-admin" data-menu-target="admin" id="appMenuAdminBtn" onclick="menuNavigate('admin')" style="display:none"><span>🛠️</span><b>Gestion</b><small>Ajouter et modifier</small></button>
     </nav>
     <button class="app-menu-install" id="installAppBtn" onclick="installAndroidApp()" style="display:none">📲 Installer l’application</button>
     <div class="app-menu-foot"><span>🔥 Série de révision</span><b><span id="streakVal">0</span> jour(s)</b></div>
@@ -87,7 +87,7 @@
       <div class="premium-copy">
         <div class="premium-kicker">Réussite Concours BF Premium</div>
         <h3>Débloque tout dès 1 500 FCFA/mois</h3>
-        <p>Examens blancs, erreurs, statistiques détaillées et matières avancées.</p>
+        <p>Examens blancs, correction des erreurs, suivi détaillé et toutes les matières.</p>
       </div>
       <button class="mini-btn" onclick="show('subscription')">Voir l’offre</button>
     </div>
@@ -130,20 +130,20 @@
           <img class="action-photo" src="img/study.jpg" alt="Fiches de révision"><h3>Fiches de révision</h3><p>Notions importantes pour les concours</p>
         </button>
         <button class="action-card" onclick="show('quickpick')">
-          <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20, 40, 100 ou toute la banque</p>
+          <img class="action-photo" src="img/student-portrait.jpg" alt="Quiz rapide"><h3>Quiz rapide</h3><p>10, 20, 40, 100 ou toutes les questions</p>
         </button>
         <button class="action-card" onclick="show('publishedqcm')">
           <img class="action-photo" src="img/teacher-class.jpg" alt="Nouveaux QCM"><h3>Nouveaux QCM</h3><p>QCM récents pour s’entraîner</p>
         </button>
         <button class="action-card premium-locked" onclick="show('stats')">
           <span class="lock-tag">Premium</span>
-          <img class="action-photo" src="img/success.jpg" alt="Progression"><h3>Ma progression</h3><p>Scores et statistiques</p>
+          <img class="action-photo" src="img/success.jpg" alt="Progression"><h3>Ma progression</h3><p>Scores et résultats par matière</p>
         </button>
         <button class="action-card" onclick="show('formations')">
-          <img class="action-photo" src="img/teacher-class.jpg" alt="Formations"><h3>Formations</h3><p>Toutes les matières disponibles</p>
+          <img class="action-photo" src="img/teacher-class.jpg" alt="Matières et concours"><h3>Matières et concours</h3><p>Tous les contenus disponibles</p>
         </button>
         <button class="action-card" onclick="show('resources')">
-          <img class="action-photo" src="img/study.jpg" alt="Documents et fichiers"><h3>Documents & fichiers</h3><p>PDF, Word et images pour réviser</p>
+          <img class="action-photo" src="img/study.jpg" alt="Documents"><h3>Documents</h3><p>Sujets, fiches et images pour réviser</p>
         </button>
         <button class="action-card" onclick="show('news')">
           <img class="action-photo" src="img/classroom-bf-wide.jpg" alt="Actualités concours"><h3>Actualités concours</h3><p>Recrutements, communiqués et dates utiles</p>
@@ -249,7 +249,7 @@
         <button class="pick" onclick="pickN(this,20)">20<small>Ouvert</small></button>
         <button class="pick" onclick="pickN(this,40)">40<small>Ouvert</small></button>
         <button class="pick" onclick="pickN(this,100)">100<small>Entraînement</small></button>
-        <button class="pick" onclick="pickN(this,'all')">Tous<small>Banque complète</small></button>
+        <button class="pick" onclick="pickN(this,'all')">Tous<small>Toutes les questions</small></button>
       </div>
       <button class="btn btn-green btn-block" onclick="startSetupQuiz()">Commencer la révision →</button>
     </div>
@@ -269,7 +269,7 @@
         <button class="pick-li premium-row" onclick="startQuiz({n:20,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 20 questions — ouvert</button>
         <button class="pick-li premium-row" onclick="startQuiz({n:40,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 40 questions — ouvert</button>
         <button class="pick-li premium-row" onclick="startQuiz({n:100,time:0,title:'Quiz rapide'})"><span class="em">✅</span> 100 questions — entraînement</button>
-        <button class="pick-li premium-row" onclick="startQuiz({n:'all',time:0,title:'Banque complète'})"><span class="em">📚</span> Toutes les questions disponibles</button>
+        <button class="pick-li premium-row" onclick="startQuiz({n:'all',time:0,title:'Toutes les questions'})"><span class="em">📚</span> Toutes les questions disponibles</button>
       </div>
     </div>
   </section>
@@ -318,7 +318,7 @@
   <!-- ================= FORMATIONS ================= -->
   <section class="screen" id="formations">
     <div class="section" style="padding-bottom:8px">
-      <div class="section-head"><h2 style="font-size:1.3rem">🗂️ Formations disponibles</h2></div>
+      <div class="section-head"><h2 style="font-size:1.3rem">🗂️ Matières et concours</h2></div>
     </div>
     <div class="chip-row" id="chipRow">
       <button class="chip on" onclick="filterForm(this,'Tout')">Tout</button>
@@ -337,7 +337,7 @@
       </div>
       <div class="access-box premium">
         <b>🔒 Premium</b>
-        <span>Maths, Français, SVT, Psychotechnique, Greffier/Droit, examen blanc et banque complète.</span>
+        <span>Maths, Français, SVT, Psychotechnique, Greffier/Droit, examen blanc et toutes les questions.</span>
         <button class="access-btn premium" onclick="filterFormAccess('Premium')">Voir les contenus Premium</button>
       </div>
     </div>
@@ -351,21 +351,21 @@
   <!-- ================= MODULE DE FORMATION ================= -->
   <section class="screen" id="moduleqcm">
     <div class="quiz-top module-qcm-top">
-      <button class="quiz-close" onclick="show('formations')" aria-label="Retour aux formations">✕</button>
-      <div><span>Module</span><h2 id="moduleQcmTitle">Formation</h2></div>
+      <button class="quiz-close" onclick="show('formations')" aria-label="Retour aux matières">✕</button>
+      <div><span>Matière</span><h2 id="moduleQcmTitle">Contenu</h2></div>
     </div>
     <div class="module-qcm-page">
       <div class="module-qcm-hero">
         <img id="moduleQcmImage" src="img/subject-culture.svg" alt="">
-        <div><span id="moduleQcmAccess">QCM gratuits et Premium</span><h1 id="moduleQcmHeading">Formation</h1><p id="moduleQcmDescription">Retrouve ici la banque du module et toutes les nouvelles séries publiées.</p></div>
+        <div><span id="moduleQcmAccess">QCM gratuits et Premium</span><h1 id="moduleQcmHeading">Contenu</h1><p id="moduleQcmDescription">Retrouve ici tous les QCM corrigés et les séries récentes.</p></div>
       </div>
       <button class="module-bank-card" id="moduleBankButton" onclick="startCurrentModuleBank()">
         <span class="module-bank-icon">▶</span>
-        <span><b>Commencer la banque du module</b><small id="moduleBankMeta">QCM corrigés disponibles</small></span>
+        <span><b>Commencer tous les QCM</b><small id="moduleBankMeta">QCM corrigés disponibles</small></span>
         <em>›</em>
       </button>
-      <div class="module-publications-head"><div><span>Classés selon la catégorie choisie</span><h2>Nouveaux QCM du module</h2></div><button class="mini-btn" onclick="loadCurrentModuleQcm(true)">Actualiser</button></div>
-      <div id="modulePublishedQcmList" class="module-publications-list"><div class="empty">Chargement des QCM du module...</div></div>
+      <div class="module-publications-head"><div><span>Ajouts récents</span><h2>Nouveaux QCM</h2></div><button class="mini-btn" onclick="loadCurrentModuleQcm(true)">Mettre à jour</button></div>
+      <div id="modulePublishedQcmList" class="module-publications-list"><div class="empty">Chargement des QCM...</div></div>
     </div>
     <div style="height:24px"></div>
   </section>
@@ -416,7 +416,7 @@
   <section class="screen" id="resources">
     <div class="quiz-top">
       <button class="quiz-close" onclick="show('home')">✕</button>
-      <h2 style="font-size:1.05rem;font-weight:900">📚 Documents & fichiers</h2>
+      <h2 style="font-size:1.05rem;font-weight:900">📚 Documents</h2>
     </div>
     <div class="section" style="padding-top:10px">
       <div class="resource-intro-card">
@@ -625,8 +625,8 @@
         <button class="account-action" onclick="show('subscription')"><span>⭐</span><div><b>Gérer mon accès</b><small>Premium, paiement et renouvellement</small></div><em>›</em></button>
         <button class="account-action" onclick="show('passport')"><span>🛂</span><div><b>Mon passeport</b><small>Niveaux, badges et progression</small></div><em>›</em></button>
         <button class="account-action" onclick="show('revision')"><span>📘</span><div><b>Fiches de révision</b><small>Notions importantes par niveau</small></div><em>›</em></button>
-        <button class="account-action" onclick="show('stats')"><span>📊</span><div><b>Mes statistiques</b><small>Scores et progression par matière</small></div><em>›</em></button>
-        <button class="account-action" id="adminPanelBtn" onclick="show('admin')" style="display:none"><span>🛠️</span><div><b>Administration</b><small>Publier et gérer les QCM</small></div><em>›</em></button>
+        <button class="account-action" onclick="show('stats')"><span>📊</span><div><b>Mes résultats</b><small>Scores et progression par matière</small></div><em>›</em></button>
+        <button class="account-action" id="adminPanelBtn" onclick="show('admin')" style="display:none"><span>🛠️</span><div><b>Gestion</b><small>Ajouter et gérer les QCM</small></div><em>›</em></button>
       </div>
 
       <div class="account-info-box">
@@ -656,31 +656,31 @@
   <section class="screen" id="admin">
     <div class="quiz-top">
       <button class="quiz-close" onclick="show('account')">✕</button>
-      <h2 style="font-size:1.05rem;font-weight:900">Administration</h2>
+      <h2 style="font-size:1.05rem;font-weight:900">Gestion des contenus</h2>
     </div>
     <div class="admin-page">
       <div class="admin-hero-card">
         <div>
-          <div class="premium-kicker">Espace administrateur</div>
-          <h2>Publier du contenu sans coder</h2>
-          <p>Ajoute tes propres QCM, active ou désactive les contenus, et prépare les prochaines publications.</p>
+          <div class="premium-kicker">Espace de gestion</div>
+          <h2>Ajouter et gérer les contenus</h2>
+          <p>Ajoute tes QCM, choisis ce qui reste visible et prépare les prochains contenus.</p>
         </div>
-        <button class="mini-btn" onclick="renderAdminPanel(true)">Actualiser</button>
+        <button class="mini-btn" onclick="renderAdminPanel(true)">Mettre à jour</button>
       </div>
 
       <div class="admin-stats" id="adminStats">
-        <div><b>—</b><span>QCM banque</span></div>
-        <div><b>—</b><span>Ajouts admin</span></div>
-        <div><b>—</b><span>Statut</span></div>
+        <div><b>—</b><span>QCM disponibles</span></div>
+        <div><b>—</b><span>QCM ajoutés</span></div>
+        <div><b>—</b><span>État</span></div>
       </div>
 
       <div class="admin-publication-guide">
-        <h3>Choisir le bloc de publication</h3>
-        <p>Chaque contenu est rangé dans le bloc et la catégorie que tu choisis. Aucun classement au hasard.</p>
+        <h3>Choisir le type de contenu</h3>
+        <p>Choisis simplement où chaque contenu doit apparaître.</p>
         <div class="admin-publication-blocks">
-          <button onclick="setAdminTab('create')"><b>🧩 QCM</b><span>Formations et nouveaux QCM</span></button>
+          <button onclick="setAdminTab('create')"><b>🧩 QCM</b><span>Matières et nouveaux QCM</span></button>
           <button onclick="setAdminTab('revision')"><b>📘 Fiches de révision</b><span>Fiches et notions par niveau</span></button>
-          <button onclick="setAdminTab('resources')"><b>📁 Documents</b><span>Documents & fichiers</span></button>
+          <button onclick="setAdminTab('resources')"><b>📁 Documents</b><span>Sujets, fiches et images</span></button>
           <button onclick="setAdminTab('news')"><b>📢 Actualités</b><span>Actualités concours</span></button>
         </div>
         <small>Catégories disponibles : Burkina Faso · Culture générale · Histoire-Géo · Mathématiques · Physique-Chimie · Psychotechnique · Français · SVT · Greffier / Droit.</small>
@@ -693,14 +693,14 @@
         <button class="chip" id="adminTabRevision" onclick="setAdminTab('revision')">Fiches de révision</button>
         <button class="chip" id="adminTabResources" onclick="setAdminTab('resources')">Documents</button>
         <button class="chip" id="adminTabNews" onclick="setAdminTab('news')">Actualités</button>
-        <button class="chip" id="adminTabAi" onclick="setAdminTab('ai')">🤖 IA QCM</button>
-        <button class="chip" id="adminTabNotifications" onclick="setAdminTab('notifications')">Notifications</button>
+        <button class="chip" id="adminTabAi" onclick="setAdminTab('ai')">Aide à créer des QCM</button>
+        <button class="chip" id="adminTabNotifications" onclick="setAdminTab('notifications')">Messages</button>
       </div>
 
       <div id="adminCreatePane" class="admin-pane">
         <div class="legal-card admin-card">
           <h3 id="adminFormTitle">Nouveau QCM</h3>
-          <p class="admin-help">Choisis clairement la destination : <b>Gratuit</b> pour tous les candidats, ou <b>Premium</b> pour les abonnés seulement.</p>
+          <p class="admin-help">Choisis où le QCM sera visible : <b>Gratuit</b> pour tous les candidats, ou <b>Premium</b> pour les abonnés seulement.</p>
           <input type="hidden" id="adminQuestionId">
 
           <label class="field-label" for="adminCategory">Catégorie</label>
@@ -748,7 +748,7 @@
           <label class="field-label" for="adminExplanation">Correction détaillée</label>
           <textarea class="input admin-textarea" id="adminExplanation" placeholder="Explique clairement pourquoi la réponse est correcte"></textarea>
 
-          <label class="field-label" for="adminSource">Nom du QCM / source</label>
+          <label class="field-label" for="adminSource">Nom du QCM ou origine</label>
           <input class="input" id="adminSource" placeholder="Ex : Culture Burkina 2026, manuel, arrêté, source officielle...">
 
           <div class="admin-switch-row">
@@ -787,13 +787,13 @@
             </div>
           </div>
 
-          <label class="field-label" for="pastedQcmCategory">Module</label>
+          <label class="field-label" for="pastedQcmCategory">Matière</label>
           <select class="input" id="pastedQcmCategory" onchange="updateAdminPublicationPreviews()">
             <option>Burkina Faso</option><option>Culture générale</option><option>Histoire-Géo</option><option>Mathématiques</option><option>Physique-Chimie</option><option>Psychotechnique</option><option>Français</option><option>SVT</option><option>Greffier / Droit</option>
           </select>
           <div class="publication-target" id="pastedQcmDestinationPreview"></div>
 
-          <label class="field-label" for="pastedQcmPdfTheme">Design du livre PDF</label>
+          <label class="field-label" for="pastedQcmPdfTheme">Style du livre PDF</label>
           <select class="input" id="pastedQcmPdfTheme" onchange="clearPastedQcmPdfPreview()">
             <option value="montserrat-concours" selected>Concours</option>
             <option value="open-sans-epure">Épuré</option>
@@ -803,21 +803,21 @@
           <p class="admin-help">Le même style est utilisé sur tout le livre.</p>
 
           <div class="admin-paste-destination">
-            <b>Destination après validation</b>
+            <b>Où publier ?</b>
             <div class="admin-paste-destination-grid">
               <label class="free"><input type="radio" name="pastedQcmDestination" value="free" checked onchange="updatePastedQcmDestinationButtons()"><span>Gratuit<small>Visible par tous les candidats</small></span></label>
               <label class="premium"><input type="radio" name="pastedQcmDestination" value="premium" onchange="updatePastedQcmDestinationButtons()"><span>Premium payant<small>Réservé aux abonnés</small></span></label>
             </div>
           </div>
 
-          <label class="field-label" for="pastedQcmText">QCM à transformer</label>
+          <label class="field-label" for="pastedQcmText">QCM à ajouter</label>
           <textarea class="input admin-textarea admin-paste-textarea" id="pastedQcmText" placeholder="1. Quelle est la capitale du Burkina Faso ?&#10;A. Bobo-Dioulasso&#10;B. Ouagadougou&#10;C. Koudougou&#10;D. Ouahigouya&#10;Réponse : B&#10;Explication : Ouagadougou est la capitale politique du Burkina Faso.&#10;&#10;2. Question suivante..."></textarea>
           <div class="admin-paste-format">
             <b>Colle les QCM comme ils sont</b>
             <span>Toutes les questions seront conservées dans le livre PDF.</span>
           </div>
 
-          <button class="btn btn-green btn-block" id="pastedQcmAnalyzeBtn" onclick="analyzePastedQcm()">Prévisualiser le quiz</button>
+          <button class="btn btn-green btn-block" id="pastedQcmAnalyzeBtn" onclick="analyzePastedQcm()">Voir le quiz avant publication</button>
           <button class="btn btn-ghost btn-block" id="pastedQcmPdfBtn" onclick="downloadPastedQcmBookPdf()" style="margin-top:10px">Créer le livre PDF</button>
           <button class="btn btn-green btn-block" id="pastedQcmPublishBtn" onclick="publishPastedQcm()" style="display:none;margin-top:10px">Publier le quiz</button>
           <button class="btn btn-block admin-pdf-publish-btn" id="pastedQcmPdfPublishBtn" onclick="publishPreparedPastedQcmPdf()" style="display:none;margin-top:10px">Publier le livre PDF</button>
@@ -832,14 +832,14 @@
       <div id="adminListPane" class="admin-pane" style="display:none">
         <div class="legal-card admin-card">
           <h3>Mes nouveaux QCM</h3>
-          <p class="admin-help">Les QCM sont séparés en deux zones : <b>Gratuit</b> pour tous les candidats et <b>Premium</b> pour les abonnés. Tu peux filtrer pour éviter toute confusion.</p>
+          <p class="admin-help">Les QCM sont séparés en deux zones : <b>Gratuit</b> pour tous les candidats et <b>Premium</b> pour les abonnés. Utilise les boutons ci-dessous pour choisir la liste à afficher.</p>
           <div class="admin-destination-map">
             <div class="admin-zone-card free"><b>✅ Gratuit</b><span>Visible par tous</span></div>
             <div class="admin-zone-card premium"><b>⭐ Premium</b><span>Visible après abonnement</span></div>
           </div>
           <div id="adminQuestionHistoryControls" class="admin-filter-row"></div>
           <div class="admin-filter-row" id="adminQuestionFilterRow">
-            <button class="chip on" onclick="setAdminQuestionFilter('all', this)">Tout l’historique</button>
+            <button class="chip on" onclick="setAdminQuestionFilter('all', this)">Tous les QCM</button>
             <button class="chip" onclick="setAdminQuestionFilter('free', this)">Gratuit</button>
             <button class="chip" onclick="setAdminQuestionFilter('premium', this)">Premium</button>
           </div>
@@ -858,7 +858,7 @@
           <p class="admin-help">Publie uniquement des fiches et des notions importantes à retenir, classées par catégorie, type de concours et niveau. Ce bloc ne contient pas de QCM.</p>
           <input type="hidden" id="adminRevisionId">
 
-          <label class="field-label" for="adminRevisionCategory">Catégorie de publication</label>
+          <label class="field-label" for="adminRevisionCategory">Catégorie</label>
           <select class="input" id="adminRevisionCategory" onchange="updateAdminPublicationPreviews()">
             <option>Burkina Faso</option><option>Culture générale</option><option>Histoire-Géo</option><option>Mathématiques</option><option>Physique-Chimie</option><option>Psychotechnique</option><option>Français</option><option>SVT</option><option>Greffier / Droit</option>
           </select>
@@ -883,7 +883,7 @@
             </div>
           </div>
 
-          <label class="field-label" for="adminRevisionTitle">Titre de la publication</label>
+          <label class="field-label" for="adminRevisionTitle">Titre</label>
           <input class="input" id="adminRevisionTitle" maxlength="180" placeholder="Ex : Les institutions du Burkina Faso">
 
           <label class="field-label" for="adminRevisionPoints">Points essentiels <span>(un point par ligne)</span></label>
@@ -893,7 +893,7 @@
           <textarea class="input admin-textarea" id="adminRevisionRemember" placeholder="La règle ou l’idée principale à mémoriser"></textarea>
 
           <div class="admin-switch-row">
-            <label><input type="checkbox" id="adminRevisionPremium" onchange="updateAdminPublicationPreviews()"> Publication Premium <small>(sinon Gratuit)</small></label>
+            <label><input type="checkbox" id="adminRevisionPremium" onchange="updateAdminPublicationPreviews()"> Réserver aux abonnés <small>(sinon Gratuit)</small></label>
           </div>
 
           <button class="btn btn-green btn-block" id="adminRevisionSaveBtn" onclick="saveAdminRevisionFiche()">Publier la fiche ou notion</button>
@@ -902,14 +902,14 @@
 
           <hr class="soft-separator">
           <h3>Fiches et notions publiées</h3>
-          <div id="adminRevisionList" class="admin-list"><div class="admin-empty">Aucune fiche publiée depuis le panel.</div></div>
+          <div id="adminRevisionList" class="admin-list"><div class="admin-empty">Aucune fiche publiée depuis cette page.</div></div>
         </div>
       </div>
 
       <div id="adminResourcesPane" class="admin-pane" style="display:none">
         <div class="legal-card admin-card">
           <h3>Publier un document</h3>
-          <p class="admin-help">Ajoute un PDF, un document Word/DOCX ou une image. Les candidats verront le fichier dans “Documents & fichiers”.</p>
+          <p class="admin-help">Ajoute un PDF, un document Word ou une image. Les candidats verront le fichier dans “Documents”.</p>
 
           <label class="field-label" for="adminResourceTitle">Titre du document</label>
           <input class="input" id="adminResourceTitle" placeholder="Ex : Sujet corrigé BEPC 2024">
@@ -944,7 +944,7 @@
 
           <hr class="soft-separator">
           <h3>Mes documents</h3>
-          <p class="admin-help">Après publication, les documents sont rangés automatiquement dans l’historique publié. Ils restent visibles chez le candidat. Supprimer les retire partout.</p>
+          <p class="admin-help">Les documents publiés restent visibles chez les candidats. Les supprimer les retire partout.</p>
           <div id="adminResourceHistoryControls" class="admin-filter-row"></div>
           <div id="adminResourceSummary" class="admin-qcm-summary"></div>
           <div id="adminResourceList" class="admin-list"></div>
@@ -973,7 +973,7 @@
               </select>
             </div>
             <div>
-              <label class="field-label" for="adminNewsStatus">Statut</label>
+              <label class="field-label" for="adminNewsStatus">État</label>
               <select class="input" id="adminNewsStatus">
                 <option>Ouvert</option>
                 <option>Bientôt</option>
@@ -1019,16 +1019,16 @@
       <div id="adminAiPane" class="admin-pane" style="display:none">
         <div class="legal-card admin-card">
           <div class="ai-panel-heading">
-            <img src="img/ai-qcm-logo.svg" alt="Logo IA QCM">
+            <img src="img/ai-qcm-logo.svg" alt="Aide à la création de QCM">
             <div>
-              <h3>Générer des QCM vérifiés</h3>
+              <h3>Préparer des QCM vérifiés</h3>
               <p class="admin-help">Chaque réponse est préparée avec une source ou une démonstration, puis contrôlée automatiquement avant publication.</p>
             </div>
           </div>
           <div class="admin-stats" id="adminAiStatus">
-            <div><b>—</b><span>IA QCM</span></div>
-            <div><b>Relecture</b><span>Mode sûr</span></div>
-            <div><b>Admin</b><span>Validation</span></div>
+            <div><b>—</b><span>Aide QCM</span></div>
+            <div><b>Relecture</b><span>Contrôle</span></div>
+            <div><b>Gestion</b><span>Avant publication</span></div>
           </div>
 
           <div class="daily-ai-card">
@@ -1037,21 +1037,21 @@
                 <h3>QCM PDF quotidiens vérifiés</h3>
                 <p class="admin-help">Chaque jour, l’outil cherche les preuves, contrôle les réponses et bloque toute publication incomplète.</p>
               </div>
-              <button class="mini-btn" onclick="loadDailyAiDrafts()">Actualiser</button>
+              <button class="mini-btn" onclick="loadDailyAiDrafts()">Mettre à jour</button>
             </div>
             <div class="admin-stats" id="aiDailyStatus">
               <div><b>50</b><span>QCM / jour</span></div>
               <div><b>PDF</b><span>À vérifier</span></div>
-              <div><b>Admin</b><span>Publication</span></div>
+              <div><b>Gestion</b><span>À publier</span></div>
             </div>
             <label class="field-label" for="aiDailyMode">Organisation du sujet</label>
             <select class="input" id="aiDailyMode">
-              <option value="module" selected>Par module</option>
+              <option value="module" selected>Par matière</option>
               <option value="niveau">Par niveau</option>
             </select>
             <div class="admin-options-grid">
               <div>
-                <label class="field-label" for="aiDailyCategory">Catégorie / module</label>
+                <label class="field-label" for="aiDailyCategory">Matière</label>
                 <select class="input" id="aiDailyCategory" onchange="updateAdminPublicationPreviews()">
                   <option>Burkina Faso</option><option>Culture générale</option><option>Histoire-Géo</option><option>Mathématiques</option><option>Physique-Chimie</option><option>Psychotechnique</option><option>Français</option><option>SVT</option><option>Greffier / Droit</option>
                 </select>
@@ -1066,7 +1066,7 @@
             <div class="publication-target" id="aiDailyDestinationPreview"></div>
             <div class="admin-switch-row">
               <label><input type="checkbox" id="aiDailyPremium" onchange="updateAdminPublicationPreviews()"> Préparer pour Premium <small>(sinon Gratuit)</small></label>
-              <label><input type="checkbox" id="aiDailyForce"> Régénérer aujourd’hui</label>
+              <label><input type="checkbox" id="aiDailyForce"> Refaire aujourd’hui</label>
             </div>
             <button class="btn btn-green btn-block" id="aiDailyRunBtn" onclick="runDailyAiQcm()">Créer le PDF du jour maintenant</button>
             <div class="payment-result" id="aiDailyResult"></div>
@@ -1109,7 +1109,7 @@
           <label class="field-label" for="aiPublicationName">Nom du nouveau QCM</label>
           <input class="input" id="aiPublicationName" placeholder="Ex : Culture générale Burkina Faso — Actualités 2026">
 
-          <label class="field-label" for="aiPdfSource">PDF source <span>(facultatif)</span></label>
+          <label class="field-label" for="aiPdfSource">Document PDF <span>(facultatif)</span></label>
           <input class="input" type="file" id="aiPdfSource" accept="application/pdf,.pdf">
           <p class="admin-help">Ajoute un PDF si tu veux préparer des QCM à partir d’un document précis. Les questions seront à relire avant publication.</p>
 
@@ -1127,7 +1127,7 @@
             <div>
               <label class="field-label">Options</label>
               <div class="admin-switch-row" style="margin-top:0">
-                <label><input type="checkbox" id="aiPremium" onchange="updateAdminPublicationPreviews()"> Générer pour Premium <small>(sinon Gratuit)</small></label>
+                <label><input type="checkbox" id="aiPremium" onchange="updateAdminPublicationPreviews()"> Préparer pour Premium <small>(sinon Gratuit)</small></label>
               </div>
             </div>
           </div>
@@ -1138,7 +1138,7 @@
 
           <hr class="soft-separator">
           <div class="ai-panel-heading small">
-            <img src="img/ai-qcm-logo.svg" alt="Logo veille IA">
+            <img src="img/ai-qcm-logo.svg" alt="Recherche des concours">
             <div>
               <h3>Veille des concours directs et professionnels</h3>
               <p class="admin-help">Recherche uniquement les annonces officielles liées aux concours directs et professionnels. S’il n’y en a aucune, la liste reste vide.</p>
@@ -1153,12 +1153,12 @@
 
       <div id="adminNotificationsPane" class="admin-pane" style="display:none">
         <div class="legal-card admin-card">
-          <h3>Vérification des notifications</h3>
+          <h3>Essai des messages</h3>
           <p class="admin-help">Vérifie facilement l’envoi des messages de confirmation aux candidats.</p>
           <div class="admin-stats" id="adminNotificationStatus">
             <div><b>—</b><span>E-mail</span></div>
             <div><b>—</b><span>SMS</span></div>
-            <div><b>Test</b><span>Admin</span></div>
+            <div><b>Essai</b><span>Gestion</span></div>
           </div>
           <label class="field-label" for="adminTestEmail">Adresse e-mail</label>
           <input class="input" type="email" id="adminTestEmail" placeholder="exemple@gmail.com">
@@ -1185,7 +1185,7 @@
           <div class="payment-result" id="adminCampaignResult"></div>
         </div>
         <div class="legal-card admin-card">
-          <div class="section-head"><h3>Suivi des envois</h3><button class="mini-btn" onclick="loadAdminEmailCampaigns()">Actualiser</button></div>
+          <div class="section-head"><h3>Messages envoyés</h3><button class="mini-btn" onclick="loadAdminEmailCampaigns()">Mettre à jour</button></div>
           <div id="adminCampaignList" class="admin-list"><div class="admin-empty">Aucune campagne.</div></div>
         </div>
       </div>
@@ -1202,7 +1202,7 @@
     <div class="plan-card subscription-hero">
       <div class="plan-badge">⭐ Réussite Premium</div>
       <h2 id="premiumHeroTitle">Prépare-toi sans limite</h2>
-      <p id="premiumHeroText">Débloque toute la banque de QCM uniques et corrigés, les matières avancées, les examens blancs, la révision des erreurs et le suivi de progression.</p>
+      <p id="premiumHeroText">Débloque tous les QCM corrigés, toutes les matières, les examens blancs, la correction des erreurs et le suivi de ta progression.</p>
       <div class="premium-hero-points" aria-label="Avantages Premium">
         <span>✅ Plus de 2 000 QCM uniques</span>
         <span>🎯 Examens blancs</span>
@@ -1221,7 +1221,7 @@
           <em>Idéal pour commencer</em>
           <ul>
             <li>✅ Accès 30 jours</li>
-            <li>✅ Toutes les formations</li>
+            <li>✅ Toutes les matières</li>
             <li>✅ QCM & exercices</li>
           </ul>
         </button>
@@ -1232,7 +1232,7 @@
           <em>🔥 Économisez 8 000 FCFA</em>
           <ul>
             <li>✅ Accès pendant 12 mois</li>
-            <li>✅ Toutes les formations</li>
+            <li>✅ Toutes les matières</li>
             <li>✅ QCM & exercices</li>
             <li>✅ Examens blancs</li>
           </ul>
@@ -1245,14 +1245,14 @@
       <div class="benefit-list">
         <div class="benefit"><span>📝</span><b>Examens blancs</b><small>40 questions, 40 minutes, conditions réelles.</small></div>
         <div class="benefit"><span>❌</span><b>Mes erreurs</b><small>Rejoue uniquement ce que tu as raté.</small></div>
-        <div class="benefit"><span>📊</span><b>Statistiques détaillées</b><small>Taux de réussite et progression par matière.</small></div>
-        <div class="benefit"><span>🗂️</span><b>Matières avancées</b><small>Maths, SVT, Français, Psychotechnique et contenus concours.</small></div>
+        <div class="benefit"><span>📊</span><b>Suivi détaillé</b><small>Taux de réussite et progression par matière.</small></div>
+        <div class="benefit"><span>🗂️</span><b>Toutes les matières</b><small>Maths, SVT, Français, Psychotechnique et contenus concours.</small></div>
       </div>
     </div>
 
     <div class="pay-box">
       <h3>Paiement Mobile Money</h3>
-      <p class="sub" id="paymentInstruction">Choisis ton réseau. L’application t’expliquera comment confirmer la transaction sur ton téléphone.</p>
+      <p class="sub" id="paymentInstruction">Choisis ton réseau. L’application t’expliquera comment confirmer le paiement sur ton téléphone.</p>
       <div class="provider-grid" id="providerGrid">
         <button class="provider-option on" data-provider="ORANGE_MONEY" onclick="selectProvider('ORANGE_MONEY',true)"><img src="img/orange-money.png" alt="Orange Money Burkina Faso"><b>Orange Money</b><small>Burkina Faso</small></button>
         <button class="provider-option" data-provider="MOOV_MONEY" onclick="selectProvider('MOOV_MONEY',true)"><img src="img/moov-money.png" alt="Moov Money Burkina Faso"><b>Moov Money</b><small>Réseau Telmob</small></button>
@@ -1294,7 +1294,7 @@
       </div>
       <div class="legal-card">
         <h3>Paiements</h3>
-        <p>Les paiements Mobile Money sont traités par des prestataires autorisés. Réussite Concours BF ne stocke pas les codes secrets Orange Money ou Moov Money.</p>
+        <p>Les paiements Mobile Money passent par des services de paiement autorisés. Réussite Concours BF ne stocke pas les codes secrets Orange Money ou Moov Money.</p>
       </div>
       <div class="legal-card">
         <h3>Sécurité</h3>
@@ -1314,7 +1314,7 @@
       <p class="updated">Dernière mise à jour : 21 septembre 2026</p>
       <div class="legal-card">
         <h3>Objet</h3>
-        <p>Réussite Concours BF est une plateforme d'entraînement aux examens et concours. Les contenus servent à la préparation et ne garantissent pas l'admission à un concours.</p>
+        <p>Réussite Concours BF est une application d'entraînement aux examens et concours. Les contenus servent à la préparation et ne garantissent pas l'admission à un concours.</p>
       </div>
       <div class="legal-card">
         <h3>Compte candidat</h3>
@@ -1322,11 +1322,11 @@
       </div>
       <div class="legal-card">
         <h3>Abonnement Premium</h3>
-        <p>L'abonnement Premium donne accès aux fonctionnalités verrouillées pendant la période payée. Le renouvellement se fait par paiement Mobile Money.</p>
+        <p>L'abonnement Premium donne accès aux contenus Premium pendant la période payée. Le renouvellement se fait par paiement Mobile Money.</p>
       </div>
       <div class="legal-card">
         <h3>Utilisation interdite</h3>
-        <p>Il est interdit de copier, revendre ou redistribuer les questions, corrections et contenus de la plateforme sans autorisation.</p>
+        <p>Il est interdit de copier, revendre ou redistribuer les questions, corrections et contenus de l’application sans autorisation.</p>
       </div>
     </div>
   </section>
@@ -1341,7 +1341,7 @@
       <h1>Mentions légales</h1>
       <div class="legal-card">
         <h3>Éditeur</h3>
-        <p>Réussite Concours BF — plateforme éducative basée au Burkina Faso.</p>
+        <p>Réussite Concours BF — application éducative basée au Burkina Faso.</p>
       </div>
       <div class="legal-card">
         <h3>Contact</h3>
@@ -1432,7 +1432,7 @@
   <!-- ===== bottom nav ===== -->
   <nav class="bottom-nav" id="bottomNav">
     <button class="nav-btn on" data-target="home" onclick="show('home')"><span class="ni" id="homeNavIcon">🏠</span><span class="nav-label" id="homeNavLabel">Accueil</span></button>
-    <button class="nav-btn" data-target="formations" onclick="show('formations')"><span class="ni">🗂️</span>Formations</button>
+    <button class="nav-btn" data-target="formations" onclick="show('formations')"><span class="ni">🗂️</span>Matières</button>
     <button class="nav-btn" data-target="passport" onclick="show('passport')"><span class="ni">🛂</span>Passeport</button>
     <button class="nav-btn" data-target="stats" onclick="show('stats')"><span class="ni">📊</span>Progrès</button>
     <button class="nav-btn nav-access" data-target="subscription" onclick="show('subscription')"><span class="ni">🔓</span><span class="nav-label">Premium</span></button>
@@ -1477,7 +1477,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=application-coherence-cleanup-v27"></script>
-<script src="js/app.js?v=application-coherence-cleanup-v27"></script>
+<script src="js/questions.js?v=plain-language-cleanup-v28"></script>
+<script src="js/app.js?v=plain-language-cleanup-v28"></script>
 </body>
 </html>

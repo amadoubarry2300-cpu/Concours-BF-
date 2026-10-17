@@ -189,7 +189,7 @@ function supabaseReady(){
 
 async function supabaseRequest(endpoint, { method='GET', body, prefer, key='service' } = {}){
   const apiKey = key === 'anon' ? (SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY) : SUPABASE_SERVICE_ROLE_KEY;
-  if (!SUPABASE_URL || !apiKey) throw new Error('Supabase non configuré');
+  if (!SUPABASE_URL || !apiKey) throw new Error('Service de données indisponible.');
   const headers = {
     apikey: apiKey,
     Authorization: `Bearer ${apiKey}`,
@@ -205,7 +205,7 @@ async function supabaseRequest(endpoint, { method='GET', body, prefer, key='serv
   let data = null;
   try{ data = text ? JSON.parse(text) : null; }catch{ data = text; }
   if (!res.ok){
-    const err = new Error(data?.message || data?.hint || `Erreur Supabase ${res.status}`);
+    const err = new Error('Service de données indisponible.');
     err.status = res.status;
     err.details = data;
     throw err;
@@ -222,7 +222,7 @@ function encodeStoragePath(value){
 }
 
 function storageHeaders(extra = {}){
-  if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error('Stockage indisponible');
+  if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error('Service indisponible pour le moment.');
   return {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -232,14 +232,14 @@ function storageHeaders(extra = {}){
 
 let resourceBucketReady = false;
 async function ensureResourceBucket(){
-  if (!supabaseReady()) throw Object.assign(new Error('Stockage indisponible'), { status:503 });
+  if (!supabaseReady()) throw Object.assign(new Error('Service indisponible pour le moment.'), { status:503 });
   if (resourceBucketReady) return;
   const url = `${storageBaseUrl()}/bucket/${encodeURIComponent(RESOURCE_BUCKET)}`;
   const check = await fetch(url, { headers:storageHeaders() });
   if (check.ok){ resourceBucketReady = true; return; }
   if (check.status !== 404){
     const msg = await check.text().catch(()=>'');
-    throw Object.assign(new Error('Stockage indisponible'), { status:check.status, details:msg });
+    throw Object.assign(new Error('Service indisponible pour le moment.'), { status:check.status, details:msg });
   }
   const create = await fetch(`${storageBaseUrl()}/bucket`, {
     method:'POST',
@@ -738,7 +738,7 @@ async function notifyPremiumActivation(profile, sub, rawEmail){
   const name = profileDisplayName(profile, 'candidat');
   const endDate = sub?.expiresAt ? new Date(sub.expiresAt).toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric' }) : '';
   const subject = sub?.renewed ? 'Ton abonnement Premium est renouvelé' : 'Ton accès Premium est activé';
-  const text = `Bonjour ${name},\n\nTon accès Premium Réussite Concours BF est ${sub?.renewed ? 'renouvelé' : 'activé'}${endDate ? ` jusqu'au ${endDate}` : ''}. Référence : ${sub?.txRef || 'confirmée'}.\n\nBonne préparation !`;
+  const text = `Bonjour ${name},\n\nTon accès Premium Réussite Concours BF est ${sub?.renewed ? 'renouvelé' : 'activé'}${endDate ? ` jusqu'au ${endDate}` : ''}. Numéro de suivi : ${sub?.txRef || 'confirmé'}.\n\nBonne préparation !`;
   const html = brandedEmailHtml({
     title:sub?.renewed ? 'Premium renouvelé' : 'Premium activé',
     greeting:`Bonjour ${name},`,
@@ -1282,7 +1282,7 @@ async function getSessionFromRequest(req){
 async function requireSession(req, res, next){
   try{
     const sessionData = await getSessionFromRequest(req);
-    if (!sessionData) return res.status(401).json({ message:'Session expirée. Reconnecte-toi.' });
+    if (!sessionData) return res.status(401).json({ message:'Ta connexion a expiré. Reconnecte-toi.' });
     req.sessionData = sessionData.session;
     req.profile = sessionData.profile;
     req.phone = sessionData.profile.phone;
@@ -1299,8 +1299,8 @@ function isAdminProfile(profile){
 async function requireAdmin(req, res, next){
   try{
     const sessionData = await getSessionFromRequest(req);
-    if (!sessionData) return res.status(401).json({ message:'Session expirée. Reconnecte-toi.' });
-    if (!isAdminProfile(sessionData.profile)) return res.status(403).json({ message:'Accès administrateur requis' });
+    if (!sessionData) return res.status(401).json({ message:'Ta connexion a expiré. Reconnecte-toi.' });
+    if (!isAdminProfile(sessionData.profile)) return res.status(403).json({ message:'Cet espace est réservé au gestionnaire.' });
     req.sessionData = sessionData.session;
     req.profile = sessionData.profile;
     req.phone = sessionData.profile.phone;
@@ -1501,7 +1501,7 @@ async function geminiModelsToTry({ verifier=false } = {}){
 
 function extractJsonFromAi(text){
   const raw = String(text || '').trim();
-  if (!raw) throw Object.assign(new Error('Réponse IA vide'), { status:502 });
+  if (!raw) throw Object.assign(new Error('Aucune réponse reçue'), { status:502 });
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = fenced ? fenced[1].trim() : raw;
   try{ return JSON.parse(candidate); }catch{}
@@ -1515,7 +1515,7 @@ function extractJsonFromAi(text){
   if (startObj >= 0 && endObj > startObj){
     return JSON.parse(candidate.slice(startObj, endObj + 1));
   }
-  throw Object.assign(new Error('Réponse IA non lisible'), { status:502 });
+  throw Object.assign(new Error('La réponse reçue n’est pas lisible'), { status:502 });
 }
 
 const AI_QCM_FORBIDDEN_PATTERNS = [
@@ -2662,7 +2662,7 @@ async function callOpenRouterGenerateParts(parts, options = {}){
 }
 
 async function callGeminiGenerateParts(parts, options = {}){
-  if (!GEMINI_API_KEY) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
+  if (!GEMINI_API_KEY) throw Object.assign(new Error('L’aide à la création est indisponible pour le moment.'), { status:503 });
   let lastError = null;
   let lastStatus = 502;
   let quotaFailureSeen = false;
@@ -2746,7 +2746,7 @@ async function callAiGenerateParts(parts, options = {}){
   const preferredProvider = AI_QCM_SINGLE_GEMINI_MODE ? 'gemini' : options.preferredProvider;
   let providers = aiProviderOrder(preferredProvider);
   if (options.singleProvider || AI_QCM_SINGLE_GEMINI_MODE) providers = providers.slice(0, 1);
-  if (!providers.length) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
+  if (!providers.length) throw Object.assign(new Error('L’aide à la création est indisponible pour le moment.'), { status:503 });
   const failures = [];
   for (const provider of providers){
     const startedAt = Date.now();
@@ -3965,7 +3965,7 @@ function normalizeEditedDailyQuestions(rows, draft){
 }
 
 async function rebuildDailyAiDraftPdf(draft, questions, overrides = {}){
-  if (!draft?.id) throw Object.assign(new Error('Brouillon PDF introuvable'), { status:404 });
+  if (!draft?.id) throw Object.assign(new Error('Préparation PDF introuvable'), { status:404 });
   const category = cleanText(overrides.category || draft.category || 'Culture générale', 80);
   const level = cleanText(overrides.level || draft.level || 'Concours', 40);
   const isPremium = overrides.is_premium === undefined ? Boolean(draft.is_premium) : Boolean(overrides.is_premium);
@@ -4027,8 +4027,8 @@ function dailyDraftMatchesPlan(draft, plan){
 }
 
 async function startDailyAiQcmDraft({ force=false, overrides={} } = {}){
-  if (!aiProviderConfigured()) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
-  if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour garder les PDF IA quotidiens'), { status:503 });
+  if (!aiProviderConfigured()) throw Object.assign(new Error('L’aide à la création est indisponible pour le moment.'), { status:503 });
+  if (!supabaseReady()) throw Object.assign(new Error('L’enregistrement des PDF du jour est indisponible pour le moment.'), { status:503 });
   const plan = dailyAiPlan(todayId(), overrides);
   const drafts = await loadAiDailyIndex();
   const existing = drafts.find(d => dailyDraftMatchesPlan(d, plan));
@@ -4107,8 +4107,8 @@ function recoverDailyAiDraft(draftId, source = {}){
 }
 
 async function generateDailyAiQcmBatch(draftId, recovery = {}){
-  if (!aiProviderConfigured()) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
-  if (!supabaseReady()) throw Object.assign(new Error('Stockage requis pour conserver la préparation quotidienne'), { status:503 });
+  if (!aiProviderConfigured()) throw Object.assign(new Error('L’aide à la création est indisponible pour le moment.'), { status:503 });
+  if (!supabaseReady()) throw Object.assign(new Error('L’enregistrement de la préparation du jour est indisponible pour le moment.'), { status:503 });
   const drafts = await loadAiDailyIndex();
   let idx = drafts.findIndex(d => d.id === draftId && d.status !== 'deleted');
   if (idx < 0){
@@ -4212,8 +4212,8 @@ async function generateDailyAiQcmBatch(draftId, recovery = {}){
 }
 
 async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
-  if (!aiProviderConfigured()) throw Object.assign(new Error('Service IA indisponible'), { status:503 });
-  if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour garder les PDF IA quotidiens'), { status:503 });
+  if (!aiProviderConfigured()) throw Object.assign(new Error('L’aide à la création est indisponible pour le moment.'), { status:503 });
+  if (!supabaseReady()) throw Object.assign(new Error('L’enregistrement des PDF du jour est indisponible pour le moment.'), { status:503 });
   const plan = dailyAiPlan(todayId(), overrides);
   const drafts = await loadAiDailyIndex();
   const existing = drafts.find(d => dailyDraftMatchesPlan(d, plan));
@@ -4227,7 +4227,7 @@ async function generateDailyAiQcmDraft({ force=false, overrides={} } = {}){
   });
   const questions = generated.questions;
   if (questions.length < plan.count){
-    throw Object.assign(new Error(`Seulement ${questions.length}/${plan.count} QCM fiables et non répétitifs ont été validés. Relance la génération avec un thème plus précis.`), { status:502 });
+    throw Object.assign(new Error(`Seulement ${questions.length}/${plan.count} QCM fiables et non répétitifs ont été validés. Recommence avec un sujet plus précis.`), { status:502 });
   }
   const title = `QCM quotidien — ${plan.category} — ${plan.level} — ${plan.date}`;
   const pdfBuffer = await buildQcmDraftPdf({ title, date:plan.date, category:plan.category, level:plan.level, questions });
@@ -4636,7 +4636,7 @@ function stagedNewsDraftPayload(item){
 }
 
 async function stageOfficialNewsDrafts(items, authorPhone = 'system'){
-  if (!supabaseReady()) throw Object.assign(new Error('Stockage Supabase requis pour préparer les communiqués officiels'), { status:503 });
+  if (!supabaseReady()) throw Object.assign(new Error('L’enregistrement des communiqués est indisponible pour le moment.'), { status:503 });
   const news = await loadNewsIndex();
   const staged = [];
   const now = new Date().toISOString();
@@ -5260,14 +5260,14 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'application-coherence-cleanup-v27',
+    build: 'plain-language-cleanup-v28',
     time: new Date().toISOString()
   });
 });
 
 app.post('/api/auth/register', async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Stockage indisponible pour le moment.' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const phone = normalizePhone(req.body?.phone);
     const firstName = String(req.body?.firstName || '').trim();
     const lastName = String(req.body?.lastName || '').trim();
@@ -5412,7 +5412,7 @@ app.post('/api/auth/pin-reset/confirm', async (req, res, next) => {
 
 app.post('/api/auth/login', async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Stockage indisponible pour le moment.' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const phone = normalizePhone(req.body?.phone);
     const pin = String(req.body?.pin || '').replace(/\D/g, '');
     if (!phone) return res.status(400).json({ message:'Numéro invalide' });
@@ -5452,7 +5452,7 @@ app.post('/api/auth/login', async (req, res, next) => {
 
 app.post('/api/progress/save', requireSession, async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Stockage indisponible pour le moment.' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const progress = await saveProgress(req.phone, req.body?.progress || {});
     res.json({ ok:true, progress });
   }catch(err){ next(err); }
@@ -5575,7 +5575,7 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
         ok:true,
         reused:true,
         ...resume,
-        message:'Un paiement est déjà en attente. Confirme-le sur le téléphone puis vérifie son statut.'
+        message:'Un paiement est déjà en attente. Confirme-le sur le téléphone, puis vérifie le paiement.'
       });
     }
 
@@ -5674,7 +5674,7 @@ app.get('/api/payments/saspay/status', requireSession, async (req, res, next) =>
   try{
     requireSasPayConfig();
     const tx = String(req.query.transactionId || req.query.tx || '').trim();
-    if (!tx) return res.status(400).json({ message:'Référence paiement manquante' });
+    if (!tx) return res.status(400).json({ message:'Numéro de suivi du paiement manquant' });
     const record = await getPaymentRecord(tx);
     if (!record || normalizePhone(record.phone) !== req.phone) return res.status(404).json({ message:'Paiement introuvable' });
     const result = await verifySasPayRecord(record, { accountPhone:req.phone });
@@ -5892,7 +5892,7 @@ app.get('/api/admin/ai/daily/:id/pdf', requireAdmin, async (req, res, next) => {
         res.setHeader('Content-Disposition', `${disposition}; filename="qcm-quotidien.pdf"`);
         return res.send(pdf);
       }
-      return res.status(404).json({ message:'PDF IA introuvable' });
+      return res.status(404).json({ message:'PDF introuvable' });
     }
     const file = await downloadResourceObject(draft.storage_path);
     res.setHeader('Content-Type', 'application/pdf');
@@ -5907,7 +5907,7 @@ app.put('/api/admin/ai/daily/:id/questions', requireAdmin, async (req, res, next
   try{
     const drafts = await loadAiDailyIndex();
     const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
-    if (idx < 0) return res.status(404).json({ message:'Brouillon PDF introuvable' });
+    if (idx < 0) return res.status(404).json({ message:'Préparation PDF introuvable' });
     const draft = drafts[idx];
     if (draft.status === 'published'){
       return res.status(409).json({ message:'Retire d’abord ce PDF du côté candidat avant de le corriger.' });
@@ -5934,7 +5934,7 @@ app.post('/api/admin/ai/daily/:id/verify', requireAdmin, async (req, res, next) 
     if (!aiProviderConfigured()) return res.status(503).json({ message:'Service de vérification indisponible.' });
     const drafts = await loadAiDailyIndex();
     const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
-    if (idx < 0) return res.status(404).json({ message:'Brouillon PDF introuvable' });
+    if (idx < 0) return res.status(404).json({ message:'Préparation PDF introuvable' });
     const draft = drafts[idx];
     if (draft.status === 'published') return res.status(409).json({ message:'Retire d’abord ce PDF du côté candidat avant de le vérifier à nouveau.' });
     const sourceRows = Array.isArray(req.body?.questions) ? req.body.questions : draft.questions;
@@ -5975,10 +5975,10 @@ app.post('/api/admin/ai/daily/:id/verify', requireAdmin, async (req, res, next) 
 
 app.post('/api/admin/ai/daily/:id/replace-question', requireAdmin, async (req, res, next) => {
   try{
-    if (!aiProviderConfigured()) return res.status(503).json({ message:'Service IA indisponible pour remplacer cette question.' });
+    if (!aiProviderConfigured()) return res.status(503).json({ message:'L’aide à la création ne peut pas remplacer cette question pour le moment.' });
     const drafts = await loadAiDailyIndex();
     const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
-    if (idx < 0) return res.status(404).json({ message:'Brouillon PDF introuvable' });
+    if (idx < 0) return res.status(404).json({ message:'Préparation PDF introuvable' });
     const draft = drafts[idx];
     if (draft.status === 'published'){
       return res.status(409).json({ message:'Retire d’abord ce PDF du côté candidat avant de le corriger.' });
@@ -6038,17 +6038,17 @@ app.post('/api/admin/ai/daily/:id/replace-question', requireAdmin, async (req, r
 
 app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const drafts = await loadAiDailyIndex();
     const idx = drafts.findIndex(d => d.id === req.params.id && d.status !== 'deleted');
-    if (idx < 0) return res.status(404).json({ message:'Brouillon IA introuvable' });
+    if (idx < 0) return res.status(404).json({ message:'Préparation introuvable' });
     let draft = drafts[idx];
     let questions = Array.isArray(draft.questions) ? draft.questions : [];
     const generationIssue = dailyDraftGenerationIssue(draft);
     if (generationIssue){
-      return res.status(409).json({ message:`${generationIssue}. Reprends la génération avant de publier.` });
+      return res.status(409).json({ message:`${generationIssue}. Recommence la préparation avant de publier.` });
     }
-    if (!questions.length) return res.status(400).json({ message:'Aucun QCM à publier dans ce brouillon' });
+    if (!questions.length) return res.status(400).json({ message:'Aucun QCM à publier dans cette préparation' });
     const publishLevel = cleanText(req.body?.level || draft.level || '', 40) || draft.level;
     const requestedPublishCategory = cleanText(req.body?.category || draft.category || '', 80) || draft.category;
     if (!AI_DAILY_DEFAULT_CATEGORIES.includes(requestedPublishCategory)) return res.status(400).json({ message:'Choisis la catégorie exacte avant de publier.' });
@@ -6091,7 +6091,7 @@ app.post('/api/admin/ai/daily/:id/publish', requireAdmin, async (req, res, next)
     if (!alreadyHasQuestions){
       const checked = await validateQuestionsForPublication(questions.map(q => ({ ...q, category:publishCategory || q.category, level:publishLevel || q.level })));
       if (checked.rejected.length){
-        return res.status(409).json({ message:`Publication bloquée : ${checked.rejected.length} QCM déjà existant(s), trop proche(s) ou non conforme(s). Régénère un nouveau PDF strict.`, rejected:checked.rejected.slice(0, 5) });
+        return res.status(409).json({ message:`Publication bloquée : ${checked.rejected.length} QCM déjà existant(s), trop proche(s) ou non conforme(s). Prépare un nouveau PDF.`, rejected:checked.rejected.slice(0, 5) });
       }
       const payload = checked.accepted.map(q => adminQuestionPayload({
         ...q,
@@ -6180,7 +6180,7 @@ app.delete('/api/admin/ai/daily/:id', requireAdmin, async (req, res, next) => {
   try{
     const drafts = await loadAiDailyIndex();
     const idx = drafts.findIndex(d => d.id === req.params.id);
-    if (idx < 0) return res.status(404).json({ message:'Brouillon IA introuvable' });
+    if (idx < 0) return res.status(404).json({ message:'Préparation introuvable' });
     const draft = drafts[idx];
     if (draft.status === 'published'){
       await ensureDailyDraftResource(draft, { category:draft.category, level:draft.level, is_premium:draft.is_premium, author_phone:req.phone }).catch(()=>{});
@@ -6208,10 +6208,10 @@ app.get('/api/cron/ai-daily-qcm', async (req, res, next) => {
 
 app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
   try{
-    if (!aiProviderConfigured()) return res.status(503).json({ message:'Service IA indisponible pour le moment. Réessaie plus tard.' });
+    if (!aiProviderConfigured()) return res.status(503).json({ message:'L’aide à la création est indisponible pour le moment. Réessaie plus tard.' });
     const level = cleanText(req.body?.level || 'Concours', 40);
     const requestedCategory = cleanText(req.body?.category || '', 80);
-    if (!AI_DAILY_DEFAULT_CATEGORIES.includes(requestedCategory)) return res.status(400).json({ message:'Choisis une catégorie avant de générer.' });
+    if (!AI_DAILY_DEFAULT_CATEGORIES.includes(requestedCategory)) return res.status(400).json({ message:'Choisis une catégorie avant de préparer les QCM.' });
     if (!categoryAllowedForLevel(requestedCategory, level)) return res.status(400).json({ message:`La catégorie « ${requestedCategory} » n’est pas compatible avec le niveau ${level}.` });
     const category = requestedCategory;
     const theme = cleanText(req.body?.theme || req.body?.publication_name || category, 240);
@@ -6227,7 +6227,7 @@ app.post('/api/admin/ai/qcm', requireAdmin, async (req, res, next) => {
 
 app.post('/api/admin/ai/qcm/verify', requireAdmin, async (req, res, next) => {
   try{
-    if (!aiProviderConfigured()) return res.status(503).json({ message:'Vérificateur IA indisponible pour le moment.' });
+    if (!aiProviderConfigured()) return res.status(503).json({ message:'Le contrôle automatique est indisponible pour le moment.' });
     const sourceRows = Array.isArray(req.body?.questions) ? req.body.questions.slice(0, AI_QCM_BATCH_SIZE) : [];
     if (!sourceRows.length) return res.status(400).json({ message:'Aucun QCM à vérifier.' });
     const level = cleanText(req.body?.level || sourceRows[0]?.level || 'Concours', 40);
@@ -6249,17 +6249,17 @@ app.post('/api/admin/ai/qcm/verify', requireAdmin, async (req, res, next) => {
 
 app.post('/api/admin/ai/qcm-pdf', requireAdmin, express.raw({ type:() => true, limit:'8mb' }), async (req, res, next) => {
   try{
-    if (!aiProviderConfigured()) return res.status(503).json({ message:'Service IA indisponible pour le moment. Réessaie plus tard.' });
+    if (!aiProviderConfigured()) return res.status(503).json({ message:'L’aide à la création est indisponible pour le moment. Réessaie plus tard.' });
     const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
     const fileName = safeFileName(headerText(req, 'x-file-name', 180) || 'source.pdf');
     const mimeType = String(req.headers['content-type'] || 'application/pdf').split(';')[0].trim() || 'application/pdf';
-    if (!buffer.length) return res.status(400).json({ message:'Choisis un PDF source pour générer des QCM.' });
+    if (!buffer.length) return res.status(400).json({ message:'Choisis un document PDF pour préparer les QCM.' });
     if (buffer.length > MAX_RESOURCE_FILE_BYTES) return res.status(413).json({ message:`PDF trop lourd. Maximum ${Math.round(MAX_RESOURCE_FILE_BYTES/1024/1024)} Mo.` });
-    if (!isPdfFile(fileName, mimeType)) return res.status(400).json({ message:'Seuls les fichiers PDF sont acceptés pour cette option IA.' });
+    if (!isPdfFile(fileName, mimeType)) return res.status(400).json({ message:'Choisis un fichier PDF pour cette préparation.' });
 
     const level = headerText(req, 'x-ai-level', 40) || 'Concours';
     const requestedCategory = headerText(req, 'x-ai-category', 80);
-    if (!AI_DAILY_DEFAULT_CATEGORIES.includes(requestedCategory)) return res.status(400).json({ message:'Choisis une catégorie avant de générer.' });
+    if (!AI_DAILY_DEFAULT_CATEGORIES.includes(requestedCategory)) return res.status(400).json({ message:'Choisis une catégorie avant de préparer les QCM.' });
     if (!categoryAllowedForLevel(requestedCategory, level)) return res.status(400).json({ message:`La catégorie « ${requestedCategory} » n’est pas compatible avec le niveau ${level}.` });
     const category = requestedCategory;
     const publicationName = headerText(req, 'x-ai-publication-name', 180) || '';
@@ -6322,7 +6322,7 @@ app.get('/api/cron/official-news-scan', async (req, res, next) => {
 
 app.get('/api/admin/questions', requireAdmin, async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const limit = Math.min(500, Math.max(1, Number(req.query.limit || 80)));
     const search = cleanText(req.query.search, 120);
     const category = cleanText(req.query.category, 80);
@@ -6401,7 +6401,7 @@ app.post('/api/admin/questions/import/pdf', requireAdmin, async (req, res, next)
 
 app.post('/api/admin/questions/import/publish', requireAdmin, async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const result = await preparePastedQcmImport(req.body || {});
     if (!result.questions.length){
       return res.status(400).json({ message:'Aucun QCM propre et complet à publier.', rejected:result.rejected });
@@ -6452,7 +6452,7 @@ app.post('/api/admin/questions/import/publish', requireAdmin, async (req, res, n
 
 app.post('/api/admin/questions', requireAdmin, async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const payload = adminQuestionPayload(req.body || {});
     if (req.body?.ai_generated){
       const candidate = {
@@ -6477,7 +6477,7 @@ app.post('/api/admin/questions', requireAdmin, async (req, res, next) => {
         requireVerified:true
       });
       if (verificationIssue){
-        return res.status(409).json({ message:`Publication IA bloquée : ${verificationIssue}. Régénère ou revérifie ce QCM.` });
+        return res.status(409).json({ message:`Impossible de publier : ${verificationIssue}. Prépare une nouvelle question ou contrôle-la à nouveau.` });
       }
     }
     const existingTexts = await collectExistingQcmTexts({ includeDaily:false });
@@ -6503,7 +6503,7 @@ app.post('/api/admin/questions', requireAdmin, async (req, res, next) => {
 
 app.patch('/api/admin/questions/:id', requireAdmin, async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const payload = adminQuestionPayload(req.body || {});
     const rows = await supabaseRequest(`questions?id=eq.${encodeURIComponent(req.params.id)}&select=*`, {
       method:'PATCH',
@@ -6525,7 +6525,7 @@ function supabaseInList(values){
 
 app.patch('/api/admin/questions/bulk/status', requireAdmin, async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const ids = adminQuestionIds(req.body || {});
     if (!ids.length) return res.status(400).json({ message:'Sélectionne au moins un QCM.' });
     const restoreInAdmin = Boolean(req.body?.is_active);
@@ -6544,7 +6544,7 @@ app.patch('/api/admin/questions/bulk/status', requireAdmin, async (req, res, nex
 
 app.delete('/api/admin/questions/bulk', requireAdmin, async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const ids = adminQuestionIds(req.body || {});
     if (!ids.length) return res.status(400).json({ message:'Sélectionne au moins un QCM.' });
     const rows = await supabaseRequest(`questions?id=in.(${supabaseInList(ids)})&select=id`, { method:'DELETE', prefer:'return=representation' });
@@ -6557,7 +6557,7 @@ app.delete('/api/admin/questions/bulk', requireAdmin, async (req, res, next) => 
 
 app.patch('/api/admin/questions/:id/status', requireAdmin, async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const restoreInAdmin = Boolean(req.body?.is_active);
     const rows = await supabaseRequest(`questions?id=eq.${encodeURIComponent(req.params.id)}&select=*`, {
       method:'PATCH',
@@ -6574,7 +6574,7 @@ app.patch('/api/admin/questions/:id/status', requireAdmin, async (req, res, next
 
 app.delete('/api/admin/questions/:id', requireAdmin, async (req, res, next) => {
   try{
-    if (!supabaseReady()) return res.status(503).json({ message:'Base de données indisponible' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const rows = await supabaseRequest(`questions?id=eq.${encodeURIComponent(req.params.id)}&select=id`, { method:'DELETE', prefer:'return=representation' });
     await setAdminQuestionArchived([req.params.id], false).catch(()=>{});
     if (!Array.isArray(rows) || !rows.length) return res.status(404).json({ message:'QCM introuvable ou déjà supprimé. Actualise la liste.' });
@@ -6663,7 +6663,7 @@ app.post('/api/admin/resources/upload', requireAdmin, express.raw({ type:() => t
 
     if (!buffer.length) return res.status(400).json({ message:'Choisis un fichier à publier' });
     if (buffer.length > MAX_RESOURCE_FILE_BYTES) return res.status(413).json({ message:`Fichier trop lourd. Maximum ${Math.round(MAX_RESOURCE_FILE_BYTES/1024/1024)} Mo.` });
-    if (!isAllowedResourceFile(fileName, mimeType)) return res.status(400).json({ message:'Format accepté : image, PDF, Word ou DOCX' });
+    if (!isAllowedResourceFile(fileName, mimeType)) return res.status(400).json({ message:'Choisis une image, un PDF ou un document Word.' });
     if (title.length < 3) return res.status(400).json({ message:'Titre du document requis' });
 
     const id = crypto.randomUUID();
@@ -7196,7 +7196,7 @@ app.get('/api/questions', async (req, res, next) => {
       });
     }
 
-    if (!supabaseReady()) return res.status(503).json({ message:'Stockage indisponible pour le moment.' });
+    if (!supabaseReady()) return res.status(503).json({ message:'Service indisponible pour le moment.' });
     const premiumFilter = premiumAllowed ? '' : '&is_premium=eq.false';
     const rows = await supabaseRequest(`questions?${premiumFilter ? premiumFilter.slice(1) + '&' : ''}select=id,category,level,question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,is_premium,source,created_at&order=created_at.asc`);
     res.setHeader('X-Premium-Included', premiumAllowed ? 'true' : 'false');
@@ -7229,7 +7229,7 @@ app.get('*', (req, res, next) => {
 
 app.use((err, _req, res, _next) => {
   console.error(err);
-  res.status(err.status || 500).json({ message: err.message || 'Erreur serveur' });
+  res.status(err.status || 500).json({ message: err.message || 'Un problème est survenu. Réessaie.' });
 });
 
 if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL){
