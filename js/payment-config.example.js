@@ -4,6 +4,5 @@ window.REUSSITE_CONCOURS_BF_PAYMENT_CONFIG = {
   amount: 1500,
   currency: 'XOF',
   plan: 'premium_monthly',
-  backendBaseUrl: 'https://api.votre-domaine.com',
-  demoMode: false
+  backendBaseUrl: 'https://api.votre-domaine.com'
 };

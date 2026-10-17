@@ -16,13 +16,18 @@ assert(checkoutStatusLabel(status) === 'SUCCESS', 'statut de transaction non lu'
 assert(checkoutStatusLabel({ status:'PENDING' }) === 'PENDING', 'statut en attente non conservé');
 
 const server = fs.readFileSync(new URL('../backend/server.js', import.meta.url), 'utf8');
+const helperStart = server.indexOf('async function verifySasPayRecord');
+const helperEnd = server.indexOf('\nfunction paymentIsSuccessful', helperStart);
+const helper = server.slice(helperStart, helperEnd);
 const routeStart = server.indexOf("app.get('/api/payments/saspay/status'");
-const routeEnd = server.indexOf("app.post('/api/payments/saspay/webhook'", routeStart);
+const routeEnd = server.indexOf("app.get('/api/payments/saspay/reconcile'", routeStart);
 const route = server.slice(routeStart, routeEnd);
-assert(route.includes('/status/`'), 'endpoint officiel du statut checkout non utilisé');
-const sessionBlock = route.slice(route.indexOf('if (sessionId)'));
-assert(sessionBlock.includes('/verify/`'), 'transaction SasPay non revérifiée');
-assert(sessionBlock.indexOf('/status/`') < sessionBlock.indexOf('/verify/`'), 'la session doit être consultée avant la transaction');
-assert(sessionBlock.includes('paymentIsSuccessful(verified, plan)'), 'montant et devise non contrôlés avant activation');
+
+assert(helperStart >= 0 && helperEnd > helperStart, 'vérificateur SasPay partagé absent');
+assert(helper.includes('/status/`'), 'endpoint officiel du statut checkout non utilisé');
+assert(helper.includes('/verify/`'), 'transaction SasPay non revérifiée');
+assert(helper.indexOf('/status/`') < helper.lastIndexOf('/verify/`'), 'la session doit être consultée avant la transaction');
+assert(helper.includes('paymentIsSuccessful(verified, plan)'), 'montant et devise non contrôlés avant activation');
+assert(route.includes('verifySasPayRecord(record'), 'route de statut non reliée au vérificateur partagé');
 assert(server.includes("data?.metadata?.tx_ref"), 'corrélation webhook par référence locale absente');
 console.log('CONFIRMATION CHECKOUT SASPAY OK');

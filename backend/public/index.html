@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=payment-confirmation-safety-v26">
+<link rel="manifest" href="/manifest.webmanifest?v=application-coherence-cleanup-v27">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=payment-confirmation-safety-v26">
+<link rel="stylesheet" href="css/styles.css?v=application-coherence-cleanup-v27">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -115,12 +115,12 @@
           <img class="action-photo" src="img/passport.jpg" alt="Passeport de préparation"><h3>Mon passeport</h3><p>Prouve que tu as travaillé</p>
         </button>
         <button class="action-card premium-locked" onclick="show('errors')">
-          <span class="lock-tag">Ouvert</span>
+          <span class="lock-tag">Premium</span>
           <span class="badge-count" id="errCount" style="display:none">0</span>
           <img class="action-photo" src="img/study.jpg" alt="Révision des erreurs"><h3>Mes erreurs</h3><p id="errSub">Aucune pour l'instant</p>
         </button>
         <button class="action-card premium-locked" onclick="startQuiz({n:40,time:2400,title:'Examen blanc'})">
-          <span class="lock-tag">Ouvert</span>
+          <span class="lock-tag">Premium</span>
           <img class="action-photo" src="img/classroom-bf-wide.jpg" alt="Examen blanc"><h3>Examen blanc</h3><p>40 questions · 40 min</p>
         </button>
         <button class="action-card" id="dailyCard" onclick="startDaily()">
@@ -136,7 +136,7 @@
           <img class="action-photo" src="img/teacher-class.jpg" alt="Nouveaux QCM"><h3>Nouveaux QCM</h3><p>QCM récents pour s’entraîner</p>
         </button>
         <button class="action-card premium-locked" onclick="show('stats')">
-          <span class="lock-tag">Ouvert</span>
+          <span class="lock-tag">Premium</span>
           <img class="action-photo" src="img/success.jpg" alt="Progression"><h3>Ma progression</h3><p>Scores et statistiques</p>
         </button>
         <button class="action-card" onclick="show('formations')">
@@ -377,10 +377,6 @@
       <h2 style="font-size:1.05rem;font-weight:900">📌 Nouveaux QCM</h2>
     </div>
     <div class="section" style="padding-top:10px">
-      <div class="published-qcm-intro">
-        <h2>Nouveaux QCM</h2>
-
-      </div>
       <div class="chip-row" id="publishedQcmFilterRow">
         <button class="chip on" onclick="filterPublishedQcm(this,'all')">Tout</button>
         <button class="chip" onclick="filterPublishedQcm(this,'free')">Gratuit</button>
@@ -1439,7 +1435,7 @@
     <button class="nav-btn" data-target="formations" onclick="show('formations')"><span class="ni">🗂️</span>Formations</button>
     <button class="nav-btn" data-target="passport" onclick="show('passport')"><span class="ni">🛂</span>Passeport</button>
     <button class="nav-btn" data-target="stats" onclick="show('stats')"><span class="ni">📊</span>Progrès</button>
-    <button class="nav-btn nav-access" data-target="subscription" onclick="show('subscription')"><span class="ni">🔓</span><span class="nav-label">Accès complet</span></button>
+    <button class="nav-btn nav-access" data-target="subscription" onclick="show('subscription')"><span class="ni">🔓</span><span class="nav-label">Premium</span></button>
   </nav>
 
   <!-- ===== modal offre ===== -->
@@ -1481,7 +1477,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=payment-confirmation-safety-v26"></script>
-<script src="js/app.js?v=payment-confirmation-safety-v26"></script>
+<script src="js/questions.js?v=application-coherence-cleanup-v27"></script>
+<script src="js/app.js?v=application-coherence-cleanup-v27"></script>
 </body>
 </html>

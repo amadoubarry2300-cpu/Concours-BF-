@@ -4,8 +4,7 @@ const PAYMENT_CONFIG = window.REUSSITE_CONCOURS_BF_PAYMENT_CONFIG || {
   amount: 1500,
   currency: 'XOF',
   plan: 'premium_monthly',
-  backendBaseUrl: '',
-  demoMode: false
+  backendBaseUrl: ''
 };
 
 const SUBSCRIPTION_PLANS = {
@@ -179,8 +178,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=payment-confirmation-safety-v26').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=payment-confirmation-safety-v26';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=application-coherence-cleanup-v27').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=application-coherence-cleanup-v27';
       return pdfjs;
     });
   }
@@ -515,7 +514,6 @@ function renderMathText(value){
     .replace(/\\times/g, '×')
     .replace(/\\cdot/g, '·')
     .replace(/([0-9A-Za-z)\]])\s*\*\s*([0-9A-Za-z(])/g, '$1 × $2')
-    .replace(/([0-9A-Za-z)\]])\s*\*\s*([0-9A-Za-z(])/g, '$1 × $2')
     .replace(/\bplus ou moins\b/gi, '±')
     .replace(/<=/g, '≤')
     .replace(/>=/g, '≥')
@@ -584,7 +582,7 @@ function setAvatarElement(el, user = state.user){
   if (!el) return;
   const data = avatarDataForUser(user);
   el.classList.toggle('has-photo', Boolean(data));
-  if (data) el.innerHTML = `<img src="${data}" alt="Photo de profil">`;
+  if (data) el.innerHTML = `<img src="${escapeHtml(data)}" alt="Photo de profil">`;
   else el.textContent = userInitials(user);
 }
 
@@ -593,7 +591,7 @@ function updateAvatarPreview(){
   if (!preview) return;
   const data = pendingAvatarData || avatarDataForUser();
   preview.classList.toggle('has-photo', Boolean(data));
-  if (data) preview.innerHTML = `<img src="${data}" alt="Photo de profil">`;
+  if (data) preview.innerHTML = `<img src="${escapeHtml(data)}" alt="Photo de profil">`;
   else preview.textContent = state.user ? userInitials() : '👤';
 }
 
@@ -672,22 +670,6 @@ function isAdmin(){
 function premiumDaysLeft(){
   if (!isPremium()) return 0;
   return Math.max(1, Math.ceil((new Date(state.subscription.expiresAt).getTime() - Date.now()) / 864e5));
-}
-
-function activatePremium(days, txRef, provider){
-  const base = isPremium() ? new Date(state.subscription.expiresAt) : new Date();
-  const started = new Date().toISOString();
-  base.setDate(base.getDate() + days);
-  state.subscription = {
-    status: 'premium',
-    startedAt: state.subscription?.startedAt || started,
-    renewedAt: started,
-    expiresAt: base.toISOString(),
-    txRef: txRef || ('MANUAL-' + Date.now()),
-    provider: provider || state.selectedProvider
-  };
-  state.pendingPayment = null;
-  save();
 }
 
 function setButtonLoading(btn, loading, label){
@@ -846,8 +828,14 @@ function mergeQuestionRows(rows){
     e:r.explanation || '',
     premium: Boolean(r.is_premium)
   })).filter(q=>q.q && q.o.length >= 2 && q.o.length <= 4 && q.a >= 0 && q.a < q.o.length);
-  const existing = new Set(QUESTIONS.map(q=>q.q));
-  mapped.forEach(q=>{ if (!existing.has(q.q)) QUESTIONS.push(q); });
+  const questionKey = value => String(value || '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+  const existing = new Set(QUESTIONS.map(q=>questionKey(q.q)));
+  mapped.forEach(q=>{
+    const key = questionKey(q.q);
+    if (!key || existing.has(key)) return;
+    existing.add(key);
+    QUESTIONS.push(q);
+  });
 }
 
 async function loadSupabaseQuestions(){
@@ -1005,7 +993,7 @@ function renderAccount(){
     if (state.user){
       const fullName = (name || state.user.displayName || 'Profil').trim();
       const avatar = avatarDataForUser()
-        ? `<span class="chip-avatar has-photo"><img src="${avatarDataForUser()}" alt="Profil"></span>`
+        ? `<span class="chip-avatar has-photo"><img src="${escapeHtml(avatarDataForUser())}" alt="Profil"></span>`
         : `<span class="chip-avatar">${escapeHtml(userInitials())}</span>`;
       chip.innerHTML = `${avatar}<span class="chip-name">${escapeHtml(fullName)}</span>`;
     } else {
@@ -1206,6 +1194,35 @@ function quizReturnTarget(){
   return quizReturnScreen || 'home';
 }
 
+function launchQuizSession(questions, opts = {}, returnTo = 'home'){
+  const selected = Array.isArray(questions) ? questions : [];
+  if (!selected.length){ toast('Aucun QCM disponible pour ce contenu'); return; }
+  quizReturnScreen = returnTo;
+  quiz = {
+    qs:selected,
+    i:0,
+    ok:0,
+    ko:0,
+    title:opts.title || 'Quiz',
+    daily:Boolean(opts.daily),
+    time:Number(opts.time || 0),
+    left:Number(opts.time || 0),
+    answered:false,
+    wrongList:[],
+    returnTo
+  };
+  $('#quizTitleTag').textContent = quiz.title;
+  show('quiz');
+  if (quiz.time){
+    $('#timer').style.display='block';
+    tickTimer();
+    quiz.timer = setInterval(tickTimer, 1000);
+  } else {
+    $('#timer').style.display='none';
+  }
+  renderQuestion();
+}
+
 function startQuiz(opts){
   opts = opts || {};
   const returnTo = opts.returnTo || quizReturnTarget();
@@ -1215,7 +1232,6 @@ function startQuiz(opts){
     return;
   }
 
-  // opts: {n, time (sec, 0=sans), title, cat (opt), level (opt), errorsMode, free}
   const bank = questionBank();
   let pool;
   if (opts.errorsMode){
@@ -1233,17 +1249,8 @@ function startQuiz(opts){
   }
   if (!pool.length){ toast('Aucun QCM disponible pour ce choix'); return; }
   const requested = opts.n === 'all' ? pool.length : Math.max(1, Number(opts.n || 10));
-  const qs = shuffle(pool).slice(0, Math.min(requested, pool.length));
-  quizReturnScreen = returnTo;
-  quiz = {
-    qs, i:0, ok:0, ko:0, title:opts.title || 'Quiz', daily:opts.daily||false,
-    time: opts.time||0, left: opts.time||0, answered:false, wrongList:[], returnTo
-  };
-  $('#quizTitleTag').textContent = quiz.title;
-  show('quiz');
-  if (quiz.time){ $('#timer').style.display='block'; tickTimer(); quiz.timer = setInterval(tickTimer, 1000); }
-  else $('#timer').style.display='none';
-  renderQuestion();
+  const selected = shuffle(pool).slice(0, Math.min(requested, pool.length));
+  launchQuizSession(selected, opts, returnTo);
 }
 
 function startQuestionListQuiz(qs, opts = {}){
@@ -1251,17 +1258,7 @@ function startQuestionListQuiz(qs, opts = {}){
   const clean = (Array.isArray(qs) ? qs : []).filter(q => q?.q && Array.isArray(q.o) && q.o.length >= 2 && q.o.length <= 4 && Number(q.a) >= 0 && Number(q.a) < q.o.length);
   if (!clean.length){ toast('Aucun QCM disponible pour ce contenu'); return; }
   const limit = opts.limit ? Math.max(1, Math.min(Number(opts.limit), clean.length)) : clean.length;
-  const selected = shuffle(clean).slice(0, limit);
-  quizReturnScreen = returnTo;
-  quiz = {
-    qs:selected, i:0, ok:0, ko:0, title:opts.title || 'Nouveau QCM', daily:opts.daily || false,
-    time:opts.time || 0, left:opts.time || 0, answered:false, wrongList:[], returnTo
-  };
-  $('#quizTitleTag').textContent = quiz.title;
-  show('quiz');
-  if (quiz.time){ $('#timer').style.display='block'; tickTimer(); quiz.timer = setInterval(tickTimer, 1000); }
-  else $('#timer').style.display='none';
-  renderQuestion();
+  launchQuizSession(shuffle(clean).slice(0, limit), { ...opts, title:opts.title || 'Nouveau QCM' }, returnTo);
 }
 
 function tickTimer(){
@@ -1750,7 +1747,7 @@ async function renderAdminPanel(force){
         <div><b>Actif</b><span>Admin</span></div>`;
     }
   }catch(err){
-    $('#adminResult') && ($('#adminResult').innerHTML = `<div class="pay-note error">${err.message}</div>`);
+    $('#adminResult') && ($('#adminResult').innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`);
   }
   setAdminTab(adminTab || 'create');
 }
@@ -1826,7 +1823,7 @@ async function saveAdminQuestion(){
     renderFormations(currentFormFilter);
     toast('QCM ajouté dans ' + destination + ' ✅');
   }catch(err){
-    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
   }finally{
     setButtonLoading(btn, false);
   }
@@ -2336,7 +2333,7 @@ async function loadAdminQuestions(){
     adminQuestionCache = data.questions || [];
     renderAdminQuestionListFromCache();
   }catch(err){
-    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    wrap.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -3175,7 +3172,7 @@ async function generateAiQcm(){
     renderAiDrafts();
   }catch(err){
     aiDraftCache = [];
-    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
     if (list) list.innerHTML = '';
   }finally{
     setButtonLoading(btn, false);
@@ -3361,7 +3358,7 @@ async function scanOfficialNews(){
     if (data.staged) loadAdminNews().catch(()=>{});
   }catch(err){
     aiNewsDraftCache = [];
-    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
     if (list) list.innerHTML = '';
   }finally{
     setButtonLoading(btn, false);
@@ -3453,7 +3450,7 @@ async function loadNews(){
     newsCache = data.news || [];
     renderNewsList();
   }catch(err){
-    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    wrap.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -3550,7 +3547,7 @@ async function saveAdminNews(){
     await loadNews();
     toast('Actualité publiée ✅');
   }catch(err){
-    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
   }finally{
     setButtonLoading(btn, false);
   }
@@ -3608,7 +3605,7 @@ async function loadAdminNews(){
         </div>
       </div>`).join('');
   }catch(err){
-    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    wrap.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -3822,7 +3819,7 @@ async function loadResources(){
       </div>`;
     }).join('');
   }catch(err){
-    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    wrap.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -3896,7 +3893,7 @@ async function uploadAdminResource(){
     await loadResources();
     toast('Document publié ✅');
   }catch(err){
-    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
   }finally{
     setButtonLoading(btn, false);
   }
@@ -3973,7 +3970,7 @@ async function loadAdminResources(){
     adminResourceCache = data.resources || [];
     renderAdminResourcesFromCache();
   }catch(err){
-    wrap.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    wrap.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -4023,7 +4020,7 @@ async function sendAdminNotificationTest(){
     if (result) result.innerHTML = `<div class="pay-note ${data.results?.email?.sent || data.results?.sms?.sent ? 'success' : 'warn'}">${emailText}<br>${smsText}</div>`;
     await loadAdminNotificationStatus();
   }catch(err){
-    if (result) result.innerHTML = `<div class="pay-note error">${err.message}</div>`;
+    if (result) result.innerHTML = `<div class="pay-note error">${escapeHtml(err.message)}</div>`;
   }finally{
     setButtonLoading(btn, false);
   }
@@ -4247,10 +4244,10 @@ function renderSubscription(){
     } else if (state.pendingPayment){
       status.className = 'sub-status pending';
       const pendingPlan = subscriptionPlan(state.pendingPayment.plan || state.selectedPlan);
-      status.innerHTML = `⏳ Paiement ${pendingPlan.label} en attente — référence <b>${state.pendingPayment.ref}</b>`;
+      status.innerHTML = `⏳ Paiement ${escapeHtml(pendingPlan.label)} en attente — référence <b>${escapeHtml(state.pendingPayment.ref)}</b>`;
     } else if (paywallFeature){
       status.className = 'sub-status premium-prompt';
-      status.innerHTML = `🔓 Premium ouvre <b>${paywallFeature}</b> et tous les entraînements avancés.`;
+      status.innerHTML = `🔓 Premium ouvre <b>${escapeHtml(paywallFeature)}</b> et tous les entraînements avancés.`;
     } else {
       status.className = 'sub-status premium-prompt';
       status.innerHTML = 'Avec Premium, révise sans limite avec toutes les matières, les examens blancs et la correction de tes erreurs.';
@@ -4265,8 +4262,6 @@ function renderSubscription(){
       : `${isPremium() ? 'Renouveler' : plan.actionLabel} — ${money(plan.amount)}`;
   const checkPayBtn = $('#checkPayBtn');
   if (checkPayBtn) checkPayBtn.textContent = state.pendingPayment ? 'J’ai confirmé — vérifier mon paiement' : 'Vérifier mon paiement';
-  const demoBtn = $('#demoPayBtn');
-  if (demoBtn) demoBtn.style.display = (PAYMENT_CONFIG.demoMode && !isPremium()) ? 'flex' : 'none';
 
   const result = $('#paymentResult');
   if (result){
@@ -4385,7 +4380,7 @@ async function checkPaymentStatus(options={}){
     if (pending.ref) params.set('transactionId', pending.ref);
     const url = pending.ref
       ? paymentApiBase() + '/api/payments/saspay/reconcile?' + params.toString()
-      : paymentApiBase() + '/api/subscription/status?phone=' + encodeURIComponent(fullPhone(state.user.phone));
+      : paymentApiBase() + '/api/subscription/status';
     const res = await fetchWithTimeout(url, { headers: authHeaders({}) });
     const data = await res.json().catch(()=>({}));
     if (!res.ok) throw new Error(data.message || 'Statut indisponible');
@@ -4427,27 +4422,6 @@ async function checkPaymentStatus(options={}){
     paymentStatusRequestPending = false;
     if (!silent) setButtonLoading(btn, false);
   }
-}
-
-async function simulatePaymentSuccess(){
-  if (!state.user){
-    nextAfterLogin = 'subscription';
-    toast('Connecte-toi d’abord');
-    show('login');
-    return;
-  }
-  const tx = state.pendingPayment?.ref || ('TEST-' + Date.now());
-  const plan = selectedSubscriptionPlan();
-  activatePremium(plan.days, tx, state.selectedProvider);
-  state.subscription.plan = plan.id;
-  runtimePaymentMessage = `<div class="pay-note success">Premium activé pour ${plan.days} jours ✅</div>`;
-  paywallFeature = null;
-  renderSubscription();
-  renderAccount();
-  await loadSupabaseQuestions();
-  renderFormations(currentFormFilter);
-  toast('Premium activé ✅');
-  confetti();
 }
 
 /* ---------- rendus ---------- */
@@ -4663,7 +4637,6 @@ function renderSmartDashboard(){
 
 function renderHome(){
   renderAccount();
-  renderSmartDashboard();
   const homeToolsTitle = $('#homeToolsTitle');
   if (homeToolsTitle) homeToolsTitle.textContent = state.user ? 'Mon espace de révision' : 'Tes outils';
   $('#streakVal').textContent = state.streak;
@@ -4712,7 +4685,7 @@ function renderStats(){
   }
   $('#barWrap').innerHTML = cats.map(([c,s])=>{
     const p = Math.round(s.ok/s.total*100);
-    return `<div class="bar-row"><span class="lbl">${c}</span><div class="track"><div class="fill" data-p="${p}"></div></div><span class="pct">${p}%</span></div>`;
+    return `<div class="bar-row"><span class="lbl">${escapeHtml(c)}</span><div class="track"><div class="fill" data-p="${p}"></div></div><span class="pct">${p}%</span></div>`;
   }).join('');
   setTimeout(()=>$$('#barWrap .fill').forEach(f=>f.style.width=f.dataset.p+'%'), 80);
 }
@@ -4728,9 +4701,9 @@ function renderErrors(){
   $('#errReviewBtn').style.display='flex';
   w.innerHTML = state.errors.map(e=>`
     <div class="err-item">
-      <h4>${e.q}</h4>
-      <div class="good">✔ ${e.good}</div>
-      <div class="exp">${e.exp}</div>
+      <h4>${renderMathText(e.q)}</h4>
+      <div class="good">✔ ${renderMathText(e.good)}</div>
+      <div class="exp">${renderMathText(e.exp)}</div>
     </div>`).join('');
 }
 
@@ -4741,7 +4714,7 @@ function formationGroups(){
       ['img/subject-svt.svg','SVT','SVT',''],
       ['img/subject-french.svg','Français','Français',''],
       ['img/subject-math.svg','Mathématiques','Mathématiques',''],
-      ['img/subject-svt.svg','Physique-Chimie','Physique-Chimie',''],
+      ['img/subject-physics.svg','Physique-Chimie','Physique-Chimie',''],
       ['img/subject-psychotech.svg','Psychotechnique','Psychotechnique','']
     ],
     'Concours & examens':[
@@ -5160,7 +5133,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'payment-confirmation-safety-v26') location.reload();
+    if (data.build && data.build !== 'application-coherence-cleanup-v27') location.reload();
   }catch{}
 }
 
@@ -5173,7 +5146,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=payment-confirmation-safety-v26')
+    navigator.serviceWorker.register('/sw.js?v=application-coherence-cleanup-v27')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

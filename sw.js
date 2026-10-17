@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'payment-confirmation-safety-v26';
+const CACHE_VERSION = 'application-coherence-cleanup-v27';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=payment-confirmation-safety-v26',
-  '/js/questions.js?v=payment-confirmation-safety-v26',
-  '/js/app.js?v=payment-confirmation-safety-v26',
-  '/js/vendor/pdf.mjs?v=payment-confirmation-safety-v26',
-  '/js/vendor/pdf.worker.mjs?v=payment-confirmation-safety-v26',
+  '/css/styles.css?v=application-coherence-cleanup-v27',
+  '/js/questions.js?v=application-coherence-cleanup-v27',
+  '/js/app.js?v=application-coherence-cleanup-v27',
+  '/js/vendor/pdf.mjs?v=application-coherence-cleanup-v27',
+  '/js/vendor/pdf.worker.mjs?v=application-coherence-cleanup-v27',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',
@@ -22,6 +22,7 @@ const STATIC_ASSETS = [
   '/img/subject-culture.svg',
   '/img/subject-history-geo.svg',
   '/img/subject-math.svg',
+  '/img/subject-physics.svg',
   '/img/subject-svt.svg',
   '/img/subject-french.svg',
   '/img/subject-psychotech.svg',
@@ -51,8 +52,7 @@ function isCandidateApi(path){
     || path === '/api/qcm-publications'
     || path === '/api/resources'
     || path === '/api/revision-fiches'
-    || path === '/api/news'
-    || path === '/api/subscription/status';
+    || path === '/api/news';
 }
 function isOpenableFile(path){
   return /^\/api\/resources\/[^/]+\/download$/.test(path) || /^\/api\/news\/[^/]+\/pdf$/.test(path);

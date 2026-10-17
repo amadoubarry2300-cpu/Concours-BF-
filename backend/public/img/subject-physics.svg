@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-labelledby="title desc">
+  <title id="title">Physique-Chimie</title>
+  <desc id="desc">Illustration simple d’un atome et d’une fiole</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e8f5ff"/>
+      <stop offset="1" stop-color="#eafbf4"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="200" rx="28" fill="url(#bg)"/>
+  <g transform="translate(102 98)" fill="none" stroke="#1769aa" stroke-width="6">
+    <ellipse rx="70" ry="25" transform="rotate(18)"/>
+    <ellipse rx="70" ry="25" transform="rotate(138)"/>
+    <ellipse rx="70" ry="25" transform="rotate(258)"/>
+  </g>
+  <circle cx="102" cy="98" r="13" fill="#0e9f6e"/>
+  <circle cx="166" cy="119" r="7" fill="#f59e0b"/>
+  <g transform="translate(205 48)">
+    <path d="M22 0h38M31 0v46L4 105c-7 15 4 31 21 31h52c17 0 28-16 21-31L69 46V0" fill="#fff" stroke="#075d43" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M19 96h65l11 22c4 8-2 16-11 16H18c-9 0-15-8-11-16z" fill="#6ee7b7"/>
+    <circle cx="47" cy="83" r="6" fill="#1769aa"/>
+    <circle cx="68" cy="105" r="5" fill="#f59e0b"/>
+  </g>
+</svg>

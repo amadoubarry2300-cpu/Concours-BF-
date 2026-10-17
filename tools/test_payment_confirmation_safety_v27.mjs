@@ -18,8 +18,8 @@ assert(initRoute.includes("idempotencyKey:tx"), 'idempotence checkout SasPay abs
 
 assert(server.includes("app.get('/api/payments/saspay/reconcile'"), 'rapprochement des anciennes tentatives absent');
 assert(server.includes('recentSasPayPaymentRecords(req.phone'), 'recherche des paiements récents du compte absente');
-assert(server.includes('verifyRecentSasPayRecord(record)'), 'revérification des tentatives en attente absente');
-assert(server.includes("build: 'payment-confirmation-safety-v26'"), 'marqueur v26 absent');
+assert(server.includes('verifySasPayRecord(record)'), 'revérification des tentatives en attente absente');
+assert(server.includes("build: 'application-coherence-cleanup-v27'"), 'marqueur v27 absent');
 
 assert(app.includes("if (state.pendingPayment?.ref)"), 'blocage client d’un deuxième paiement absent');
 assert(app.includes("Aucun code OTP ne sera demandé dans Réussite Concours BF"), 'consigne Moov sans OTP absente');
@@ -30,4 +30,4 @@ assert(app.includes("'J’ai confirmé — vérifier mon paiement'"), 'bouton de
 assert(app === publicApp, 'copie frontend backend/public non synchronisée');
 assert(rootHtml === publicHtml, 'copie HTML backend/public non synchronisée');
 
-console.log('SÉCURITÉ CONFIRMATION PAIEMENT V26 OK');
+console.log('SÉCURITÉ CONFIRMATION PAIEMENT V27 OK');

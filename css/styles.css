@@ -612,9 +612,6 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .ai-panel-heading.small{margin-top:4px}
 .ai-panel-heading img{width:48px;height:48px;border-radius:16px;box-shadow:0 12px 26px rgba(14,159,110,.18);flex:0 0 auto}
 .ai-panel-heading h3{margin:0 0 3px;font-size:1rem;font-weight:950;color:var(--ink)}
-.published-qcm-intro{background:linear-gradient(135deg,#ecfdf5,#fff);border:1px solid #a7f3d0;border-radius:22px;padding:16px;margin-bottom:12px;box-shadow:var(--shadow-soft)}
-.published-qcm-intro h2{font-size:1.08rem;font-weight:950;margin-bottom:4px;color:var(--ink)}
-.published-qcm-intro p{font-size:.82rem;font-weight:800;line-height:1.45;color:var(--ink-soft)}
 .published-qcm-card{border:1px solid var(--line);border-radius:18px;background:#fff;padding:14px;box-shadow:var(--shadow-soft)}
 .published-qcm-card.free{border-left:5px solid var(--green)}
 .published-qcm-card.premium{border-left:5px solid #f59e0b;background:linear-gradient(135deg,#fff,#fffbeb)}

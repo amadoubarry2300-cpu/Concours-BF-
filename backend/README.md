@@ -40,6 +40,8 @@ Les deux tâches quotidiennes existantes exécutent également les rappels et le
 
 ## Paiements
 
-- `POST /api/payments/cinetpay/init` — crée une transaction et renvoie l’URL de paiement.
-- `POST /api/payments/cinetpay/webhook` — vérifie la transaction puis active Premium.
-- `GET /api/subscription/status?phone=+22670000000` — retourne l’état Premium.
+- `POST /api/payments/saspay/init` — crée ou reprend une transaction SasPay pour le compte connecté.
+- `GET /api/payments/saspay/status` — vérifie une transaction appartenant au compte connecté.
+- `GET /api/payments/saspay/reconcile` — rapproche les tentatives récentes du compte.
+- `POST /api/payments/saspay/webhook` — vérifie la signature et la transaction avant d’activer Premium.
+- `GET /api/subscription/status` — retourne l’état Premium du compte connecté.

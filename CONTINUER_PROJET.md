@@ -157,19 +157,17 @@ LOGIN_LOCK_MINUTES
 
 `SESSION_SECRET` est recommandé mais si absent, le backend utilise la clé service Supabase comme base de signature.
 
-Variables paiement à ajouter plus tard avec SasPay :
+Variables de paiement SasPay utilisées côté serveur :
 
 ```text
 SASPAY_API_KEY
-SASPAY_API_SECRET
-SASPAY_MERCHANT_ID
 SASPAY_WEBHOOK_SECRET
 SASPAY_BASE_URL
 PUBLIC_BASE_URL
 APP_ORIGIN
 ```
 
-Les noms exacts dépendront de la documentation SasPay.
+Ces valeurs restent exclusivement dans Vercel et ne sont jamais placées dans le frontend.
 
 ---
 
@@ -179,10 +177,8 @@ Ne jamais mettre dans GitHub, dans un message public ou dans une capture visible
 
 ```text
 SUPABASE_SERVICE_ROLE_KEY
-SASPAY_API_SECRET
+SASPAY_API_KEY
 SASPAY_WEBHOOK_SECRET
-CINETPAY_APIKEY
-CINETPAY_SITE_ID
 ```
 
 Les clés secrètes doivent être mises directement dans Vercel.

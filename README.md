@@ -10,7 +10,7 @@ Inspirée du concept « prouve que tu as travaillé » : quiz corrigés, passepo
 
 - **Quiz découverte** — 10 questions gratuites, 2 minutes, sans inscription
 - **Quiz rapide 10 questions**
-- **Défi du jour** — 15 questions, 1 fois par jour
+- **Défi du jour** — 10 questions, 1 fois par jour
 - Catégories gratuites : Burkina Faso, Culture générale, Histoire-Géo
 - Passeport de préparation — niveaux, XP et badges
 - Partage natif de l'application
@@ -27,9 +27,9 @@ Inspirée du concept « prouve que tu as travaillé » : quiz corrigés, passepo
 
 - Écran **Compte candidat** avec numéro + PIN
 - Écran **Abonnement Premium** avec Orange Money / Moov Money
-- Mode test pour vérifier le verrouillage Premium dans l'aperçu local
-- Code frontend prêt à appeler un backend : `POST /api/payments/cinetpay/init`
-- Backend Express fourni dans `backend/` pour CinetPay + webhook + statut d'abonnement
+- Paiement SasPay côté serveur, sans code secret Mobile Money dans le frontend
+- Confirmation et rapprochement automatique des transactions en attente
+- Webhook vérifié avant l’activation ou le renouvellement Premium
 
 ## 🚀 Lancer l'application en local
 
@@ -46,7 +46,7 @@ python3 -m http.server 3000 --bind 0.0.0.0
 ```bash
 cd Reussite-Concours-BF/backend
 cp .env.example .env
-# Remplir CINETPAY_APIKEY, CINETPAY_SITE_ID, APP_ORIGIN, PUBLIC_BASE_URL
+# Configurer SasPay, Supabase et APP_ORIGIN uniquement dans les variables serveur
 npm install
 npm run dev
 ```
@@ -54,11 +54,10 @@ npm run dev
 Puis dans `js/app.js` ou via un fichier `js/payment-config.js`, configurer :
 
 ```js
-backendBaseUrl: 'https://api.votre-domaine.com',
-demoMode: false
+backendBaseUrl: 'https://api.votre-domaine.com'
 ```
 
-> Important : le paiement réel nécessite un compte marchand CinetPay/Ligdicash/PayDunya validé. Sans clés marchandes, l'application reste en mode test local.
+> Important : les clés SasPay restent exclusivement dans les variables serveur. Aucun token, PIN ou secret Mobile Money ne doit être placé dans le frontend.
 
 ## 🌐 Déployer
 
@@ -80,7 +79,7 @@ Reussite-Concours-BF/
 │   └── payment-config.example.js # Exemple de config API paiement
 ├── img/                          # Vraies photos JPG utilisées dans l'app
 └── backend/
-    ├── server.js                 # API paiement CinetPay + webhook
+    ├── server.js                 # API SasPay + webhook vérifié
     ├── package.json
     ├── .env.example
     ├── supabase-schema.sql       # Tables production recommandées
@@ -103,9 +102,8 @@ Reussite-Concours-BF/
 
 ## 🗺️ Prochaines étapes production
 
-- [ ] Créer le compte marchand CinetPay/Ligdicash/PayDunya
-- [ ] Déployer le backend paiement avec HTTPS
-- [ ] Brancher Supabase pour comptes, progression et abonnements persistants
-- [ ] Ajouter plusieurs milliers de questions originales
-- [ ] Ajouter PWA installable et notifications de renouvellement
+- [ ] Terminer la validation KYC du compte marchand retenu
+- [ ] Effectuer un nouveau paiement contrôlé Orange Money et Moov Money
+- [ ] Vérifier le webhook, le rapprochement et l’activation Premium de bout en bout
+- [ ] Continuer la publication de QCM et documents vérifiés
 - [ ] Publier ensuite sur Play Store si besoin
