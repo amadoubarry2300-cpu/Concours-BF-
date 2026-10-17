@@ -5119,7 +5119,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-pdf-no-limits-v24',
+    build: 'qcm-pdf-mobile-fit-v25',
     time: new Date().toISOString()
   });
 });

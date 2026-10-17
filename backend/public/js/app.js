@@ -176,8 +176,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=qcm-pdf-no-limits-v24').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=qcm-pdf-no-limits-v24';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=qcm-pdf-mobile-fit-v25').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=qcm-pdf-mobile-fit-v25';
       return pdfjs;
     });
   }
@@ -196,6 +196,14 @@ function updatePdfReaderMeta(){
 function cancelPdfReaderRenders(){
   for (const task of pdfReaderRenderTasks.values()) task?.cancel?.();
   pdfReaderRenderTasks.clear();
+}
+
+function pdfReaderAvailableWidth(stage){
+  const rootWidth = Number(document.documentElement?.clientWidth || window.innerWidth || 1);
+  const stageWidth = Math.min(Number(stage?.clientWidth || rootWidth), rootWidth);
+  const styles = window.getComputedStyle?.(stage);
+  const horizontalPadding = (Number.parseFloat(styles?.paddingLeft) || 0) + (Number.parseFloat(styles?.paddingRight) || 0);
+  return Math.max(1, Math.min(920, stageWidth - horizontalPadding));
 }
 
 function releaseDistantPdfPages(currentPage){
@@ -231,7 +239,9 @@ async function renderContinuousPdfPage(number, section, openToken=pdfReaderOpenT
     const page = await pdfReaderDocument.getPage(number);
     if (openToken !== pdfReaderOpenToken) return;
     const baseViewport = page.getViewport({ scale:1 });
-    const availableWidth = Math.max(260, Math.min(920, stage.clientWidth - 16));
+    const availableWidth = pdfReaderAvailableWidth(stage);
+    section.style.width = `${availableWidth}px`;
+    section.style.maxWidth = '100%';
     const fitScale = availableWidth / baseViewport.width;
     const viewport = page.getViewport({ scale:fitScale });
     let outputScale = Math.min(1.65, Math.max(1, window.devicePixelRatio || 1));
@@ -318,11 +328,14 @@ async function buildContinuousPdfPages(openToken){
   const firstPage = await pdfReaderDocument.getPage(1);
   if (openToken !== pdfReaderOpenToken) return;
   const baseViewport = firstPage.getViewport({ scale:1 });
+  const availableWidth = pdfReaderAvailableWidth(stage);
   for (let number=1; number<=pdfReaderDocument.numPages; number++){
     const section = document.createElement('section');
     section.className = 'pdf-reader-page';
     section.dataset.page = String(number);
     section.setAttribute('aria-label', `Page ${number} sur ${pdfReaderDocument.numPages}`);
+    section.style.width = `${availableWidth}px`;
+    section.style.maxWidth = '100%';
     section.style.aspectRatio = `${baseViewport.width} / ${baseViewport.height}`;
     const canvas = document.createElement('canvas');
     canvas.setAttribute('aria-label', `Page ${number}`);
@@ -413,7 +426,10 @@ window.addEventListener('resize', ()=>{
   pdfReaderResizeTimer = setTimeout(()=>{
     cancelPdfReaderRenders();
     const sections = [...($('#pdfReaderPages')?.querySelectorAll('.pdf-reader-page') || [])];
+    const availableWidth = pdfReaderAvailableWidth($('#pdfReaderStage'));
     sections.forEach(section => {
+      section.style.width = `${availableWidth}px`;
+      section.style.maxWidth = '100%';
       const canvas = section.querySelector('canvas');
       if (canvas){ canvas.width = 1; canvas.height = 1; }
       section.classList.remove('ready','rendering');
@@ -5054,7 +5070,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-pdf-no-limits-v24') location.reload();
+    if (data.build && data.build !== 'qcm-pdf-mobile-fit-v25') location.reload();
   }catch{}
 }
 
@@ -5067,7 +5083,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-pdf-no-limits-v24')
+    navigator.serviceWorker.register('/sw.js?v=qcm-pdf-mobile-fit-v25')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
