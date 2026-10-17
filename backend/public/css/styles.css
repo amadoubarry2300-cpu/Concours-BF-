@@ -814,6 +814,8 @@ body.menu-open{overflow:hidden}
 .payment-network-hint{display:flex;align-items:center;min-height:32px;margin:-2px 2px 10px;padding:7px 10px;border-radius:11px;background:#f8fafc;border:1px solid #e2e8f0;color:#64748b;font-size:.7rem;font-weight:850;line-height:1.35}
 .payment-network-hint.success{background:#ecfdf5;border-color:#86efac;color:#066343}
 .payment-network-hint.error{background:#fff1f2;border-color:#fda4af;color:#9f1239}
+.pay-box .provider-option:disabled,.pay-box input:disabled{opacity:.62;cursor:not-allowed}
+.pay-box .provider-option:disabled{filter:grayscale(.18)}
 #subPhone.input-success{outline:2px solid rgba(16,185,129,.24);border-color:#10b981}
 #subPhone.input-error{outline:2px solid rgba(225,29,72,.16);border-color:#e11d48}
 #payBtn:disabled{opacity:.55;box-shadow:none;cursor:not-allowed;filter:saturate(.65)}

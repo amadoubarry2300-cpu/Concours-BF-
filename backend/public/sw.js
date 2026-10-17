@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'qcm-pdf-mobile-fit-v25';
+const CACHE_VERSION = 'payment-confirmation-safety-v26';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=qcm-pdf-mobile-fit-v25',
-  '/js/questions.js?v=qcm-pdf-mobile-fit-v25',
-  '/js/app.js?v=qcm-pdf-mobile-fit-v25',
-  '/js/vendor/pdf.mjs?v=qcm-pdf-mobile-fit-v25',
-  '/js/vendor/pdf.worker.mjs?v=qcm-pdf-mobile-fit-v25',
+  '/css/styles.css?v=payment-confirmation-safety-v26',
+  '/js/questions.js?v=payment-confirmation-safety-v26',
+  '/js/app.js?v=payment-confirmation-safety-v26',
+  '/js/vendor/pdf.mjs?v=payment-confirmation-safety-v26',
+  '/js/vendor/pdf.worker.mjs?v=payment-confirmation-safety-v26',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',

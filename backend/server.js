@@ -5020,6 +5020,154 @@ async function findPaymentBySasPayId(paymentId){
   return Array.isArray(rows) ? rows.find(r => r?.raw?.saspay_id === paymentId || r?.raw?.saspay?.id === paymentId || r?.raw?.saspay_session?.transaction?.id === paymentId || r?.raw?.saspay_session_status?.transaction_id === paymentId) || null : null;
 }
 
+const SASPAY_REUSE_WINDOW_MS = 15 * 60 * 1000;
+const SASPAY_RECONCILE_WINDOW_HOURS = 48;
+const SASPAY_FAILED_STATUSES = new Set(['FAILED','FAILURE','REFUSED','REJECTED','CANCELLED','CANCELED','EXPIRED','ABANDONED','ERROR']);
+const SASPAY_SUCCESS_STATUSES = new Set(['ACCEPTED','SUCCESS','PAID','COMPLETED']);
+
+function paymentRecordTx(record){
+  return String(record?.tx || record?.tx_ref || '').trim();
+}
+
+function paymentRecordStatus(record){
+  return String(record?.status || record?.raw?.saspay?.status || 'PENDING').trim().toUpperCase();
+}
+
+function paymentStatusFailed(status){
+  return SASPAY_FAILED_STATUSES.has(String(status || '').trim().toUpperCase());
+}
+
+function paymentStatusSucceeded(status){
+  return SASPAY_SUCCESS_STATUSES.has(String(status || '').trim().toUpperCase());
+}
+
+function paymentRecordIdentifiers(record){
+  const raw = record?.raw || {};
+  return {
+    paymentId:String(raw.saspay_id || raw.saspay?.id || raw.saspay_session?.transaction?.id || raw.saspay_session_status?.transaction_id || '').trim(),
+    sessionId:String(raw.saspay_session_id || raw.saspay_session?.id || '').trim()
+  };
+}
+
+function paymentRecordCreatedTime(record){
+  const value = record?.created_at || record?.createdAt || record?.raw?.created_at;
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+async function recentSasPayPaymentRecords(phone, { limit=12, hours=SASPAY_RECONCILE_WINDOW_HOURS } = {}){
+  const normalized = normalizePhone(phone);
+  if (!normalized) return [];
+  const rowsByTx = new Map();
+  for (const record of payments.values()){
+    if (String(record?.provider || '').toUpperCase() !== 'SASPAY') continue;
+    if (normalizePhone(record?.phone) !== normalized) continue;
+    const tx = paymentRecordTx(record);
+    if (tx) rowsByTx.set(tx, record);
+  }
+  if (supabaseReady()){
+    const after = new Date(Date.now() - Math.max(1, Number(hours || 48)) * 60 * 60 * 1000).toISOString();
+    const path = `payments?phone=eq.${encodeURIComponent(normalized)}&provider=eq.SASPAY&created_at=gte.${encodeURIComponent(after)}&select=*&order=created_at.desc&limit=${Math.max(1, Number(limit || 12))}`;
+    const rows = await supabaseRequest(path).catch(()=>[]);
+    for (const record of (Array.isArray(rows) ? rows : [])){
+      const tx = paymentRecordTx(record);
+      if (tx) rowsByTx.set(tx, { ...(rowsByTx.get(tx) || {}), ...record });
+    }
+  }
+  return [...rowsByTx.values()]
+    .sort((a, b) => paymentRecordCreatedTime(b) - paymentRecordCreatedTime(a))
+    .slice(0, Math.max(1, Number(limit || 12)));
+}
+
+function resumableSasPayPayment(record){
+  const raw = record?.raw || {};
+  const { paymentId, sessionId } = paymentRecordIdentifiers(record);
+  const paymentUrl = saspayCheckoutUrl(raw.saspay_session_response || raw.saspay_response || raw.saspay_session || raw.saspay || {});
+  return {
+    transactionId:paymentRecordTx(record),
+    paymentId:paymentId || null,
+    sessionId:sessionId || null,
+    paymentUrl:paymentUrl || '',
+    status:paymentRecordStatus(record),
+    mode:sessionId ? 'checkout' : 'softpay'
+  };
+}
+
+async function findReusableSasPayPayment({ accountPhone, paymentPhone, plan, provider }){
+  const rows = await recentSasPayPaymentRecords(accountPhone, { limit:10, hours:2 });
+  const minimumTime = Date.now() - SASPAY_REUSE_WINDOW_MS;
+  return rows.find(record => {
+    if (paymentRecordCreatedTime(record) < minimumTime) return false;
+    const status = paymentRecordStatus(record);
+    if (paymentStatusFailed(status) || paymentStatusSucceeded(status)) return false;
+    const raw = record?.raw || {};
+    if (normalizePhone(raw.payment_phone) !== normalizePhone(paymentPhone)) return false;
+    if (String(raw.plan || record?.plan || '') !== String(plan || '')) return false;
+    if (String(raw.selected_provider || raw.provider || '').toUpperCase() !== String(provider || '').toUpperCase()) return false;
+    const ids = paymentRecordIdentifiers(record);
+    return Boolean(ids.paymentId || ids.sessionId);
+  }) || null;
+}
+
+async function verifyRecentSasPayRecord(record){
+  const tx = paymentRecordTx(record);
+  const accountPhone = normalizePhone(record?.phone);
+  const plan = paymentPlanFromRecord(record);
+  const ids = paymentRecordIdentifiers(record);
+  if (!tx || !accountPhone || (!ids.paymentId && !ids.sessionId)){
+    return { active:false, paymentStatus:paymentRecordStatus(record), txRef:tx };
+  }
+
+  const activateVerified = async (verified, raw) => {
+    await updatePaymentRecord(tx, { status:'ACCEPTED', raw, verified_at:new Date().toISOString() });
+    const sub = await activateSubscription({
+      phone:accountPhone,
+      txRef:tx,
+      provider:'SASPAY',
+      email:record?.raw?.customer_email,
+      plan:plan.id,
+      days:plan.days
+    });
+    return { ok:true, active:true, status:'premium', expiresAt:sub.expiresAt, txRef:tx, provider:'SASPAY', plan:plan.id };
+  };
+
+  if (ids.paymentId){
+    const verified = await saspayRequest(`/payments/${encodeURIComponent(ids.paymentId)}/verify/`);
+    const raw = paymentRawWithSasPay(record.raw, verified);
+    if (paymentIsSuccessful(verified, plan)) return activateVerified(verified, raw);
+    const status = saspayStatus(verified);
+    await updatePaymentRecord(tx, { status, raw, verified_at:new Date().toISOString() });
+    return { ok:true, active:false, paymentStatus:String(status || 'PENDING').toUpperCase(), txRef:tx };
+  }
+
+  let sessionStatusResponse;
+  try{
+    sessionStatusResponse = await saspayRequest(`/checkout-sessions/${encodeURIComponent(ids.sessionId)}/status/`);
+  }catch(err){
+    if (err.status !== 404) throw err;
+    sessionStatusResponse = await saspayRequest(`/checkout-sessions/${encodeURIComponent(ids.sessionId)}/`);
+  }
+  const sessionStatus = saspayPayload(sessionStatusResponse);
+  const transactionId = checkoutStatusTransactionId(sessionStatus);
+  let raw = {
+    ...(record.raw || {}),
+    saspay_session_id:ids.sessionId,
+    saspay_session_status:sessionStatus,
+    saspay_session_status_response:sessionStatusResponse
+  };
+  if (transactionId){
+    const verified = await saspayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`);
+    raw = paymentRawWithSasPay(raw, verified);
+    if (paymentIsSuccessful(verified, plan)) return activateVerified(verified, raw);
+    const status = saspayStatus(verified);
+    await updatePaymentRecord(tx, { status, raw, verified_at:new Date().toISOString() });
+    return { ok:true, active:false, paymentStatus:String(status || 'PENDING').toUpperCase(), txRef:tx };
+  }
+  const status = checkoutStatusLabel(sessionStatus);
+  await updatePaymentRecord(tx, { status, raw, verified_at:new Date().toISOString() });
+  return { ok:true, active:false, paymentStatus:status, txRef:tx };
+}
+
 function paymentIsSuccessful(data, planOrId){
   const plan = subscriptionPlan(planOrId?.id || planOrId);
   const payload = saspayPayload(data);
@@ -5119,7 +5267,7 @@ app.get('/health', async (req, res) => {
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'qcm-pdf-mobile-fit-v25',
+    build: 'payment-confirmation-safety-v26',
     time: new Date().toISOString()
   });
 });
@@ -5523,6 +5671,21 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
       customer_email:customerEmail,
       plan:plan.id
     };
+
+    // Une seule demande active par compte, numéro, formule et réseau. Si le client
+    // revient ou appuie de nouveau, on reprend la tentative existante au lieu de
+    // créer plusieurs débits difficiles à rapprocher.
+    const reusable = await findReusableSasPayPayment({ accountPhone, paymentPhone, plan:plan.id, provider:selectedProvider });
+    if (reusable){
+      const resume = resumableSasPayPayment(reusable);
+      return res.json({
+        ok:true,
+        reused:true,
+        ...resume,
+        message:'Un paiement est déjà en attente. Confirme-le sur le téléphone puis vérifie son statut.'
+      });
+    }
+
     await createPaymentRecord({ tx, phone:accountPhone, provider:'SASPAY', status:'INITIATED', plan:plan.id, amount:plan.amount, raw:paymentContext });
 
     const firstName = profile?.first_name || profile?.display_name?.split(' ')?.[0] || 'Client';
@@ -5555,7 +5718,7 @@ app.post('/api/payments/saspay/init', requireSession, async (req, res, next) => 
         return_url: returnTo,
         metadata: { tx_ref: tx, account_phone:accountPhone, payment_phone:paymentPhone, plan: plan.id, provider: selectedProvider, checkout_reason:reason }
       };
-      const sessionResponse = await saspayRequest('/checkout-sessions/', { method:'POST', body:sessionPayload });
+      const sessionResponse = await saspayRequest('/checkout-sessions/', { method:'POST', body:sessionPayload, idempotencyKey:tx });
       const session = saspayPayload(sessionResponse);
       const paymentUrl = saspayCheckoutUrl(sessionResponse);
       const raw = {
@@ -5677,6 +5840,62 @@ app.get('/api/payments/saspay/status', requireSession, async (req, res, next) =>
     return res.status(400).json({ message:'Identifiant SasPay manquant' });
   }catch(err){ next(err); }
 });
+
+app.get('/api/payments/saspay/reconcile', requireSession, async (req, res, next) => {
+  try{
+    requireSasPayConfig();
+    const requestedTx = String(req.query.transactionId || req.query.tx || '').trim();
+    const records = await recentSasPayPaymentRecords(req.phone, { limit:12, hours:SASPAY_RECONCILE_WINDOW_HOURS });
+    if (requestedTx){
+      records.sort((a, b) => Number(paymentRecordTx(b) === requestedTx) - Number(paymentRecordTx(a) === requestedTx));
+    }
+
+    const openRecords = records.filter(record => {
+      const status = paymentRecordStatus(record);
+      const ids = paymentRecordIdentifiers(record);
+      return !paymentStatusFailed(status) && !paymentStatusSucceeded(status) && Boolean(ids.paymentId || ids.sessionId);
+    }).slice(0, 4);
+
+    let latestResult = null;
+    let providerError = null;
+    let pendingResultFound = false;
+    for (const record of openRecords){
+      try{
+        const result = await verifyRecentSasPayRecord(record);
+        if (!latestResult || paymentRecordTx(record) === requestedTx) latestResult = result;
+        if (result.active) return res.json(result);
+        if (!paymentStatusFailed(result.paymentStatus)) pendingResultFound = true;
+      }catch(err){
+        providerError = err;
+        pendingResultFound = true;
+        console.warn('Rapprochement SasPay différé:', err.message);
+      }
+    }
+
+    // Le webhook a pu activer Premium pendant que la page était en arrière-plan.
+    const active = await getActiveSubscription(req.phone);
+    if (active){
+      return res.json({ ok:true, active:true, status:'premium', expiresAt:active.expiresAt, txRef:active.txRef, provider:active.provider || 'SASPAY', plan:active.plan });
+    }
+
+    const requestedRecord = records.find(record => paymentRecordTx(record) === requestedTx);
+    const latestRecord = requestedRecord || records[0] || null;
+    const fallbackStatus = latestResult?.paymentStatus || paymentRecordStatus(latestRecord);
+    const stillPending = pendingResultFound;
+    const responseStatus = stillPending && paymentStatusFailed(fallbackStatus) ? 'PENDING' : fallbackStatus;
+    if (providerError && !latestResult && stillPending) throw providerError;
+    return res.json({
+      ok:true,
+      active:false,
+      paymentStatus:responseStatus || 'UNKNOWN',
+      canRetry:!stillPending,
+      message:stillPending
+        ? 'Paiement en attente. Confirme la demande sur le téléphone puis reviens dans l’application.'
+        : 'Aucun paiement n’est encore confirmé. Tu peux lancer une nouvelle tentative.'
+    });
+  }catch(err){ next(err); }
+});
+
 
 app.post('/api/payments/saspay/webhook', async (req, res, next) => {
   try{

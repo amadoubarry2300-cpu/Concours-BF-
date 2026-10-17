@@ -97,6 +97,9 @@ let authMode = 'register';
 let paywallFeature = null;
 let currentFormFilter = 'Tout';
 let runtimePaymentMessage = '';
+let paymentStatusRequestPending = false;
+let paymentAutoCheckTimer = null;
+let paymentAutoChecksRemaining = 0;
 let pendingAvatarData = '';
 
 /* ---------- état persistant ---------- */
@@ -176,8 +179,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=qcm-pdf-mobile-fit-v25').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=qcm-pdf-mobile-fit-v25';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=payment-confirmation-safety-v26').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=payment-confirmation-safety-v26';
       return pdfjs;
     });
   }
@@ -910,7 +913,10 @@ function show(id){
     renderRevisionFiches(currentRevisionFilter);
     loadRevisionFiches().catch(()=>{});
   }
-  if (id==='subscription') setTimeout(renderSubscription, 20);
+  if (id==='subscription') setTimeout(()=>{
+    renderSubscription();
+    if (state.pendingPayment) startPaymentAutoChecks(6);
+  }, 20);
   if (id==='account') setTimeout(renderAccountScreen, 20);
   if (id==='admin') setTimeout(()=>renderAdminPanel(false), 20);
   if (id==='login') setTimeout(renderLogin, 20);
@@ -4090,6 +4096,49 @@ function paymentProviderLabel(provider){
   return provider === 'MOOV_MONEY' ? 'Moov Money (Telmob)' : provider === 'ORANGE_MONEY' ? 'Orange Money' : 'Mobile Money';
 }
 
+const PAYMENT_FAILED_STATUSES = new Set(['FAILED','FAILURE','REFUSED','REJECTED','CANCELLED','CANCELED','EXPIRED','ABANDONED','ERROR','UNKNOWN']);
+
+function paymentStatusFailed(status){
+  return PAYMENT_FAILED_STATUSES.has(String(status || '').trim().toUpperCase());
+}
+
+function paymentProviderInstruction(provider, pending=false){
+  if (provider === 'MOOV_MONEY'){
+    return pending
+      ? '<b>Demande Moov envoyée.</b> Regarde ton téléphone et confirme la transaction Moov. Aucun code OTP ne sera demandé dans Réussite Concours BF. Ne relance pas un autre paiement.'
+      : '<b>Moov Money :</b> après avoir appuyé sur « Payer », regarde ton téléphone et confirme la demande Moov. Aucun code OTP ne sera demandé dans l’application.';
+  }
+  return pending
+    ? '<b>Demande Orange envoyée.</b> Termine la validation sur la page ou le téléphone Orange Money, puis reviens ici. Ne relance pas un autre paiement.'
+    : '<b>Orange Money :</b> suis les instructions de la page sécurisée Orange. Réussite Concours BF ne demande jamais ton code secret.';
+}
+
+function stopPaymentAutoChecks(){
+  if (paymentAutoCheckTimer) clearTimeout(paymentAutoCheckTimer);
+  paymentAutoCheckTimer = null;
+  paymentAutoChecksRemaining = 0;
+}
+
+function startPaymentAutoChecks(attempts=6){
+  stopPaymentAutoChecks();
+  if (!state.pendingPayment || !navigator.onLine) return;
+  paymentAutoChecksRemaining = Math.max(1, Number(attempts || 1));
+  const run = async () => {
+    paymentAutoCheckTimer = null;
+    if (!state.pendingPayment || paymentAutoChecksRemaining <= 0) return;
+    if (document.hidden){
+      paymentAutoCheckTimer = setTimeout(run, 4000);
+      return;
+    }
+    paymentAutoChecksRemaining -= 1;
+    await checkPaymentStatus({ silent:true });
+    if (state.pendingPayment && paymentAutoChecksRemaining > 0){
+      paymentAutoCheckTimer = setTimeout(run, 8000);
+    }
+  };
+  paymentAutoCheckTimer = setTimeout(run, 1200);
+}
+
 function paymentPhoneValidation(phone, provider=state.selectedProvider){
   const local = normalizePhone(phone);
   if (!local) return { valid:false, complete:false, tone:'', message:'Le numéro à débiter peut être différent du numéro de connexion.' };
@@ -4116,7 +4165,7 @@ function updatePaymentPhoneNetworkHint(){
   input.classList.toggle('input-error', validation.complete && !validation.valid);
   input.classList.toggle('input-success', validation.valid);
   input.setAttribute('aria-invalid', validation.complete && !validation.valid ? 'true' : 'false');
-  if (button) button.disabled = !validation.valid || isAdmin();
+  if (button) button.disabled = !validation.valid || isAdmin() || Boolean(state.pendingPayment);
 }
 
 function handlePaymentPhoneInput(input){
@@ -4126,6 +4175,10 @@ function handlePaymentPhoneInput(input){
 }
 
 function selectProvider(provider, clearMessage=false){
+  if (state.pendingPayment && provider !== state.pendingPayment.provider){
+    toast('Termine ou vérifie le paiement en cours avant de changer de réseau.');
+    return;
+  }
   state.selectedProvider = provider;
   if (clearMessage) runtimePaymentMessage = '';
   save();
@@ -4174,11 +4227,13 @@ function renderSubscription(){
     if (payBox) payBox.style.display = '';
     if (integrationNote) integrationNote.style.display = '';
     if (planBadge) planBadge.textContent = '⭐ Réussite Premium';
-    if (instruction) instruction.innerHTML = `Abonnement sélectionné : <b>${plan.label}</b> — ${money(plan.amount)} / ${plan.durationLabel}. Choisis ton réseau puis valide le paiement.`;
+    if (instruction) instruction.innerHTML = `Abonnement sélectionné : <b>${plan.label}</b> — ${money(plan.amount)} / ${plan.durationLabel}.<br>${paymentProviderInstruction(state.selectedProvider, Boolean(state.pendingPayment))}`;
   }
 
   const subPhone = $('#subPhone');
   if (subPhone && !subPhone.value && state.user?.phone) subPhone.value = prettyPhone(state.user.phone);
+  if (subPhone) subPhone.disabled = Boolean(state.pendingPayment);
+  $$('#providerGrid .provider-option').forEach(btn=>{ btn.disabled = Boolean(state.pendingPayment); });
   updatePaymentPhoneNetworkHint();
 
   const status = $('#subStatus');
@@ -4203,7 +4258,13 @@ function renderSubscription(){
   }
 
   const payBtn = $('#payBtn');
-  if (payBtn) payBtn.textContent = isAdmin() ? 'Accès complet actif' : `${isPremium() ? 'Renouveler' : plan.actionLabel} — ${money(plan.amount)}`;
+  if (payBtn) payBtn.textContent = isAdmin()
+    ? 'Accès complet actif'
+    : state.pendingPayment
+      ? 'Paiement en attente de confirmation'
+      : `${isPremium() ? 'Renouveler' : plan.actionLabel} — ${money(plan.amount)}`;
+  const checkPayBtn = $('#checkPayBtn');
+  if (checkPayBtn) checkPayBtn.textContent = state.pendingPayment ? 'J’ai confirmé — vérifier mon paiement' : 'Vérifier mon paiement';
   const demoBtn = $('#demoPayBtn');
   if (demoBtn) demoBtn.style.display = (PAYMENT_CONFIG.demoMode && !isPremium()) ? 'flex' : 'none';
 
@@ -4211,8 +4272,10 @@ function renderSubscription(){
   if (result){
     if (runtimePaymentMessage){
       result.innerHTML = runtimePaymentMessage;
+    } else if (state.pendingPayment){
+      result.innerHTML = `<div class="pay-note warn">${paymentProviderInstruction(state.pendingPayment.provider || state.selectedProvider, true)}<br>Référence : <b>${escapeHtml(state.pendingPayment.ref || '')}</b></div>`;
     } else {
-      result.innerHTML = `<div class="pay-note">Choisis <b>${plan.label}</b>, ton réseau Mobile Money, entre ton numéro puis appuie sur “${plan.actionLabel}”.</div>`;
+      result.innerHTML = `<div class="pay-note">${paymentProviderInstruction(state.selectedProvider, false)}<br>Entre ensuite le numéro à débiter et appuie sur “${plan.actionLabel}”.</div>`;
     }
   }
 }
@@ -4231,6 +4294,13 @@ async function startSubscriptionPayment(){
     toast('Connecte ton numéro avant de payer');
     authMode = 'login';
     show('login');
+    return;
+  }
+
+  if (state.pendingPayment?.ref){
+    runtimePaymentMessage = `<div class="pay-note warn">${paymentProviderInstruction(state.pendingPayment.provider || state.selectedProvider, true)}<br>Référence : <b>${escapeHtml(state.pendingPayment.ref)}</b></div>`;
+    renderSubscription();
+    startPaymentAutoChecks(6);
     return;
   }
 
@@ -4276,7 +4346,8 @@ async function startSubscriptionPayment(){
       plan: plan.id,
       provider: state.selectedProvider,
       phone,
-      status: 'pending',
+      status: String(data.status || 'PENDING').toUpperCase(),
+      reused: Boolean(data.reused),
       createdAt: new Date().toISOString()
     };
     save();
@@ -4285,10 +4356,9 @@ async function startSubscriptionPayment(){
       location.href = data.paymentUrl;
       return;
     }
-    runtimePaymentMessage = data.mode === 'checkout'
-      ? `<div class="pay-note warn">La page de paiement n’a pas pu s’ouvrir. Réessaie le paiement dans quelques instants. Réf. <b>${state.pendingPayment.ref}</b></div>`
-      : `<div class="pay-note success"><b>Demande ${paymentProviderLabel(state.selectedProvider)} envoyée.</b><br>Numéro à débiter : <b>${escapeHtml(prettyPhone(phone))}</b>.<br>Abonnement : <b>${plan.label}</b> (${money(plan.amount)}). Valide sur le téléphone puis clique sur “Vérifier mon paiement”. Réf. <b>${state.pendingPayment.ref}</b></div>`;
+    runtimePaymentMessage = `<div class="pay-note ${data.reused ? 'warn' : 'success'}">${paymentProviderInstruction(state.selectedProvider, true)}<br>Numéro à débiter : <b>${escapeHtml(prettyPhone(phone))}</b>.<br>Abonnement : <b>${plan.label}</b> (${money(plan.amount)}).<br>Référence : <b>${escapeHtml(state.pendingPayment.ref)}</b></div>`;
     renderSubscription();
+    startPaymentAutoChecks(6);
   }catch(err){
     const detail = String(err?.message || '');
     const safeDetail = /^(Ce numéro|Ce préfixe|Entre un numéro|Choisis Orange|Numéro (Orange|Moov|Telecel)|Seuls Orange)/i.test(detail)
@@ -4302,18 +4372,19 @@ async function startSubscriptionPayment(){
   }
 }
 
-async function checkPaymentStatus(){
-  if (!state.user){ nextAfterLogin='subscription'; show('login'); return; }
+async function checkPaymentStatus(options={}){
+  const silent = Boolean(options?.silent);
+  if (!state.user){ nextAfterLogin='subscription'; show('login'); return null; }
+  if (paymentStatusRequestPending) return null;
+  paymentStatusRequestPending = true;
   const btn = $('#checkPayBtn');
-  setButtonLoading(btn, true, 'Vérification...');
+  if (!silent) setButtonLoading(btn, true, 'Vérification...');
   try{
     const pending = state.pendingPayment || {};
     const params = new URLSearchParams({ phone: fullPhone(state.user.phone) });
     if (pending.ref) params.set('transactionId', pending.ref);
-    if (pending.paymentId) params.set('paymentId', pending.paymentId);
-    if (pending.sessionId) params.set('sessionId', pending.sessionId);
     const url = pending.ref
-      ? paymentApiBase() + '/api/payments/saspay/status?' + params.toString()
+      ? paymentApiBase() + '/api/payments/saspay/reconcile?' + params.toString()
       : paymentApiBase() + '/api/subscription/status?phone=' + encodeURIComponent(fullPhone(state.user.phone));
     const res = await fetchWithTimeout(url, { headers: authHeaders({}) });
     const data = await res.json().catch(()=>({}));
@@ -4321,6 +4392,7 @@ async function checkPaymentStatus(){
     if (data.active){
       state.subscription = {status:'premium', expiresAt:data.expiresAt, txRef:data.txRef, provider:data.provider || state.selectedProvider, plan:data.plan || state.pendingPayment?.plan || state.selectedPlan};
       state.pendingPayment = null;
+      stopPaymentAutoChecks();
       save();
       state.sessionGreeting = { text:`Premium activé pour ${displayUserName()}`, sub:`Renouvellement à prévoir le ${formatDate(state.subscription.expiresAt)}.` };
       runtimePaymentMessage = '<div class="pay-note success">Paiement confirmé ✅ Premium activé.</div>';
@@ -4328,15 +4400,32 @@ async function checkPaymentStatus(){
       await loadSupabaseQuestions();
       renderFormations(currentFormFilter);
       confetti();
+    } else if (!pending.ref){
+      runtimePaymentMessage = '<div class="pay-note warn">Aucun paiement confirmé pour le moment. Choisis ton réseau et lance le paiement une seule fois.</div>';
     } else {
-      runtimePaymentMessage = `<div class="pay-note warn">${escapeHtml(data.message || 'Paiement en cours de confirmation par le réseau. Clique de nouveau sur “Vérifier mon paiement” dans quelques instants.')}</div>`;
+      const status = String(data.paymentStatus || pending.status || 'PENDING').toUpperCase();
+      if (data.canRetry || paymentStatusFailed(status)){
+        state.pendingPayment = null;
+        stopPaymentAutoChecks();
+        save();
+        runtimePaymentMessage = `<div class="pay-note ${status === 'UNKNOWN' ? 'warn' : 'error'}">${escapeHtml(data.message || 'Le paiement précédent n’a pas été confirmé. Vérifie ton solde puis lance une nouvelle tentative.')}</div>`;
+      } else {
+        state.pendingPayment = { ...pending, status };
+        save();
+        runtimePaymentMessage = `<div class="pay-note warn">${paymentProviderInstruction(pending.provider || state.selectedProvider, true)}<br>${escapeHtml(data.message || 'La vérification continue automatiquement.')}<br>Référence : <b>${escapeHtml(pending.ref || '')}</b></div>`;
+      }
     }
     renderSubscription();
+    return data;
   }catch(err){
-    runtimePaymentMessage = '<div class="pay-note error">Vérification indisponible pour le moment. Réessaie dans quelques instants.</div>'; 
-    renderSubscription();
+    if (!silent){
+      runtimePaymentMessage = '<div class="pay-note error">Vérification indisponible pour le moment. Ne relance pas un autre paiement : réessaie seulement la vérification dans quelques instants.</div>';
+      renderSubscription();
+    }
+    return null;
   }finally{
-    setButtonLoading(btn, false);
+    paymentStatusRequestPending = false;
+    if (!silent) setButtonLoading(btn, false);
   }
 }
 
@@ -5064,13 +5153,14 @@ function refreshCurrentOnlineScreen(){
   if (currentScreenId === 'publishedqcm') loadPublishedQcm(currentPublishedQcmFilter);
   if (currentScreenId === 'moduleqcm') loadCurrentModuleQcm(true);
   if (currentScreenId === 'formations') Promise.all([loadSupabaseQuestions(), fetchPublishedQcmPublications(true).catch(()=>[]) ]).then(()=>renderFormations(currentFormFilter));
+  if (currentScreenId === 'subscription' && state.pendingPayment) startPaymentAutoChecks(4);
 }
 
 async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'qcm-pdf-mobile-fit-v25') location.reload();
+    if (data.build && data.build !== 'payment-confirmation-safety-v26') location.reload();
   }catch{}
 }
 
@@ -5083,7 +5173,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=qcm-pdf-mobile-fit-v25')
+    navigator.serviceWorker.register('/sw.js?v=payment-confirmation-safety-v26')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);
@@ -5111,6 +5201,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   setTimeout(openOffer, 15000);
   if (location.hash === '#subscription'){
     show('subscription');
-    setTimeout(checkPaymentStatus, 600);
+    setTimeout(()=>startPaymentAutoChecks(6), 600);
   }
 });
