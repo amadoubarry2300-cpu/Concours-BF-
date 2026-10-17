@@ -306,7 +306,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .consent-check{display:flex;align-items:flex-start;gap:10px;margin:4px 0 16px;padding:12px 13px;border:1px solid #d9e7e1;background:#f5faf8;border-radius:14px;color:var(--ink-soft);font-size:.78rem;font-weight:700;line-height:1.45;text-transform:none;letter-spacing:0;cursor:pointer}
 .consent-check input{width:19px;height:19px;flex:0 0 auto;margin-top:1px;accent-color:var(--green)}
 .auth-reset-panel{padding:4px 0 2px}.auth-reset-panel h3{font-size:1.08rem;font-weight:950;margin:5px 0}.auth-reset-panel .btn{margin-top:10px}
-.account-email-preferences .consent-check{margin:10px 0}.account-email-preferences .fine-print{text-align:left;margin:6px 0 14px}
+.account-email-notice .fine-print,.email-auto-note{text-align:left;margin:8px 0 0}
 
 .plan-card{margin:18px 20px;background:radial-gradient(circle at 20% 0%,rgba(245,166,35,.32),transparent 34%),linear-gradient(135deg,#111827,#1f2937 62%,#374151);color:#fff;border-radius:28px;padding:26px 22px;box-shadow:0 20px 45px rgba(17,24,39,.22);position:relative;overflow:hidden}
 .plan-card::after{content:'🎓';position:absolute;right:18px;top:18px;font-size:3.4rem;opacity:.14}

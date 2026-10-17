@@ -32,7 +32,7 @@ assert(html.includes('<span class="nav-label">Premium</span>'), 'libellé Premiu
 assert(fs.existsSync(new URL('../img/subject-physics.svg', import.meta.url)), 'illustration Physique-Chimie absente');
 assert(sw.includes("'/img/subject-physics.svg'"), 'illustration Physique-Chimie absente du cache PWA');
 assert(!sw.match(/isCandidateApi[\s\S]{0,500}subscription\/status/), 'statut privé encore mis en cache');
-assert(server.includes("build: 'plain-language-cleanup-v28'"), 'marqueur v28 absent');
+assert(server.includes("build: 'automatic-email-notifications-v29'"), 'marqueur v29 absent');
 
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
 assert(new Set(ids).size === ids.length, 'identifiants HTML dupliqués');
@@ -68,4 +68,4 @@ for (const wording of [
   assert(visibleCopy.includes(wording), `libellé simple absent : ${wording}`);
 }
 
-console.log('LANGAGE SIMPLE ET COHÉRENCE APPLICATION V28 OK');
+console.log('LANGAGE SIMPLE ET COHÉRENCE APPLICATION V29 OK');

@@ -39,13 +39,19 @@ alter table public.profiles add column if not exists role text not null default 
 create index if not exists profiles_phone_idx on public.profiles(phone);
 create index if not exists profiles_email_idx on public.profiles(email);
 
--- Préférences e-mail : les messages de compte restent transactionnels ;
--- les offres et nouveautés exigent un accord explicite et révocable.
-alter table public.profiles add column if not exists marketing_email_opt_in boolean not null default false;
+-- Notifications e-mail automatiques pour chaque compte qui possède une adresse.
+-- Le lien de désabonnement des nouveautés reste disponible dans chaque message concerné.
+alter table public.profiles add column if not exists marketing_email_opt_in boolean not null default true;
 alter table public.profiles add column if not exists marketing_email_opt_in_at timestamptz;
 alter table public.profiles add column if not exists marketing_email_unsubscribed_at timestamptz;
-create index if not exists profiles_marketing_email_idx on public.profiles(id)
-  where marketing_email_opt_in = true and marketing_email_unsubscribed_at is null and email is not null;
+alter table public.profiles alter column marketing_email_opt_in set default true;
+update public.profiles
+set marketing_email_opt_in = true,
+    marketing_email_opt_in_at = coalesce(marketing_email_opt_in_at, created_at, now())
+where email is not null and btrim(email) <> '' and marketing_email_unsubscribed_at is null;
+drop index if exists public.profiles_marketing_email_idx;
+create index profiles_marketing_email_idx on public.profiles(id)
+  where marketing_email_unsubscribed_at is null and email is not null and btrim(email) <> '';
 
 drop trigger if exists set_profiles_updated_at on public.profiles;
 create trigger set_profiles_updated_at

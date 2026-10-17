@@ -178,8 +178,8 @@ function loadPdfReaderEngine(){
     };
   }
   if (!pdfReaderEnginePromise){
-    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=plain-language-cleanup-v28').then(pdfjs => {
-      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=plain-language-cleanup-v28';
+    pdfReaderEnginePromise = import('/js/vendor/pdf.mjs?v=automatic-email-notifications-v29').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/vendor/pdf.worker.mjs?v=automatic-email-notifications-v29';
       return pdfjs;
     });
   }
@@ -763,7 +763,6 @@ function applyRemoteSession(data, fallbackPhone){
       lastName: data.user.lastName || '',
       displayName: data.user.displayName || '',
       email: data.user.email || state.user?.email || '',
-      marketingEmailOptIn:Boolean(data.user.marketingEmailOptIn),
       avatarData,
       role: data.user.role || state.user?.role || 'student',
       isAdmin: Boolean(data.user.isAdmin),
@@ -1125,8 +1124,12 @@ function renderAccountScreen(){
   $('#accountInfoPhone') && ($('#accountInfoPhone').textContent = '+226 ' + phone);
   $('#accountInfoEmail') && ($('#accountInfoEmail').textContent = state.user.email || '—');
   $('#accountLastLogin') && ($('#accountLastLogin').textContent = state.user.lastLoginAt ? formatDate(state.user.lastLoginAt) : 'Aujourd’hui');
-  const marketingBox = $('#accountMarketingEmailOptIn');
-  if (marketingBox) marketingBox.checked = Boolean(state.user.marketingEmailOptIn);
+  const emailNotice = $('#accountEmailNotice');
+  if (emailNotice){
+    emailNotice.textContent = state.user.email
+      ? `Les nouveaux QCM, documents, offres et messages importants sont envoyés automatiquement à ${state.user.email}.`
+      : 'Aucune adresse e-mail n’est enregistrée sur cet ancien compte. Les nouveaux comptes exigent une adresse e-mail.';
+  }
   renderSmartDashboard();
 
   const adminBtn = $('#adminPanelBtn');
@@ -1487,22 +1490,6 @@ async function confirmPinReset(){
   }finally{ setButtonLoading(btn, false); }
 }
 
-async function saveEmailPreferences(){
-  if (!state.user || !state.authToken){ toast('Connecte-toi d’abord'); return; }
-  const marketingEmailOptIn = Boolean($('#accountMarketingEmailOptIn')?.checked);
-  const btn = $('#saveEmailPreferencesBtn');
-  const result = $('#emailPreferencesResult');
-  setButtonLoading(btn, true, 'Enregistrement...');
-  try{
-    const data = await apiPatch('/api/profile/email-preferences', { marketingEmailOptIn });
-    if (data.user) state.user = { ...state.user, ...data.user };
-    save();
-    if (result){ result.textContent = marketingEmailOptIn ? 'Nouveautés activées ✅' : 'Nouveautés désactivées.'; result.className = 'payment-result ok'; }
-  }catch(err){
-    if (result){ result.textContent = err.message || 'Enregistrement impossible.'; result.className = 'payment-result err'; }
-  }finally{ setButtonLoading(btn, false); }
-}
-
 async function loginUser(){
   const isRegister = authMode !== 'login';
   const phone = normalizePhone($('#authPhone')?.value);
@@ -1510,7 +1497,6 @@ async function loginUser(){
   const firstName = ($('#firstName')?.value || '').trim();
   const lastName = ($('#lastName')?.value || '').trim();
   const email = ($('#authEmail')?.value || '').trim().toLowerCase();
-  const marketingEmailOptIn = isRegister && Boolean($('#marketingEmailOptIn')?.checked);
   const avatarData = isRegister ? (pendingAvatarData || '') : '';
 
   if (isRegister){
@@ -1525,13 +1511,15 @@ async function loginUser(){
   setButtonLoading(btn, true, isRegister ? 'Création...' : 'Connexion...');
   try{
     const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-    const data = await apiPost(endpoint, { phone: fullPhone(phone), pin, firstName, lastName, email, avatarData, marketingEmailOptIn });
+    const data = await apiPost(endpoint, { phone: fullPhone(phone), pin, firstName, lastName, email, avatarData });
     applyRemoteSession(data, phone);
     if (avatarData && state.user) saveAvatarForPhone(state.user.phone, avatarData);
     const greetingText = isRegister ? `Bienvenue cher candidat ${displayUserName()}` : `Bon retour ${displayUserName()}`;
     state.sessionGreeting = {
       text:greetingText,
-      sub:isRegister ? 'Ton espace personnel est prêt. Bonne préparation !' : 'Heureux de te revoir. Reprends ta préparation là où tu t’es arrêté.'
+      sub:isRegister
+        ? (data.emailNotification?.sent ? 'Ton espace personnel est prêt. Un e-mail de bienvenue vient d’être envoyé.' : 'Ton espace personnel est prêt et ton adresse e-mail est enregistrée.')
+        : 'Heureux de te revoir. Reprends ta préparation là où tu t’es arrêté.'
     };
     pendingAvatarData = '';
     renderAccount();
@@ -1566,7 +1554,6 @@ async function loginUser(){
     lastName: isRegister ? lastName : (previous.lastName || ''),
     displayName: isRegister ? `${firstName} ${lastName}`.trim() : (previous.displayName || ''),
     email: isRegister ? email : (previous.email || ''),
-    marketingEmailOptIn:isRegister ? marketingEmailOptIn : Boolean(previous.marketingEmailOptIn),
     avatarData: avatarData || previous.avatarData || (phone && state.profileAvatars?.[phone]) || '',
     createdAt,
     lastLoginAt:new Date().toISOString()
@@ -5133,7 +5120,7 @@ async function checkAppBuildVersion(){
   try{
     const res = await fetchWithTimeout('/health?ts=' + Date.now(), { cache:'no-store' });
     const data = await res.json().catch(()=>({}));
-    if (data.build && data.build !== 'plain-language-cleanup-v28') location.reload();
+    if (data.build && data.build !== 'automatic-email-notifications-v29') location.reload();
   }catch{}
 }
 
@@ -5146,7 +5133,7 @@ function registerOfflineApp(){
     location.reload();
   });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js?v=plain-language-cleanup-v28')
+    navigator.serviceWorker.register('/sw.js?v=automatic-email-notifications-v29')
       .then(reg => {
         reg.update().catch(()=>{});
         setInterval(()=>reg.update().catch(()=>{}), 15 * 60 * 1000);

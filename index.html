@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Réussite BF">
-<link rel="manifest" href="/manifest.webmanifest?v=plain-language-cleanup-v28">
+<link rel="manifest" href="/manifest.webmanifest?v=automatic-email-notifications-v29">
 <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=plain-language-cleanup-v28">
+<link rel="stylesheet" href="css/styles.css?v=automatic-email-notifications-v29">
 <link rel="icon" href="img/logo.png" type="image/png">
 </head>
 <body>
@@ -572,10 +572,7 @@
       <div id="emailField">
         <label class="field-label" for="authEmail">Adresse e-mail <span class="required-star">*</span></label>
         <input class="input" type="email" id="authEmail" placeholder="exemple@gmail.com" autocomplete="email" required>
-        <label class="consent-check" id="marketingConsentField">
-          <input type="checkbox" id="marketingEmailOptIn">
-          <span>Je souhaite recevoir les nouveaux QCM, documents et offres de Réussite Concours BF. Je peux me désabonner à tout moment.</span>
-        </label>
+        <p class="fine-print email-auto-note">Les nouveaux QCM, documents, offres et messages importants seront envoyés automatiquement à cette adresse.</p>
       </div>
       <label class="field-label" for="authPhone">Numéro de téléphone <span class="required-star">*</span></label>
       <div class="phone-row auth-phone-row">
@@ -588,7 +585,7 @@
       <button class="btn btn-ghost btn-block" id="forgotPinBtn" onclick="openPinReset()" style="display:none;margin-top:10px">PIN oublié ?</button>
       <button class="btn btn-ghost btn-block" id="logoutBtn" onclick="logoutUser()" style="display:none;margin-top:10px">Déconnecter ce compte</button>
       </div>
-      <p class="fine-print">Tes informations servent à protéger ton compte, envoyer les confirmations et retrouver ta progression.</p>
+      <p class="fine-print">Tes informations servent à protéger ton compte, envoyer tes notifications et retrouver ta progression.</p>
     </div>
   </section>
 
@@ -637,15 +634,9 @@
         <div><span>Dernière connexion</span><b id="accountLastLogin">—</b></div>
       </div>
 
-      <div class="account-info-box account-email-preferences">
-        <h3>Mes e-mails</h3>
-        <label class="consent-check">
-          <input type="checkbox" id="accountMarketingEmailOptIn">
-          <span>Recevoir les nouveaux QCM, documents et offres.</span>
-        </label>
-        <p class="fine-print">Les confirmations de compte, de connexion, de paiement et de sécurité restent actives.</p>
-        <button class="btn btn-green btn-block" id="saveEmailPreferencesBtn" onclick="saveEmailPreferences()">Enregistrer</button>
-        <div class="payment-result" id="emailPreferencesResult"></div>
+      <div class="account-info-box account-email-notice">
+        <h3>Notifications par e-mail</h3>
+        <p class="fine-print" id="accountEmailNotice">Les nouveaux QCM, documents, offres et messages importants sont envoyés automatiquement à l’adresse enregistrée.</p>
       </div>
 
       <button class="btn btn-red btn-block" onclick="logoutUser()">Se déconnecter</button>
@@ -1477,7 +1468,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/questions.js?v=plain-language-cleanup-v28"></script>
-<script src="js/app.js?v=plain-language-cleanup-v28"></script>
+<script src="js/questions.js?v=automatic-email-notifications-v29"></script>
+<script src="js/app.js?v=automatic-email-notifications-v29"></script>
 </body>
 </html>

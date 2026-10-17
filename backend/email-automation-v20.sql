@@ -5,11 +5,17 @@ create extension if not exists pgcrypto;
 
 alter table public.profiles add column if not exists email text;
 create index if not exists profiles_email_idx on public.profiles(email);
-alter table public.profiles add column if not exists marketing_email_opt_in boolean not null default false;
+alter table public.profiles add column if not exists marketing_email_opt_in boolean not null default true;
 alter table public.profiles add column if not exists marketing_email_opt_in_at timestamptz;
 alter table public.profiles add column if not exists marketing_email_unsubscribed_at timestamptz;
-create index if not exists profiles_marketing_email_idx on public.profiles(id)
-  where marketing_email_opt_in = true and marketing_email_unsubscribed_at is null and email is not null;
+alter table public.profiles alter column marketing_email_opt_in set default true;
+update public.profiles
+set marketing_email_opt_in = true,
+    marketing_email_opt_in_at = coalesce(marketing_email_opt_in_at, created_at, now())
+where email is not null and btrim(email) <> '' and marketing_email_unsubscribed_at is null;
+drop index if exists public.profiles_marketing_email_idx;
+create index profiles_marketing_email_idx on public.profiles(id)
+  where marketing_email_unsubscribed_at is null and email is not null and btrim(email) <> '';
 
 create table if not exists public.email_notification_events (
   id uuid primary key default gen_random_uuid(),

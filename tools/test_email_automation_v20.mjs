@@ -149,6 +149,8 @@ try{
   assert.match(content.unsubscribe, /^https:\/\/concoursbf-fawn\.vercel\.app\/api\/email\/unsubscribe\?/);
   assert.match(content.html, /Se désabonner/);
   assert.match(content.text, /Se désabonner/);
+  assert.match(content.html, /tu as un compte Réussite Concours BF/i);
+  assert.doesNotMatch(content.html, /tu as accepté/i);
 
   const beforeEventMails = state.mails.length;
   const event = { profile, eventType:'login_success', eventKey:'login:test:2026-10-16', subject:'Connexion réussie', text:'Connexion', html:'<p>Connexion</p>' };
@@ -165,7 +167,7 @@ try{
   assert.equal(state.mails.length, beforeRenewalMails + 1);
   assert.match(state.mails.at(-1).subject || '', /renouvel/i);
 
-  console.log('email automation v20: security, consent, idempotency and renewal tests passed');
+  console.log('email automation: security, unsubscribe, idempotency and renewal tests passed');
 } finally {
   await new Promise(resolve => server.close(resolve));
   global.fetch = realFetch;

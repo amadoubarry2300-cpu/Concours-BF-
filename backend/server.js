@@ -727,9 +727,16 @@ async function notifyRegistration(profile, rawEmail){
     ctaLabel:'Commencer ma préparation',
     ctaUrl:absoluteAppUrl('/')
   });
-  const tasks = [sendSmsNotification({ to:phone, message:sms })];
-  if (email) tasks.push(sendEmailNotification({ to:email, subject, text, html }));
-  await Promise.allSettled(tasks).then(results => results.forEach(r => { if (r.status === 'rejected') console.warn('Notification inscription:', r.reason?.message || r.reason); }));
+  const smsTask = Promise.resolve(sendSmsNotification({ to:phone, message:sms }))
+    .then(sent => ({ sent:Boolean(sent) }))
+    .catch(err => { console.warn('Notification inscription SMS:', err.message || err); return { sent:false }; });
+  const emailTask = email
+    ? Promise.resolve(sendEmailNotification({ to:email, subject, text, html }))
+      .then(sent => ({ sent:Boolean(sent) }))
+      .catch(err => { console.warn('Notification inscription e-mail:', err.message || err); return { sent:false }; })
+    : Promise.resolve({ sent:false });
+  const [smsResult, emailResult] = await Promise.all([smsTask, emailTask]);
+  return { emailSent:emailResult.sent, smsSent:smsResult.sent };
 }
 
 async function notifyPremiumActivation(profile, sub, rawEmail){
@@ -824,7 +831,7 @@ function marketingCampaignContent(campaign, profile){
     paragraphs:[bodyHtml],
     ctaLabel:campaign?.cta_label || 'Ouvrir Réussite Concours BF',
     ctaUrl,
-    footer:`Tu reçois ce message parce que tu as accepté les nouvelles et offres de Réussite Concours BF. <a href="${htmlEscape(unsubscribe)}">Se désabonner</a>.`
+    footer:`Tu reçois ce message parce que tu as un compte Réussite Concours BF. <a href="${htmlEscape(unsubscribe)}">Se désabonner des nouveautés et offres</a>.`
   });
   const text = `Bonjour ${name},\n\n${campaign?.text_body || ''}\n\n${campaign?.cta_label || 'Ouvrir'} : ${ctaUrl}\n\nSe désabonner : ${unsubscribe}`;
   return { email, text, html, unsubscribe };
@@ -837,7 +844,7 @@ async function processNextEmailCampaign(){
   if (!campaign) return { processed:false };
   await supabaseRequest(`email_campaigns?id=eq.${encodeURIComponent(campaign.id)}`, { method:'PATCH', prefer:'return=minimal', body:{ status:'processing', updated_at:new Date().toISOString() } }).catch(()=>{});
   const cursorFilter = campaign.cursor_profile_id ? `&id=gt.${encodeURIComponent(campaign.cursor_profile_id)}` : '';
-  const profiles = await supabaseRequest(`profiles?marketing_email_opt_in=eq.true&marketing_email_unsubscribed_at=is.null&email=not.is.null${cursorFilter}&select=id,email,first_name,last_name,display_name&order=id.asc&limit=${EMAIL_CAMPAIGN_RECIPIENTS_PER_RUN}`).catch(()=>[]);
+  const profiles = await supabaseRequest(`profiles?marketing_email_unsubscribed_at=is.null&email=not.is.null${cursorFilter}&select=id,email,first_name,last_name,display_name&order=id.asc&limit=${EMAIL_CAMPAIGN_RECIPIENTS_PER_RUN}`).catch(()=>[]);
   const recipients = Array.isArray(profiles) ? profiles : [];
   if (!recipients.length){
     await supabaseRequest(`email_campaigns?id=eq.${encodeURIComponent(campaign.id)}`, { method:'PATCH', prefer:'return=minimal', body:{ status:'completed', completed_at:new Date().toISOString(), updated_at:new Date().toISOString() } }).catch(()=>{});
@@ -5239,7 +5246,6 @@ function safeProfile(row){
     lastName: row.last_name || '',
     displayName: row.display_name || '',
     email: row.email || '',
-    marketingEmailOptIn: Boolean(row.marketing_email_opt_in) && !row.marketing_email_unsubscribed_at,
     avatarData: row.avatar_data || '',
     role: row.role || 'student',
     isAdmin: isAdminProfile(row),
@@ -5258,9 +5264,10 @@ app.get('/health', async (req, res) => {
     supabase: supabaseReady(),
     saspay: Boolean(SASPAY_API_KEY),
     saspayWebhook: Boolean(SASPAY_WEBHOOK_SECRET),
+    emailNotifications:emailNotificationsConfigured(),
     ai: aiProviderStatus(),
     ...(aiCheck ? { aiCheck } : {}),
-    build: 'plain-language-cleanup-v28',
+    build: 'automatic-email-notifications-v29',
     time: new Date().toISOString()
   });
 });
@@ -5273,7 +5280,6 @@ app.post('/api/auth/register', async (req, res, next) => {
     const lastName = String(req.body?.lastName || '').trim();
     const email = normalizeEmail(req.body?.email);
     const pin = String(req.body?.pin || '').replace(/\D/g, '');
-    const marketingEmailOptIn = Boolean(req.body?.marketingEmailOptIn);
     const avatarData = cleanAvatarData(req.body?.avatarData);
     if (!phone) return res.status(400).json({ message:'Numéro invalide' });
     if (firstName.length < 2 || lastName.length < 2) return res.status(400).json({ message:'Nom et prénom requis' });
@@ -5291,8 +5297,8 @@ app.post('/api/auth/register', async (req, res, next) => {
       last_name:lastName,
       display_name:displayName,
       email,
-      marketing_email_opt_in:marketingEmailOptIn,
-      marketing_email_opt_in_at:marketingEmailOptIn ? new Date().toISOString() : null,
+      marketing_email_opt_in:true,
+      marketing_email_opt_in_at:new Date().toISOString(),
       marketing_email_unsubscribed_at:null,
       pin_hash:hashPin(pin),
       last_login_at:new Date().toISOString()
@@ -5344,10 +5350,17 @@ app.post('/api/auth/register', async (req, res, next) => {
     const progress = await ensureProgress(profile);
     const subscription = await getActiveSubscription(phone);
     const session = await createSession(profile, req);
-    await notifyRegistration(profile || { phone, first_name:firstName, last_name:lastName, display_name:displayName, email }, email).catch(err => console.warn('Notification inscription:', err.message));
+    const notificationStatus = await notifyRegistration(profile || { phone, first_name:firstName, last_name:lastName, display_name:displayName, email }, email)
+      .catch(err => { console.warn('Notification inscription:', err.message); return { emailSent:false, smsSent:false }; });
     const user = safeProfile(profile);
     if (user && !user.email) user.email = email;
-    res.json({ user, progress, subscription, session });
+    res.json({
+      user,
+      progress,
+      subscription,
+      session,
+      emailNotification:{ configured:emailNotificationsConfigured(), sent:Boolean(notificationStatus?.emailSent) }
+    });
   }catch(err){ next(err); }
 });
 
@@ -5464,24 +5477,6 @@ app.post('/api/profile/avatar', requireSession, async (req, res, next) => {
     if (!avatarData) return res.status(400).json({ message:'Photo invalide' });
     const profile = await saveProfileAvatar(req.phone, avatarData);
     res.json({ ok:true, user:safeProfile(profile || { ...req.profile, avatar_data:avatarData }) });
-  }catch(err){ next(err); }
-});
-
-app.patch('/api/profile/email-preferences', requireSession, async (req, res, next) => {
-  try{
-    const optIn = Boolean(req.body?.marketingEmailOptIn);
-    const now = new Date().toISOString();
-    const rows = await supabaseRequest(`profiles?phone=eq.${encodeURIComponent(req.phone)}&select=*`, {
-      method:'PATCH',
-      prefer:'return=representation',
-      body:{
-        marketing_email_opt_in:optIn,
-        marketing_email_opt_in_at:optIn ? now : null,
-        marketing_email_unsubscribed_at:optIn ? null : now
-      }
-    });
-    const profile = Array.isArray(rows) ? rows[0] || null : null;
-    res.json({ ok:true, user:safeProfile(profile || req.profile) });
   }catch(err){ next(err); }
 });
 

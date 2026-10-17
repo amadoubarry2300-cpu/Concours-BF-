@@ -1,15 +1,15 @@
-const CACHE_VERSION = 'plain-language-cleanup-v28';
+const CACHE_VERSION = 'automatic-email-notifications-v29';
 const APP_CACHE = `reussite-concours-bf-app-${CACHE_VERSION}`;
 const DATA_CACHE = `reussite-concours-bf-data-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/css/styles.css?v=plain-language-cleanup-v28',
-  '/js/questions.js?v=plain-language-cleanup-v28',
-  '/js/app.js?v=plain-language-cleanup-v28',
-  '/js/vendor/pdf.mjs?v=plain-language-cleanup-v28',
-  '/js/vendor/pdf.worker.mjs?v=plain-language-cleanup-v28',
+  '/css/styles.css?v=automatic-email-notifications-v29',
+  '/js/questions.js?v=automatic-email-notifications-v29',
+  '/js/app.js?v=automatic-email-notifications-v29',
+  '/js/vendor/pdf.mjs?v=automatic-email-notifications-v29',
+  '/js/vendor/pdf.worker.mjs?v=automatic-email-notifications-v29',
   '/img/logo.png',
   '/img/pwa-icon-192.png',
   '/img/pwa-icon-512.png',
